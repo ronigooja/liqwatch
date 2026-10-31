@@ -6,13 +6,13 @@ Move an item to "Verified" with source and date once checked.
 
 | Question | Affects |
 |---|---|
-| Cloud provider, candidate regions, existing servers | [02](02-data-recording.md) region selection |
+| Cloud provider, candidate regions, existing servers | [data-recording](data-recording.md) region selection |
 | Monthly budget for compute and storage | Recording scale |
-| Preferred symbols for the depth set | [03](03-universe.md) |
-| Record spot (tier D)? | [02](02-data-recording.md) |
-| Typical position size and holding period | [06](06-trading-and-risk.md) cost and latency |
-| Account fee tier (maker/taker) | [06](06-trading-and-risk.md) |
-| Can the execution host be placed near the exchange? | [06](06-trading-and-risk.md) latency |
+| Preferred symbols for the depth set | [universe](universe.md) |
+| Record spot (tier D)? | [data-recording](data-recording.md) |
+| Typical position size and holding period | [trading-and-risk](trading-and-risk.md) cost and latency |
+| Account fee tier (maker/taker) | [trading-and-risk](trading-and-risk.md) |
+| Can the execution host be placed near the exchange? | [trading-and-risk](trading-and-risk.md) latency |
 
 ## Unverified facts (check against official sources)
 

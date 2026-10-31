@@ -6,4 +6,4 @@ Context: the system is for trading. Probability gains do not imply profit once f
 
 Decision: the acceptance criterion is expectancy after realistic fill simulation. Calibration metrics are diagnostics. A fill simulator is built in P1 before models are judged.
 
-Consequences: stop rules in [07-roadmap.md](../07-roadmap.md); details in [06-trading-and-risk.md](../06-trading-and-risk.md).
+Consequences: stop rules in [roadmap.md](../roadmap.md); details in [trading-and-risk.md](../trading-and-risk.md).

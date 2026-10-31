@@ -14,7 +14,7 @@
 - Walk the replayed book for market orders.
 - Add order latency; start with 200 ms to 1 s and run sensitivity analysis.
 - Limit orders: simulate queue position and partial fills; never assume a resting order fills at the touch price.
-- Include maker/taker fees at the actual account tier (see [08-open-questions.md](08-open-questions.md)).
+- Include maker/taker fees at the actual account tier (see [open-questions.md](open-questions.md)).
 - Report sensitivity of results to each assumption. Backtests that fill at the trigger price are invalid.
 
 ## Latency
@@ -27,7 +27,7 @@ The signal-to-order path must be short because the usable window is 5–30 s. La
 - Hard stop placed on the exchange side, not only in local software.
 - Stop opening positions when data health is degraded.
 - Automatic downgrade or halt on model drift or abnormal false-alarm rate.
-- Staged rollout: simulated, then minimal capital, then scale, each with explicit exit criteria ([07-roadmap.md](07-roadmap.md)).
+- Staged rollout: simulated, then minimal capital, then scale, each with explicit exit criteria ([roadmap.md](roadmap.md)).
 
 ## Known traps
 

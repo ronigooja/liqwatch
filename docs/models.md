@@ -1,6 +1,6 @@
 # Models
 
-Targets are defined in [04-labels-and-evaluation.md](04-labels-and-evaluation.md).
+Targets are defined in [labels-and-evaluation.md](labels-and-evaluation.md).
 
 ## Order of work
 

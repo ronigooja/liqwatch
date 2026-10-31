@@ -4,14 +4,14 @@ Goal: a complete, auditable, replayable raw market record. No models or features
 
 ## Why self-record
 
-Binance provides no full historical incremental L2. Public archives at data.binance.vision give klines and trades; depth there is reported as aggregated only (unverified, see [08-open-questions.md](08-open-questions.md)). Purchasable alternatives exist (e.g. Tardis.dev) and may be added later to extend history.
+Binance provides no full historical incremental L2. Public archives at data.binance.vision give klines and trades; depth there is reported as aggregated only (unverified, see [open-questions.md](open-questions.md)). Purchasable alternatives exist (e.g. Tardis.dev) and may be added later to extend history.
 
 ## Recording tiers
 
 | Tier | Symbols | Channels |
 |---|---|---|
 | A light | All USDT-M perpetuals (refresh list daily) | aggregate trades, best bid/ask, mark price |
-| B depth | 30–50 symbols per [03-universe.md](03-universe.md) | incremental depth plus periodic REST snapshots |
+| B depth | 30–50 symbols per [universe.md](universe.md) | incremental depth plus periodic REST snapshots |
 | C events | All | liquidation orders |
 | D spot | Spot pairs of tier B | aggregate trades, best bid/ask; depth optional |
 

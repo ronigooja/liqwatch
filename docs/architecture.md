@@ -3,13 +3,13 @@
 ## Layers
 
 ```
-Data:       recording -> raw log -> replayable data lake          (02-data-recording.md)
+Data:       recording -> raw log -> replayable data lake          (data-recording.md)
 Features:   price / order flow / book / impact / spot basis /
-            liquidations / data quality                           (05-models.md)
-Models:     risk-state model + in-spike models                    (05-models.md)
-Trading:    fill simulator -> strategy rules -> risk layer -> execution   (06-trading-and-risk.md)
+            liquidations / data quality                           (models.md)
+Models:     risk-state model + in-spike models                    (models.md)
+Trading:    fill simulator -> strategy rules -> risk layer -> execution   (trading-and-risk.md)
 Governance: prediction logging, shadow run, monitoring,
-            degrade and halt                                      (07-roadmap.md)
+            degrade and halt                                      (roadmap.md)
 ```
 
 ## Invariants
@@ -24,4 +24,4 @@ Governance: prediction logging, shadow run, monitoring,
 - Recording and online path: Go.
 - Research and training: Python (DuckDB/Polars, LightGBM).
 - Storage: local NVMe for hot data, Parquet+zstd archive in object storage.
-- Update cadence and latency targets are set by the trading use: see [06-trading-and-risk.md](06-trading-and-risk.md).
+- Update cadence and latency targets are set by the trading use: see [trading-and-risk.md](trading-and-risk.md).

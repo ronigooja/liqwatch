@@ -4,9 +4,9 @@ Durations are rough estimates; replace with measured values.
 
 | Phase | Work | Pass condition | Estimate |
 |---|---|---|---|
-| P0 Data recording | Tiered self-recording, region selection, replayable raw log. Details: [02-data-recording.md](02-data-recording.md) | Acceptance list in that file | ~4 weeks |
-| P1 Event library and baseline | Volatility-normalized labels, event statistics per tier, conditional-frequency baseline, fill simulator ([06](06-trading-and-risk.md)) | Labels reproducible and leak-free; baseline cost-adjusted expectancy measured | 2–3 weeks |
-| P2 Models | Baselines L and G, calibration, risk state and in-spike tasks ([05](05-models.md)) | Stable out-of-sample gain over baseline and positive cost-adjusted expectancy | 3–4 weeks |
+| P0 Data recording | Tiered self-recording, region selection, replayable raw log. Details: [data-recording.md](data-recording.md) | Acceptance list in that file | ~4 weeks |
+| P1 Event library and baseline | Volatility-normalized labels, event statistics per tier, conditional-frequency baseline, fill simulator ([trading-and-risk](trading-and-risk.md)) | Labels reproducible and leak-free; baseline cost-adjusted expectancy measured | 2–3 weeks |
+| P2 Models | Baselines L and G, calibration, risk state and in-spike tasks ([models](models.md)) | Stable out-of-sample gain over baseline and positive cost-adjusted expectancy | 3–4 weeks |
 | P3 Shadow run | Live signals, hypothetical fills, no orders | Shadow results consistent with backtest | ongoing |
 | P4 Simulated and minimal-capital trading | Real order path, latency and fill quality measurement | Live-vs-shadow gap bounded; risk controls trigger as designed | staged |
 | P5 Scale and iterate | Gradual capital increase; add feature layers by ablation | Each layer shows independent out-of-sample gain | ongoing |

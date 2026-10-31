@@ -6,4 +6,4 @@ Context: no free full historical incremental L2 for Binance perpetuals. Spikes l
 
 Decision: record all data ourselves, with a light tier for all symbols and a depth tier for a selected subset. Purchased history may supplement later.
 
-Consequences: data accrues from day one of P0; later phases depend on recording quality. Details: [02-data-recording.md](../02-data-recording.md).
+Consequences: data accrues from day one of P0; later phases depend on recording quality. Details: [data-recording.md](../data-recording.md).

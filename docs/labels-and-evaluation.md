@@ -34,4 +34,4 @@ Ambiguity rule (to be fixed in P1): when both thresholds are reached inside one 
 | First touch | Multiclass Brier/log loss, share of unresolved order | Terminal direction |
 | Trading | Expectancy per trade after costs, max drawdown, CVaR, win rate with payoff ratio, capacity | Win rate alone |
 
-Trading metrics must be reported per tier, per month, and per volatility regime. Strategies profitable only in a few extreme events are rejected. Cost and fill assumptions: [06-trading-and-risk.md](06-trading-and-risk.md).
+Trading metrics must be reported per tier, per month, and per volatility regime. Strategies profitable only in a few extreme events are rejected. Cost and fill assumptions: [trading-and-risk.md](trading-and-risk.md).
