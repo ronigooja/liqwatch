@@ -11,6 +11,8 @@ Read only what the task needs.
 | [AGENTS.md](AGENTS.md) | Rules for AI agents working in this repo | Always first |
 | [docs/overview.md](docs/overview.md) | Goals, products, non-goals, success criteria | Need scope or intent |
 | [docs/architecture.md](docs/architecture.md) | Layers and data flow | Designing any component |
+| [docs/components.md](docs/components.md) | Component list per phase and design order | Deciding what to design or build |
+| [docs/infrastructure.md](docs/infrastructure.md) | Hosts, storage, constraints | Deploying or sizing |
 | [docs/data-recording.md](docs/data-recording.md) | P0 recording design | Working on data capture or storage |
 | [docs/universe.md](docs/universe.md) | Instrument tiers and selection rules | Choosing symbols or tiers |
 | [docs/labels-and-evaluation.md](docs/labels-and-evaluation.md) | Labels, leakage rules, metrics, trading-cost evaluation | Building labels, backtests, or metrics |
