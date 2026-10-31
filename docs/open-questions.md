@@ -6,7 +6,7 @@ Move an item to "Verified" with source and date once checked.
 
 | Question | Affects |
 |---|---|
-| Cloud provider, candidate regions, existing servers | [data-recording](data-recording.md) region selection |
+| Cloud provider, availability zone, existing servers (region is settled: Japan) | [data-recording](data-recording.md) |
 | Monthly budget for compute and storage | Recording scale |
 | Preferred symbols for the depth set | [universe](universe.md) |
 | Record spot (tier D)? | [data-recording](data-recording.md) |
@@ -20,9 +20,10 @@ Move an item to "Verified" with source and date once checked.
 - Futures depth stream update intervals and the exact local-book procedure and field names.
 - Contents of data.binance.vision futures depth (reported as aggregated only).
 - Tardis.dev current pricing, plans, and free-sample policy.
-- Network latency from candidate cloud regions to the exchange.
 - Legal and terms-of-use status of API access and automated trading in the owner's jurisdiction.
 
 ## Verified
 
-None yet.
+| Fact | Source | Date |
+|---|---|---|
+| Binance servers are in Japan; deploy in Japan | Owner investigation (details not recorded) | 2026-11-01 |

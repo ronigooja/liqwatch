@@ -51,7 +51,8 @@ venue, symbol, channel, connection id, local sequence, `recv_wall_time`, `recv_m
 ## Clock and region
 
 - Chrony/NTP on all hosts; monitor offset; flag records when offset exceeds threshold.
-- Candidate regions: Tokyo, Singapore, Hong Kong. Run identical recorders 24–72 h in each; choose by message freshness P50/P99, jitter, disconnects, and behavior during volatile periods.
+- Region: Japan (Tokyo), where the exchange matching infrastructure is located. See [decision 0005](decisions/0005-japan-region.md).
+- No multi-region comparison. During the 1–2 day trial, measure `recv_time − event_time` P50/P99, jitter, and disconnects as a baseline for later monitoring.
 
 ## Monitoring
 
