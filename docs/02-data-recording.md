@@ -1,0 +1,78 @@
+# Data Recording (P0)
+
+Goal: a complete, auditable, replayable raw market record. No models or features in this phase.
+
+## Why self-record
+
+Binance provides no full historical incremental L2. Public archives at data.binance.vision give klines and trades; depth there is reported as aggregated only (unverified, see [08-open-questions.md](08-open-questions.md)). Purchasable alternatives exist (e.g. Tardis.dev) and may be added later to extend history.
+
+## Recording tiers
+
+| Tier | Symbols | Channels |
+|---|---|---|
+| A light | All USDT-M perpetuals (refresh list daily) | aggregate trades, best bid/ask, mark price |
+| B depth | 30–50 symbols per [03-universe.md](03-universe.md) | incremental depth plus periodic REST snapshots |
+| C events | All | liquidation orders |
+| D spot | Spot pairs of tier B | aggregate trades, best bid/ask; depth optional |
+
+Tier A exists so that any spike can be reviewed afterwards, including on symbols not preselected. Channel names and parameters must be checked against current official docs before implementation.
+
+## Pipeline
+
+```
+WebSocket shards -> bounded write queue -> append-only raw log
+REST snapshot scheduler -> same queue
+Side-path validator: rebuild book, detect gaps, trigger resync
+Metrics: latency, reconnects, gaps, queue depth
+```
+
+- Shard connections by channel and symbol group; keep per-connection stream counts well below the exchange limit.
+- Take wall-clock and monotonic receive time immediately on read, before parsing.
+- Handle forced reconnects by opening the replacement connection early and de-duplicating by sequence.
+- Never repair data inside the recording path. Record gaps as unavailable intervals.
+
+## Record fields
+
+venue, symbol, channel, connection id, local sequence, `recv_wall_time`, `recv_mono_time`, exchange event time (if present), raw payload, parser version.
+
+## Order book integrity
+
+- Follow the exchange's documented local-book procedure (snapshot plus sequenced diffs).
+- On a sequence break: log it, fetch a new snapshot, mark the interval unavailable.
+- Fetch a verification snapshot every 5–10 minutes and compare to the rebuilt book. Mismatch rate is the core quality metric.
+
+## Storage
+
+- Hot: hourly append-only files by channel/date/symbol, zstd.
+- Archive: daily Parquet+zstd to object storage. Keep raw logs at least 30 days and until verified.
+- Manifest table (DuckDB or SQLite): per file start/end time, message count, checksum, reconnect count.
+- Size capacity from a 1–2 day trial; do not extrapolate from symbol count.
+
+## Clock and region
+
+- Chrony/NTP on all hosts; monitor offset; flag records when offset exceeds threshold.
+- Candidate regions: Tokyo, Singapore, Hong Kong. Run identical recorders 24–72 h in each; choose by message freshness P50/P99, jitter, disconnects, and behavior during volatile periods.
+
+## Monitoring
+
+Per-channel message rate; `recv_time − event_time` P50/P99; reconnects; sequence breaks; snapshot refetches; unavailable-interval total; queue backlog; disk usage; book mismatch rate; clock offset. Alert on stream stall, disk nearly full, mismatch spike.
+
+## Risks
+
+| Risk | Mitigation |
+|---|---|
+| Rate or connection limits change | Check current docs; shard; keep headroom |
+| Forced disconnects | Early replacement connection |
+| Message bursts in volatility | Decouple write from validator; prioritize writing; load test |
+| Disk full or write stall | Bounded queue, alerts, drop low-priority channels first and log it |
+| Symbol delist or rename | Daily list refresh, logged |
+| Terms of use or regional access | Confirm before running |
+
+## Acceptance (P0 gate)
+
+1. 7 consecutive days without manual intervention.
+2. Valid-data coverage at or above the target set after the trial (proposed ≥ 99%, excluding marked gaps).
+3. Replayed book matches verification snapshots on random samples.
+4. A known large move can be fully reconstructed: trades, book, liquidations.
+5. Replay API returns only data received up to a given time t, ordered by receive time.
+6. Automatic daily data-quality report.
