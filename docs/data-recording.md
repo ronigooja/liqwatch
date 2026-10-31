@@ -11,7 +11,7 @@ Binance provides no full historical incremental L2. Public archives at data.bina
 | Tier | Symbols | Channels |
 |---|---|---|
 | A light | All USDT-M perpetuals (refresh list daily) | aggregate trades, best bid/ask, mark price |
-| B depth | 30–50 symbols per [universe.md](universe.md) | incremental depth plus periodic REST snapshots |
+| B depth | 10–20 symbols per [universe.md](universe.md) (expand only after cost-adjusted profit is shown) | incremental depth plus periodic REST snapshots |
 | C events | All | liquidation orders |
 | D spot | Spot pairs of tier B | aggregate trades, best bid/ask; depth optional |
 

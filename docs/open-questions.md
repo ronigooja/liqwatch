@@ -7,10 +7,10 @@ Move an item to "Verified" with source and date once checked.
 | Question | Affects |
 |---|---|
 | Identify what already uses ~1.5 GB RAM on the recorder host | [infrastructure](infrastructure.md) |
-| Can a cloud drive be served via OpenList WebDAV (untested)? | [infrastructure](infrastructure.md) |
+| Why WebDAV writes return 403/413; fix permission or limit, then re-test multi-GB upload | [infrastructure](infrastructure.md) |
 | Plan for more storage capacity (storage gateway has ~6 GB free) | [infrastructure](infrastructure.md) |
 | Monthly budget for compute and storage | Recording scale |
-| Preferred symbols for the depth set | [universe](universe.md) |
+| Preferred symbols for the depth set (size fixed at 10–20) | [universe](universe.md) |
 | Record spot (tier D)? | [data-recording](data-recording.md) |
 | Typical position size and holding period | [trading-and-risk](trading-and-risk.md) cost and latency |
 | Account fee tier (maker/taker) | [trading-and-risk](trading-and-risk.md) |

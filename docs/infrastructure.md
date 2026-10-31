@@ -19,8 +19,21 @@ Network from the recorder host to Binance (single curl probe, not a benchmark): 
 - The storage gateway's own free disk is small. Real capacity must come from an added storage server or a mounted cloud drive.
 - Whether a cloud drive can be served through OpenList WebDAV is untested. Required test before relying on it: upload, download, checksum round-trip, and sustained throughput of a multi-GB file.
 
+## Storage probe (2026-11-01)
+
+WebDAV endpoint `https://icandrinkmore.beer/dav`, reached from the recorder host with the admin account (credentials stay on the storage host, not in this repo).
+
+| Operation | Result |
+|---|---|
+| PROPFIND `/dav/` | 207 OK; one mount `ronigooja_onedrive` (contains `Personal Vault`) |
+| MKCOL, PUT 20 MB, DELETE | 403 Forbidden |
+| PUT 90 MB and 150 MB | 413 Payload Too Large |
+| GET of the files above | 404 (nothing was written) |
+
+Read works; writes do not. Cause not yet determined (candidates: OpenList account write permission, mount read-only, reverse-proxy body-size limit). Nothing was created or changed on the storage side.
+
 ## Constraints from the current hosts
 
-- The recorder is small for tier B depth at 100 ms. Load and size it in the trial before committing to tier counts ([universe.md](universe.md)).
+- The recorder may be upgraded (owner approved). First stage records 10–20 depth symbols plus the light tier; size the new spec from the trial ([universe.md](universe.md)).
 - Recorder and storage gateway are single points of failure. Recorded raw files must not be deleted until the upload is verified ([data-recording.md](data-recording.md)).
 - The storage gateway runs unrelated services; do not change them without the owner's approval.
