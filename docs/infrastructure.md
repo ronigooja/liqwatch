@@ -21,16 +21,23 @@ Network from the recorder host to Binance (single curl probe, not a benchmark): 
 
 ## Storage probe (2026-11-01)
 
-WebDAV endpoint `https://icandrinkmore.beer/dav`, reached from the recorder host with the admin account (credentials stay on the storage host, not in this repo).
+WebDAV endpoint `https://icandrinkmore.beer/dav`, mount `ronigooja_onedrive` (the mount root has no quota; upload inside the mount only). Tested from the recorder host. Credentials stay on the storage host, not in this repo.
 
-| Operation | Result |
+| Step | Result |
 |---|---|
-| PROPFIND `/dav/` | 207 OK; one mount `ronigooja_onedrive` (contains `Personal Vault`) |
-| MKCOL, PUT 20 MB, DELETE | 403 Forbidden |
-| PUT 90 MB and 150 MB | 413 Payload Too Large |
-| GET of the files above | 404 (nothing was written) |
+| Initial writes | 403 until the owner enabled write permission for the account |
+| After permission fix: MKCOL, PUT 1 MB and 20 MB, GET, DELETE | OK, checksums match |
+| PUT 150 MB | 413 (nginx `client_max_body_size 50m` on the `icandrinkmore.beer` site) |
+| After nginx change (below): PUT 150 MB | 201, checksum OK; upload took 281 s (~0.56 MB/s), download 7.8 s (~20 MB/s) |
+| PUT 500 MB | Did not finish within 15 min; interrupted. Cause unknown |
 
-Read works; writes do not. Cause not yet determined (candidates: OpenList account write permission, mount read-only, reverse-proxy body-size limit). Nothing was created or changed on the storage side.
+nginx change (owner approved), file `/etc/nginx/sites-available/icandrinkmore.beer` on the storage host, backup saved beside it as `.bak-<timestamp>`: `client_max_body_size` 50m to 1g; `proxy_request_buffering off`; `proxy_send_timeout` and `proxy_read_timeout` 60s to 600s. Other sites were not touched.
+
+Findings:
+- Upload speed is low and varies (2.8 MB/s on 20 MB, 0.56 MB/s on 150 MB), so the upload path (OneDrive side or the host) is the bottleneck, not nginx. At ~0.5 MB/s a 10 GB daily archive would take over 5 hours; this must be measured over several days before relying on it.
+- Download is much faster than upload.
+- Large single PUTs are fragile. Upload in chunks (suggested 64–128 MB) with per-chunk checksums and retry, and verify after upload before deleting local files. Chunk size is to be decided with more measurements.
+- The storage host has ~6 GB free disk; OpenList is passing uploads to OneDrive, so confirm it does not stage large files locally.
 
 ## Constraints from the current hosts
 
