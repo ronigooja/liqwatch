@@ -6,11 +6,23 @@ Hosts and storage. Credentials are never written in this repo. Provider choice i
 
 | Role | Address | Spec (probed 2026-11-01) | Notes |
 |---|---|---|---|
-| Recorder (P0) | 136.0.11.159, Japan | 2 vCPU, ~3.9 GB RAM, 30 GB disk (~21 GB free), Debian 12, NTP synchronized | Already ~1.5 GB RAM in use by unrelated processes; not yet identified |
+| Recorder (P0) | New host, Japan, address pending (owner is provisioning) | 2 vCPU, 4 GB RAM | Dedicated to recording; see requirements below |
+| Former candidate | 136.0.11.159 | 2 vCPU, ~3.9 GB RAM, 30 GB disk | Dropped by owner on 2026-11-01. Runs unrelated services (zoe); not touched |
 | Storage gateway | 45.45.217.235 | 2 vCPU, ~3.9 GB RAM, 19 GB disk (~6 GB free), Debian 12 | Runs OpenList (127.0.0.1:5244, behind nginx), Docker services (including a MySQL port), and other processes; shared host |
 | Training (later) | Vultr, on demand | TBD | Large-scale training only |
 
-Network from the recorder host to Binance (single curl probe, not a benchmark): `fapi.binance.com` TCP connect ~48 ms, TLS done ~65 ms; `fstream.binance.com` connect ~13 ms. Proper latency measurement is part of the P0 trial ([data-recording.md](data-recording.md)).
+Network from the former candidate host to Binance (single curl probe, not a benchmark; the new host must be re-measured): `fapi.binance.com` TCP connect ~48 ms, TLS done ~65 ms; `fstream.binance.com` connect ~13 ms. Proper latency measurement is part of the P0 trial ([data-recording.md](data-recording.md)).
+
+## Recorder host requirements
+
+- Debian 12 (or equivalent), dedicated to the recorder; no other services.
+- Region Japan ([decision 0005](decisions/0005-japan-region.md)).
+- Clock sync running (chrony preferred); offset is monitored.
+- Open-file limit for the recorder service raised above the default 1024 (systemd `LimitNOFILE`).
+- Swap enabled as a safety margin, not as working memory.
+- Disk: hot buffer for raw logs until upload is verified. Size is fixed from the trial; with 2 vCPU and 4 GB RAM, the first stage is the light tier plus 10–20 depth symbols and may need reduction after the trial.
+- Outbound access to Binance REST and WebSocket, and to the storage WebDAV endpoint.
+- SSH key access for the owner and the working agent; no credentials stored in this repo.
 
 ## Storage design
 
@@ -44,6 +56,6 @@ Guidance: keep request buffering on. Upload large archives in chunks (suggested 
 
 ## Constraints from the current hosts
 
-- The recorder may be upgraded (owner approved). First stage records 10–20 depth symbols plus the light tier; size the new spec from the trial ([universe.md](universe.md)).
-- Recorder and storage gateway are single points of failure. Recorded raw files must not be deleted until the upload is verified ([data-recording.md](data-recording.md)).
+- First stage records 10–20 depth symbols plus the light tier on 2 vCPU / 4 GB; upgrade only if the trial shows it is needed ([universe.md](universe.md)).
+- The recorder and the storage gateway are single points of failure. Recorded raw files must not be deleted until the upload is verified ([data-recording.md](data-recording.md)).
 - The storage gateway runs unrelated services; do not change them without the owner's approval.

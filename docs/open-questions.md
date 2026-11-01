@@ -6,7 +6,7 @@ Move an item to "Verified" with source and date once checked.
 
 | Question | Affects |
 |---|---|
-| Identify what already uses ~1.5 GB RAM on the recorder host | [infrastructure](infrastructure.md) |
+| Address and access for the new 2C4G recorder host (owner provisioning); then re-measure latency to Binance | [infrastructure](infrastructure.md) |
 | Measure sustained chunked upload throughput over several days; re-test a 500 MB single PUT; check nginx temp-file disk use during large uploads | [infrastructure](infrastructure.md) |
 | Plan for more storage capacity (storage gateway has ~6 GB free) | [infrastructure](infrastructure.md) |
 | Monthly budget for compute and storage | Recording scale |
