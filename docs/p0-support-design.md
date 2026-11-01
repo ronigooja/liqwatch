@@ -123,6 +123,6 @@ Contents: per channel message counts and rates; coverage (valid seconds over tot
 | Tier A quote channel: option 1, 2, or 3 | Trial result |
 | `exchangeInfo` field names for contract type, status, quote asset | Verify from official docs |
 | New-connection rate limit for futures WebSocket | Verify from official docs |
-| First consumer to integrate and its auth needs | Owner |
-| Dedicated WebDAV account restricted to `wicker/` | Owner |
+| First consumer: none yet, generic interface first | Owner |
+| Dedicated WebDAV account restricted to `wicker/` (pending) | Owner |
 | Local retention window and hot-buffer disk size | Trial |

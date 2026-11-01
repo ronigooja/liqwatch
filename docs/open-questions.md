@@ -12,8 +12,8 @@ Move an item to "Verified" with source and date once checked.
 | Monthly budget for compute and storage | Recording scale |
 | Preferred symbols for the depth set (size fixed at 10–20) | [universe](universe.md) |
 | Record spot (tier D)? | [data-recording](data-recording.md) |
-| First consumer of the alert interface (site or app) and its auth needs | [p0-support-design](p0-support-design.md) |
-| Create a dedicated WebDAV account restricted to the `wicker/` folder (currently the admin account was used for tests) | [infrastructure](infrastructure.md) |
+| First consumer of the alert interface: none yet; build the generic signed webhook and pull API, add adapters when a consumer exists | [p0-support-design](p0-support-design.md) |
+| Dedicated WebDAV account restricted to the `wicker/` folder: pending (the admin account was used for tests only) | [infrastructure](infrastructure.md) |
 | Typical position size and holding period | [trading-and-risk](trading-and-risk.md) cost and latency |
 | Account fee tier (maker/taker) | [trading-and-risk](trading-and-risk.md) |
 | Can the execution host be placed near the exchange? | [trading-and-risk](trading-and-risk.md) latency |
