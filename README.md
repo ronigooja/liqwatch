@@ -12,6 +12,7 @@ Read only what the task needs.
 | [docs/overview.md](docs/overview.md) | Goals, products, non-goals, success criteria | Need scope or intent |
 | [docs/architecture.md](docs/architecture.md) | Layers and data flow | Designing any component |
 | [docs/components.md](docs/components.md) | Component list per phase and design order | Deciding what to design or build |
+| [docs/p0-core-design.md](docs/p0-core-design.md) | Design of collector, snapshot scheduler, log writer, validator, replay | Building or reviewing P0 components |
 | [docs/infrastructure.md](docs/infrastructure.md) | Hosts, storage, constraints | Deploying or sizing |
 | [docs/data-recording.md](docs/data-recording.md) | P0 recording design | Working on data capture or storage |
 | [docs/universe.md](docs/universe.md) | Instrument tiers and selection rules | Choosing symbols or tiers |
