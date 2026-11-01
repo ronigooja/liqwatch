@@ -59,12 +59,51 @@ The manifest is the index. The raw files and the validator log remain the source
 - Each process serves metrics on localhost in Prometheus text format. No Prometheus or Grafana on the recorder in the first stage (memory). A check job (systemd timer, every minute) reads the metrics, evaluates thresholds, and records history locally. Prometheus/Grafana can be added later on a separate host.
 - Metrics: per channel message rate; `recv_time − event_time` P50/P99; reconnect count; stalls; queue depth; drops; sequence breaks; snapshot refetches; unavailable-interval seconds; book mismatch rate; archiver backlog; disk usage; CPU, memory; clock offset; REST weight used.
 - Initial thresholds (tune from the trial): stall longer than the per-channel timeout; queue above 50%; any drop of depth or snapshot data; disk above 80%; clock offset above 50 ms; mismatch rate above a value set after the trial; unverified file older than 24 h.
-- Alert delivery channel: owner's choice (open question). Alerts are deduplicated and repeated at a low rate until cleared.
+- Alerts are emitted through the alert interface below, not through any specific chat or app. Alerts are deduplicated and repeated at a low rate until cleared.
 - Alerts are about data health. Nothing here triggers trades.
+
+## Alert interface (part of component 9)
+
+Decision: [0006](decisions/0006-alert-interface.md). Producers and delivery are separate so new consumers (websites, apps, chat bots) are added without touching the recorder.
+
+**Flow:** check job or process -> append event to `state/alerts.jsonl` (append-only, source of truth) -> `wicker-alertd` reads it -> delivers through adapters and serves the pull API.
+
+**Event (schema version 1):**
+
+```
+{"schema":1,"id":"<ULID>","ts":"<UTC RFC3339>","severity":"info|warning|critical",
+ "state":"firing|resolved","type":"<namespace.name>","source":"<component>",
+ "subject":{"host":"...","channel":"...","symbol":"..."},
+ "dedup_key":"<stable key>","summary":"<one line>","details":{...}}
+```
+
+- `type` uses namespaces, e.g. `data.stall`, `data.seq_break`, `disk.high`, `archive.unverified`, `clock.offset`. Other domains (for example `risk.*` later) reuse the same envelope.
+- `firing` and `resolved` share a `dedup_key`; consumers can track open alerts from the stream alone.
+- Ids are unique and sortable, so consumers can de-duplicate and resume.
+
+**Push (webhook adapter):**
+- Config lists endpoints with filters (minimum severity, type prefixes). Each endpoint has its own secret in `/etc/wicker/secrets.env`.
+- HTTP POST with the event as JSON and an HMAC-SHA256 signature header over the body plus a timestamp header, so receivers can verify origin and reject replays.
+- Delivery is at least once. Retries use exponential backoff with a cap; a per-endpoint cursor survives restarts. Receivers de-duplicate by `id`.
+- A failing endpoint never blocks other endpoints or recording.
+
+**Pull (HTTP, read-only):**
+- `GET /v1/alerts?since=<id>&min_severity=&type=` returns events after a cursor.
+- `GET /v1/alerts/open` returns currently firing alerts.
+- `GET /v1/status` returns a small health summary (per-channel state, data coverage today, archive backlog, disk).
+- `GET /v1/health` returns liveness of the alert service itself.
+- Bearer-token auth. Listens on localhost by default. Exposing it beyond localhost requires TLS and the token, ideally through a reverse proxy with an IP allowlist. Not exposed without owner approval.
+- The API is versioned in the path; fields are only added within a version.
+
+**Other adapters** (chat, email, mobile push) are separate consumers of the same stream or the webhook. None is part of the first stage.
+
+**Self-monitoring:** if `wicker-alertd` stops, a systemd failure hook and a periodic dead-man heartbeat to a configured endpoint (optional) make the silence visible.
+
+**Resource budget:** the service is small and runs at low priority; it must stay within a memory cap set in systemd.
 
 ## Component 10: Daily Quality Report
 
-Generated shortly after the archiver finishes, stored with the manifest and uploaded, and a short summary is sent through the alert channel.
+Generated shortly after the archiver finishes, stored with the manifest and uploaded, and a short summary is emitted as an `info` alert (`report.daily`).
 
 Contents: per channel message counts and rates; coverage (valid seconds over total) per symbol and tier, excluding marked gaps; list of gaps and unavailable intervals with causes; reconnects; sequence breaks; verification pass rate and mismatch levels; latency P50/P99 per channel; drops; clock offset; archive status; resource use. Flags a day as `good`, `degraded`, or `bad` using thresholds recorded in the report. Days marked `bad` are excluded from training windows unless reviewed.
 
@@ -72,7 +111,7 @@ Contents: per channel message counts and rates; coverage (valid seconds over tot
 
 - **Binaries:** built off the recorder (cross-compiled) and copied. No compilers on the host. Layout `/opt/wicker/releases/<version>/` with a `current` symlink; rollback by switching the link.
 - **User and paths:** dedicated unprivileged user `wicker`; `/var/lib/wicker/{raw,state,manifest}`; config in `/etc/wicker/config.toml`; secrets in `/etc/wicker/secrets.env` mode 0600. Config templates will live in this repo under `config/` when code starts.
-- **Services (systemd):** `wicker-collector`, `wicker-validator`, `wicker-archiver` (timer), `wicker-checks` (timer). The collector has the highest priority; the validator and archiver are lower (CPU weight, IO weight, memory max). Open-file limit raised (`LimitNOFILE`). `Restart=always` with a backoff.
+- **Services (systemd):** `wicker-collector`, `wicker-validator`, `wicker-archiver` (timer), `wicker-checks` (timer), `wicker-alertd` (alert interface). The collector has the highest priority; the validator and archiver are lower (CPU weight, IO weight, memory max). Open-file limit raised (`LimitNOFILE`). `Restart=always` with a backoff.
 - **Host:** SSH keys only; firewall allows inbound SSH only; metrics bound to localhost; journald size capped; chrony running.
 - **Health:** a restart of any service writes an event. A restart of the collector is a gap and must appear in `gaps`.
 - **Changes:** every release records its version in each log record (parser version in outputs, see [p0-core-design.md](p0-core-design.md)).
@@ -84,6 +123,6 @@ Contents: per channel message counts and rates; coverage (valid seconds over tot
 | Tier A quote channel: option 1, 2, or 3 | Trial result |
 | `exchangeInfo` field names for contract type, status, quote asset | Verify from official docs |
 | New-connection rate limit for futures WebSocket | Verify from official docs |
-| Alert channel (Telegram, email, other) | Owner |
+| First consumer to integrate and its auth needs | Owner |
 | Dedicated WebDAV account restricted to `wicker/` | Owner |
 | Local retention window and hot-buffer disk size | Trial |

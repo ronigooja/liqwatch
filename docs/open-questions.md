@@ -12,7 +12,7 @@ Move an item to "Verified" with source and date once checked.
 | Monthly budget for compute and storage | Recording scale |
 | Preferred symbols for the depth set (size fixed at 10–20) | [universe](universe.md) |
 | Record spot (tier D)? | [data-recording](data-recording.md) |
-| Alert channel (Telegram, email, other) | [p0-support-design](p0-support-design.md) |
+| First consumer of the alert interface (site or app) and its auth needs | [p0-support-design](p0-support-design.md) |
 | Create a dedicated WebDAV account restricted to the `wicker/` folder (currently the admin account was used for tests) | [infrastructure](infrastructure.md) |
 | Typical position size and holding period | [trading-and-risk](trading-and-risk.md) cost and latency |
 | Account fee tier (maker/taker) | [trading-and-risk](trading-and-risk.md) |

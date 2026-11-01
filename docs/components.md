@@ -14,7 +14,7 @@ Per-phase component list. Phase definitions: [roadmap.md](roadmap.md). Recording
 | 6 | Archiver | Daily Parquet conversion, upload, verify, then clean raw logs | Partitioning, retention, checksums |
 | 7 | Manifest | Per-file start/end, message count, checksum, reconnect count | Table schema |
 | 8 | Replay Engine | Replay by receive time; "data received up to t" interface | Interface shape (basis of leakage control) |
-| 9 | Monitoring and Alerting | Latency, disconnects, rates, disk, mismatch rate, clock offset; alert push | Metric list, thresholds, channel |
+| 9 | Monitoring and Alerting | Latency, disconnects, rates, disk, mismatch rate, clock offset; alert events through an interface (webhook push and HTTP pull) | Metric list, thresholds, alert schema |
 | 10 | Daily Quality Report | Automatic data-quality summary | Report fields |
 | 11 | Deployment and Ops | Process supervision, config, secrets, logs, clock sync | Deployment method, config layout |
 
