@@ -1,0 +1,31 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  linux-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Vet
+        run: go vet ./...
+      - name: Build
+        run: |
+          mkdir -p out
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o out/trialrec ./cmd/trialrec
+          sha256sum out/trialrec | tee out/trialrec.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trialrec-linux-amd64
+          path: |
+            out/trialrec
+            out/trialrec.sha256
+          retention-days: 7
+          if-no-files-found: error
