@@ -20,7 +20,7 @@ Move an item to "Verified" with source and date once checked.
 
 ## Unverified facts (check against official sources)
 
-- Still unverified: new-connection rate limit for futures WebSocket; the numeric REST IP weight limit (read from `exchangeInfo` `rateLimits` at runtime); load per depth update speed on the 2 vCPU host (measure in the trial).
+- Still unverified: whether the futures WebSocket has an undocumented new-connection or per-IP connection limit (none is documented); which message types count toward the 10 messages/s limit; live `exchangeInfo` values for `contractType` (including `TRADIFI_PERPETUAL`) and `underlyingType`; load per depth update speed on the host (measure in the trial).
 - The spot-doc limits (1024 streams, 5 control messages/s, 300 connections per 5 min per IP, 24 h connection life) are spot only.
 
 - Current Binance WebSocket connection and stream limits; forced-disconnect interval.
@@ -29,7 +29,6 @@ Move an item to "Verified" with source and date once checked.
 - Tardis.dev current pricing, plans, and free-sample policy.
 - Legal and terms-of-use status of API access and automated trading in the owner's jurisdiction.
 
-- `exchangeInfo` field names (contract type, status, quote asset) for selecting USDT perpetuals.
 
 ## Verified
 
@@ -46,3 +45,5 @@ Move an item to "Verified" with source and date once checked.
 | Liquidations: `!forceOrder@arr` on `/market`, per symbol only the latest liquidation within 1000 ms, nothing pushed if none | developers.binance.com ws-streams/market | 2026-11-01 |
 | REST limits are per IP; 429 = back off; continued requests cause 418 IP ban from 2 minutes to 3 days; numeric limits are in `exchangeInfo` `rateLimits` | developers.binance.com futures general-info | 2026-11-01 |
 | All-market `!bookTicker` update speed is 5 s | developers.binance.com ws-streams/public (All Book Tickers Stream) | 2026-11-01 |
+| `exchangeInfo` `symbols[]` fields: `symbol`, `pair`, `status`, `contractType`, `baseAsset`, `quoteAsset`, `marginAsset`, `onboardDate`, `deliveryDate`, `underlyingType`; `rateLimits` entries have `rateLimitType` (`REQUEST_WEIGHT`, `ORDERS`), `interval`, `intervalNum`, `limit` (docs example shows 6000 per minute; read the real value at runtime) | developers.binance.com USDⓈ-M REST market-data (Exchange Information) and OpenAPI schema, via subagent | 2026-11-01 |
+| No new-connection rate limit or per-IP concurrent-connection limit is stated in the futures WebSocket Connect or general-info pages; only 1024 streams per connection and 10 incoming messages/s | developers.binance.com futures websocket-market-streams/Connect.md, general-info.md, via subagent | 2026-11-01 |

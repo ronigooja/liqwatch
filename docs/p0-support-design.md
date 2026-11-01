@@ -15,7 +15,7 @@ Markers as in [p0-core-design.md](p0-core-design.md): **[V]** verified in [open-
 
 ## Component 1: Symbol Manager
 
-- Source: `GET /fapi/v1/exchangeInfo` [V that it exists and carries `rateLimits`]. Field names for contract type, status, and quote asset are [U]; confirm before coding. Target set: USDT-margined perpetuals in trading status.
+- Source: `GET /fapi/v1/exchangeInfo` [V that it exists and carries `rateLimits`]. `symbols[]` fields [V, official]: `symbol`, `pair`, `status` (`TRADING`), `contractType`, `baseAsset`, `quoteAsset`, `marginAsset`, `onboardDate`, `deliveryDate` (ms timestamps), `underlyingType`. Target set: `contractType == PERPETUAL`, `status == TRADING`, `quoteAsset == USDT`. A `TRADIFI_PERPETUAL` contract type appears in the continuous-kline enum, so it is excluded by the `PERPETUAL` match; whether exchangeInfo uses the same value is [U], so log any contractType value not seen before.
 - Refresh: at startup, daily at a fixed UTC time, and when the `!contractInfo` stream (on `/market`) reports a change [V that the stream exists].
 - Each refresh writes `state/symbols/<UTC timestamp>.json` plus a content hash. If the hash changed, append events to `state/symbol-events.jsonl`: `listed`, `delisted`, `status_change`, `tier_change`.
 - Tier B list: from a config file edited by the owner (10–20 symbols, [universe.md](universe.md)). A small number of reserved slots may be filled automatically from a trailing-return ranking; each automatic change records its time and the ranking used, so backtests respect it.
@@ -121,8 +121,7 @@ Contents: per channel message counts and rates; coverage (valid seconds over tot
 | Item | Where |
 |---|---|
 | Tier A quote channel: option 1, 2, or 3 | Trial result |
-| `exchangeInfo` field names for contract type, status, quote asset | Verify from official docs |
-| New-connection rate limit for futures WebSocket | Verify from official docs |
+| Whether exchangeInfo returns `TRADIFI_PERPETUAL` and how `underlyingType` marks non-crypto contracts | Check a live response in the trial |
 | First consumer: none yet, generic interface first | Owner |
 | Dedicated WebDAV account restricted to `wicker/` (pending) | Owner |
 | Local retention window and hot-buffer disk size | Trial |
