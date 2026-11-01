@@ -6,12 +6,11 @@ Hosts and storage. Credentials are never written in this repo. Provider choice i
 
 | Role | Address | Spec (probed 2026-11-01) | Notes |
 |---|---|---|---|
-| Recorder (P0) | New host, Japan, address pending (owner is provisioning) | 2 vCPU, 4 GB RAM | Dedicated to recording; see requirements below |
-| Former candidate | 136.0.11.159 | 2 vCPU, ~3.9 GB RAM, 30 GB disk | Dropped by owner on 2026-11-01. Runs unrelated services (zoe); not touched |
+| Recorder (P0) | 136.0.11.159, Japan, hostname EV02OK | 2 vCPU, ~3.9 GB RAM, 30 GB disk (~25 GB free), Debian 12, 2 GB swap | Reinstalled clean by the owner on 2026-11-01 and confirmed as the recorder. Still to do: timezone is Asia/Shanghai, uses systemd-timesyncd (no chrony), open-file limit 1024, no Go. Docker, python3, curl, zstd present |
 | Storage gateway | 45.45.217.235 | 2 vCPU, ~3.9 GB RAM, 19 GB disk (~6 GB free), Debian 12 | Runs OpenList (127.0.0.1:5244, behind nginx), Docker services (including a MySQL port), and other processes; shared host |
 | Training (later) | Vultr, on demand | TBD | Large-scale training only |
 
-Network from the former candidate host to Binance (single curl probe, not a benchmark; the new host must be re-measured): `fapi.binance.com` TCP connect ~48 ms, TLS done ~65 ms; `fstream.binance.com` connect ~13 ms. Proper latency measurement is part of the P0 trial ([data-recording.md](data-recording.md)).
+Network from the recorder to Binance (3 curl probes on 2026-11-02, not a benchmark): `fapi.binance.com` TCP connect 20–49 ms, TLS done 40–74 ms; `fstream.binance.com` TCP connect 11–13 ms, TLS done 33–37 ms. Proper latency measurement is part of the P0 trial ([data-recording.md](data-recording.md)).
 
 ## Recorder host requirements
 
@@ -31,7 +30,15 @@ Network from the former candidate host to Binance (single curl probe, not a benc
 - The storage gateway's own free disk is small. Real capacity must come from an added storage server or a mounted cloud drive.
 - Whether a cloud drive can be served through OpenList WebDAV is untested. Required test before relying on it: upload, download, checksum round-trip, and sustained throughput of a multi-GB file.
 
-## Storage probe (2026-11-01)
+## Storage account and re-test (2026-11-02)
+
+The owner created a dedicated WebDAV account `wicker`. Its credentials are in `/root/pass/openlist` on the recorder host (line 1 user, line 2 password, file mode 0644, should be 0600). Scope: the account's root is `/dav/raw_data/`, which contains the mount `ronigooja_onedrive/`; writes go inside that mount (creating a folder directly under `raw_data/` returns 405).
+
+Tests from the recorder: MKCOL 201; PUT 1 MB 201; PUT 100 MB 201 in 22 s (~4.8 MB/s); GET 100 MB 8.3 s (~12.7 MB/s); checksums match; DELETE 204; the test folder was removed. Wrong password returns 401.
+
+The archiver remote path is therefore `https://icandrinkmore.beer/dav/raw_data/ronigooja_onedrive/wicker/...`.
+
+## Storage probe (2026-11-01, admin account, historical)
 
 WebDAV endpoint `https://icandrinkmore.beer/dav`, mount `ronigooja_onedrive` (the mount root has no quota; upload inside the mount only). Tested from the recorder host. Credentials stay on the storage host, not in this repo.
 

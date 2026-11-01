@@ -32,13 +32,13 @@ Daily run, after the last hour file of the previous UTC day is closed:
 1. List closed hour files from the manifest. Skip files still open.
 2. Compute SHA-256 for each file.
 3. Split each file into chunks (initial size 64 MB; nginx limit is 1 GB, observed 100 MB uploads worked [measured]). Name `…jsonl.zst.part0000`, and so on, and upload one chunk at a time.
-4. Remote layout: `wicker/raw/<venue>/<UTC date>/<group>-<HH>.jsonl.zst.partNNNN` plus `<group>-<HH>.jsonl.zst.meta.json` (size, sha256, chunk list, parser-independent record count).
+4. Remote layout (under the remote root): `raw/<venue>/<UTC date>/<group>-<HH>.jsonl.zst.partNNNN` plus `<group>-<HH>.jsonl.zst.meta.json` (size, sha256, chunk list, parser-independent record count).
 5. Verify: remote size equals local size per chunk. Download-and-hash verification for the first 7 days, then a sampled fraction (download measured ~12–20 MB/s [measured]).
 6. Only after verification mark the file `verified` in the manifest, and delete local data older than the retention window (keep at least 3 days locally even if verified).
 7. Throttle: cap upload rate and run at low CPU/IO priority so it never competes with recording. Upload throughput seen: ~4.5 MB/s [measured, single test]; re-measure over several days.
 8. On any failure, retry with backoff and leave the file in `uploading`; alert if a file is not `verified` after 24 hours.
 
-Storage host free disk is small (~6 GB) and nginx buffers request bodies [measured], so one chunk at a time. Prefer a dedicated WebDAV account limited to the `wicker/` folder instead of the admin account (see open questions).
+Storage host free disk is small (~6 GB) and nginx buffers request bodies [measured], so one chunk at a time. Uses the dedicated `wicker` WebDAV account ([infrastructure.md](infrastructure.md)); never the admin account. Remote root: `/dav/raw_data/ronigooja_onedrive/wicker/`.
 
 ## Component 7: Manifest
 
@@ -123,5 +123,4 @@ Contents: per channel message counts and rates; coverage (valid seconds over tot
 | Tier A quote channel: option 1, 2, or 3 | Trial result |
 | Whether exchangeInfo returns `TRADIFI_PERPETUAL` and how `underlyingType` marks non-crypto contracts | Check a live response in the trial |
 | First consumer: none yet, generic interface first | Owner |
-| Dedicated WebDAV account restricted to `wicker/` (pending) | Owner |
 | Local retention window and hot-buffer disk size | Trial |
