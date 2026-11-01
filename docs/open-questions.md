@@ -18,7 +18,7 @@ Move an item to "Verified" with source and date once checked.
 
 ## Unverified facts (check against official sources)
 
-- Official futures (USDS-M) docs could not be fetched (rendered client-side). Resolve each of the following from them: WebSocket endpoint paths per channel after the 2026-03-18 split; streams per connection; control-message and new-connection rate limits; forced-disconnect interval and shutdown event; depth stream update intervals; REST depth `limit` values and weights; exact first-diff condition after a snapshot; `forceOrder` coverage.
+- Still unverified from official futures docs: new-connection rate limit; total REST IP weight limit and ban behavior; default depth-stream update interval when no `@100ms`/`@500ms` suffix is given; `forceOrder` details (Tardis reports the latest liquidation per symbol per 1000 ms); futures `serverShutdown` behavior. The last fetch attempt (general-info and liquidation pages) was declined by the permission system and not retried.
 - The spot-doc limits (1024 streams, 5 control messages/s, 300 connections per 5 min per IP, 24 h connection life) are spot only.
 
 - Current Binance WebSocket connection and stream limits; forced-disconnect interval.
@@ -36,3 +36,7 @@ Move an item to "Verified" with source and date once checked.
 | `forceOrder` publishes only the latest liquidation per symbol per 1000 ms window | same | 2026-11-01 |
 | Futures endpoints split into `/public/stream` and `/market/stream` on 2026-03-18 | same | 2026-11-01 |
 | Spot local-book procedure and spot limits | github.com/binance/binance-spot-api-docs web-socket-streams.md (spot only) | 2026-11-01 |
+| Futures WebSocket: `/public`, `/market`, `/private` routed endpoints; public = bookTicker and depth (`@100ms`/`@500ms` supported); market = aggTrade, markPrice (`@1s`), forceOrder; legacy paths to be removed after 2026-04-23 | developers.binance.com Important-WebSocket-Change-Notice (via Scrapling) | 2026-11-01 |
+| Futures connection: 1024 streams max, 10 incoming messages/s, 24 h life, ping every 3 min with 10 min pong deadline | developers.binance.com websocket-market-streams/Connect | 2026-11-01 |
+| Futures local-book procedure (U/u/pu rules, snapshot `limit=1000` from `/fapi/v1/depth`) | developers.binance.com How-to-manage-a-local-order-book-correctly | 2026-11-01 |
+| REST depth weight: limit 5-50 = 2, 100 = 5, 500 = 10, 1000 = 20; valid limits 5,10,20,50,100,500,1000 | developers.binance.com USDⓈ-M REST market-data (Order Book) | 2026-11-01 |

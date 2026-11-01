@@ -18,8 +18,8 @@ The validator reads the written log, not the live queue, so it can lag or crash 
 
 ## Component 2: Stream Collector
 
-- Connect to the futures market-data endpoints. Endpoint layout changed on 2026-03-18 (`/public/stream` and `/market/stream` instead of `/stream`) [V, via Tardis]; which channels use which path is [U].
-- Combined-stream connections, sharded by channel group and symbol group (tier A trade streams, tier A quote streams, tier B depth, liquidation, spot). Stream limit per connection, control-message rate, and new-connection rate limits for futures are [U]; spot values (1024 streams, 5 control messages/s, 300 connection attempts per 5 min per IP, 24 h connection life) are not assumed for futures. Keep per-connection stream counts low (suggested ≤ 100) and open connections gradually.
+- Futures endpoints are routed by data type [V, official]: `wss://fstream.binance.com/public` (book ticker, depth) and `/market` (aggTrade, markPrice, forceOrder). The legacy unrouted paths were to be decommissioned after 2026-04-23; unrouted connections receive only public streams. Therefore shard by endpoint first.
+- Combined-stream connections, sharded by channel group and symbol group (tier A trade streams, tier A quote streams, tier B depth, liquidation, spot). Futures limits [V, official]: max 1024 streams per connection; 10 incoming messages per second per connection (subscribe and ping/pong count); 24 h connection life; server ping every 3 minutes, disconnect if no pong within 10 minutes. The new-connection rate limit for futures is [U]. Keep per-connection stream counts low (suggested ≤ 100) and open connections gradually. Use `stream` mode (`?streams=`) for combined subscriptions.
 - On read, before any parsing, take `recv_wall_ns` and `recv_mono_ns` and hand the raw bytes to the writer queue. Parsing for routing is limited to extracting the stream name.
 - Answer server ping frames promptly; do not rely on the exchange for liveness: a connection with no message for a per-channel timeout is treated as stalled and replaced.
 - Replacement connection: open the new connection and subscribe first, run both in parallel for a short overlap, then close the old one. Duplicates are kept in the log (tagged by connection id) and removed by the replay reader.
@@ -28,7 +28,7 @@ The validator reads the written log, not the live queue, so it can lag or crash 
 
 ## Component 3: Snapshot Scheduler
 
-- Futures WebSocket sends no initial book [V, via Tardis]. Fetch REST depth snapshots (Tardis stores the top 1000 levels [V]; allowed `limit` values and request weights are [U]).
+- Futures WebSocket sends no initial book [V]. Fetch `GET /fapi/v1/depth` with `limit=1000` [V, official]. Weight by limit [V]: 5/10/20/50 = 2, 100 = 5, 500 = 10, 1000 = 20. Total IP weight limit is [U].
 - Triggers: stream start, resync after a validator sequence break (signal from the validator via a small control file or local socket), and a verification snapshot every 5–10 minutes per tier B symbol.
 - Snapshot REST responses are written to the same raw log with their own `recv` times and request start/end times, because the snapshot's place in the message order matters for rebuild.
 - Rate budget: keep REST weight per minute under a fixed fraction of the documented limit [U]; stagger symbols; back off on HTTP 429/418 and log it.
@@ -51,7 +51,7 @@ Record envelope (one record per message, one record per line):
 ## Component 5: Book Validator
 
 - Tails the raw log per tier B symbol and rebuilds the book from the last snapshot plus depth diffs.
-- Continuity: each diff's `pu` must equal the previous diff's `u` [V that these fields are used, via Tardis]. The exact condition for the first diff after a snapshot is [U] (check the official futures local-book procedure before coding).
+- Procedure [V, official futures doc]: buffer diffs from the `/public` depth stream; fetch the snapshot; drop events with `u` < snapshot `lastUpdateId`; the first processed event must satisfy `U` ≤ `lastUpdateId` and `u` ≥ `lastUpdateId`; afterwards each event's `pu` must equal the previous event's `u`, otherwise restart from the snapshot. Event quantities are absolute; quantity 0 removes the level; removing a level not in the local book is normal; for the same price the latest update wins.
 - On a break: emit `seq_break(symbol, last_good_u, event_u, recv_time)`, request a new snapshot, and mark the interval unavailable until the book is resynchronized and one diff has been applied cleanly.
 - Verification: compare the rebuilt book with each verification snapshot at the same update id (apply or buffer diffs up to the snapshot's `lastUpdateId`). Record per-snapshot top-N level mismatch count and a boolean pass. The mismatch rate is the core quality metric.
 - Outputs an append-only validation log: `seq_break`, `resync_done`, `verify(symbol, pass, mismatch_levels)`, `unavailable(symbol, start, end)`. Unavailable intervals are derived from this log and used by replay and by label building.
