@@ -34,7 +34,7 @@ Flow: 1→2→4, 3→4, 4→5, 4→6→7, 6→8, {2,3,4,5}→9→10.
 
 Feature Engine (one code path for offline and online), Training and Calibration Pipeline, Model Registry and Prediction Log, Online Inference Service, Strategy Engine, Risk Engine (independent of strategy), Execution Gateway (orders, exchange-side stops, reconciliation), Shadow Runner, Dashboard.
 
-Detailed design of components 2, 3, 4, 5, 8: [p0-core-design.md](p0-core-design.md).
+Detailed design of components 2, 3, 4, 5, 8: [p0-core-design.md](p0-core-design.md). Components 1, 6, 7, 9, 10, 11: [p0-support-design.md](p0-support-design.md).
 
 ## Design order
 

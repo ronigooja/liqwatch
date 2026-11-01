@@ -10,7 +10,7 @@ Binance provides no full historical incremental L2. Public archives at data.bina
 
 | Tier | Symbols | Channels |
 |---|---|---|
-| A light | All USDT-M perpetuals (refresh list daily) | aggregate trades, best bid/ask, mark price |
+| A light | All USDT-M perpetuals (refresh list daily) | aggregate trades, mark price; best bid/ask per [p0-support-design.md](p0-support-design.md) (all-market book ticker is only 5 s) |
 | B depth | 10–20 symbols per [universe.md](universe.md) (expand only after cost-adjusted profit is shown) | incremental depth (update speed 100 ms; 250 ms and 500 ms are the alternatives) plus periodic REST snapshots |
 | C events | All | liquidation orders |
 | D spot | Spot pairs of tier B | aggregate trades, best bid/ask; depth optional |
@@ -44,7 +44,7 @@ venue, symbol, channel, connection id, local sequence, `recv_wall_time`, `recv_m
 ## Storage
 
 - Hot: hourly append-only files by channel/date/symbol, zstd.
-- Archive: daily Parquet+zstd to object storage. Keep raw logs at least 30 days and until verified.
+- Archive: the recorder uploads the closed hourly `jsonl.zst` files in chunks and verifies them; Parquet conversion happens on the research side, not on the recorder ([p0-support-design.md](p0-support-design.md)). Keep raw files locally until verified, and at least 3 days.
 - Manifest table (DuckDB or SQLite): per file start/end time, message count, checksum, reconnect count.
 - Size capacity from a 1–2 day trial; do not extrapolate from symbol count.
 

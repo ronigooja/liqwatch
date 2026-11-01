@@ -12,6 +12,8 @@ Move an item to "Verified" with source and date once checked.
 | Monthly budget for compute and storage | Recording scale |
 | Preferred symbols for the depth set (size fixed at 10–20) | [universe](universe.md) |
 | Record spot (tier D)? | [data-recording](data-recording.md) |
+| Alert channel (Telegram, email, other) | [p0-support-design](p0-support-design.md) |
+| Create a dedicated WebDAV account restricted to the `wicker/` folder (currently the admin account was used for tests) | [infrastructure](infrastructure.md) |
 | Typical position size and holding period | [trading-and-risk](trading-and-risk.md) cost and latency |
 | Account fee tier (maker/taker) | [trading-and-risk](trading-and-risk.md) |
 | Can the execution host be placed near the exchange? | [trading-and-risk](trading-and-risk.md) latency |
@@ -27,6 +29,8 @@ Move an item to "Verified" with source and date once checked.
 - Tardis.dev current pricing, plans, and free-sample policy.
 - Legal and terms-of-use status of API access and automated trading in the owner's jurisdiction.
 
+- `exchangeInfo` field names (contract type, status, quote asset) for selecting USDT perpetuals.
+
 ## Verified
 
 | Fact | Source | Date |
@@ -41,3 +45,4 @@ Move an item to "Verified" with source and date once checked.
 | Futures diff depth update speeds: 250 ms (default), 500 ms, 100 ms | developers.binance.com ws-streams/public (Diff. Book Depth Streams) | 2026-11-01 |
 | Liquidations: `!forceOrder@arr` on `/market`, per symbol only the latest liquidation within 1000 ms, nothing pushed if none | developers.binance.com ws-streams/market | 2026-11-01 |
 | REST limits are per IP; 429 = back off; continued requests cause 418 IP ban from 2 minutes to 3 days; numeric limits are in `exchangeInfo` `rateLimits` | developers.binance.com futures general-info | 2026-11-01 |
+| All-market `!bookTicker` update speed is 5 s | developers.binance.com ws-streams/public (All Book Tickers Stream) | 2026-11-01 |
