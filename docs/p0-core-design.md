@@ -24,14 +24,14 @@ The validator reads the written log, not the live queue, so it can lag or crash 
 - Answer server ping frames promptly; do not rely on the exchange for liveness: a connection with no message for a per-channel timeout is treated as stalled and replaced.
 - Replacement connection: open the new connection and subscribe first, run both in parallel for a short overlap, then close the old one. Duplicates are kept in the log (tagged by connection id) and removed by the replay reader.
 - Reconnect or stall emits a `gap` marker record for every affected stream.
-- Server-shutdown event handling is [U] for futures; treat any close as a reconnect.
+- Futures docs do not describe a shutdown event; treat any close as a reconnect.
 
 ## Component 3: Snapshot Scheduler
 
-- Futures WebSocket sends no initial book [V]. Fetch `GET /fapi/v1/depth` with `limit=1000` [V, official]. Weight by limit [V]: 5/10/20/50 = 2, 100 = 5, 500 = 10, 1000 = 20. Total IP weight limit is [U].
+- Futures WebSocket sends no initial book [V]. Fetch `GET /fapi/v1/depth` with `limit=1000` [V, official]. Weight by limit [V]: 5/10/20/50 = 2, 100 = 5, 500 = 10, 1000 = 20. The total IP weight limit is not stated on the docs page; it is in `rateLimits` of `GET /fapi/v1/exchangeInfo` [V, official], read it at startup and budget REST use against it. HTTP 429 means back off; continuing after 429 causes an automated IP ban (418) lasting 2 minutes to 3 days [V, official]. Limits are per IP, not per key.
 - Triggers: stream start, resync after a validator sequence break (signal from the validator via a small control file or local socket), and a verification snapshot every 5–10 minutes per tier B symbol.
 - Snapshot REST responses are written to the same raw log with their own `recv` times and request start/end times, because the snapshot's place in the message order matters for rebuild.
-- Rate budget: keep REST weight per minute under a fixed fraction of the documented limit [U]; stagger symbols; back off on HTTP 429/418 and log it.
+- Rate budget: read the limit from `exchangeInfo` at startup; keep REST weight per minute under a fixed fraction of it (fraction to be set in the trial); stagger symbols; stop and back off on any 429, never retry in a tight loop, and log it. Snapshots share the IP budget with every other REST call from the host.
 
 ## Component 4: Raw Log Writer
 
