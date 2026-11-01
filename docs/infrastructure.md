@@ -31,13 +31,16 @@ WebDAV endpoint `https://icandrinkmore.beer/dav`, mount `ronigooja_onedrive` (th
 | After nginx change (below): PUT 150 MB | 201, checksum OK; upload took 281 s (~0.56 MB/s), download 7.8 s (~20 MB/s) |
 | PUT 500 MB | Did not finish within 15 min; interrupted. Cause unknown |
 
-nginx change (owner approved), file `/etc/nginx/sites-available/icandrinkmore.beer` on the storage host, backup saved beside it as `.bak-<timestamp>`: `client_max_body_size` 50m to 1g; `proxy_request_buffering off`; `proxy_send_timeout` and `proxy_read_timeout` 60s to 600s. Other sites were not touched.
+nginx change (owner approved), file `/etc/nginx/sites-available/icandrinkmore.beer` on the storage host, backups saved beside it as `.bak-<timestamp>`: `client_max_body_size` 50m to 1g; `proxy_send_timeout` and `proxy_read_timeout` 60s to 600s. Other sites were not touched. `proxy_request_buffering off` was tried and removed (see below).
 
-Findings:
-- Upload speed is low and varies (2.8 MB/s on 20 MB, 0.56 MB/s on 150 MB), so the upload path (OneDrive side or the host) is the bottleneck, not nginx. At ~0.5 MB/s a 10 GB daily archive would take over 5 hours; this must be measured over several days before relying on it.
-- Download is much faster than upload.
-- Large single PUTs are fragile. Upload in chunks (suggested 64–128 MB) with per-chunk checksums and retry, and verify after upload before deleting local files. Chunk size is to be decided with more measurements.
-- The storage host has ~6 GB free disk; OpenList is passing uploads to OneDrive, so confirm it does not stage large files locally.
+Upload speed investigation:
+- With `proxy_request_buffering off` and HTTP/2, uploads ran at ~0.56 MB/s (100 MB: 189 s; 150 MB: 281 s). An earlier conclusion that the OneDrive/upload path was the bottleneck was wrong.
+- Owner's 30 MB comparison: buffering off + HTTP/2 ~0.5 MB/s; buffering off + HTTP/1.1 ~5.7 MB/s; buffering on + HTTP/2 ~4.1 MB/s; buffering on + HTTP/1.1 ~3.8 MB/s.
+- After removing `proxy_request_buffering off` (buffering on, HTTP/2): 100 MB uploaded in 23 s (~4.5 MB/s), checksum OK.
+- During the slow 100 MB run the storage host's free disk stayed at ~6.1 GB; with buffering on, nginx may stage request bodies in its temp directory, so re-check free disk during large uploads.
+- Download of 100 MB: ~12 MB/s.
+
+Guidance: keep request buffering on. Upload large archives in chunks (suggested 64–128 MB) with per-chunk checksums and retry; confirm after upload before deleting local files. Re-measure sustained throughput over several days.
 
 ## Constraints from the current hosts
 

@@ -7,7 +7,7 @@ Move an item to "Verified" with source and date once checked.
 | Question | Affects |
 |---|---|
 | Identify what already uses ~1.5 GB RAM on the recorder host | [infrastructure](infrastructure.md) |
-| Why WebDAV upload is slow and a 500 MB PUT stalls; measure chunked upload throughput over several days | [infrastructure](infrastructure.md) |
+| Measure sustained chunked upload throughput over several days; re-test a 500 MB single PUT; check nginx temp-file disk use during large uploads | [infrastructure](infrastructure.md) |
 | Plan for more storage capacity (storage gateway has ~6 GB free) | [infrastructure](infrastructure.md) |
 | Monthly budget for compute and storage | Recording scale |
 | Preferred symbols for the depth set (size fixed at 10–20) | [universe](universe.md) |
