@@ -274,7 +274,7 @@ func (s *Scheduler) fetch(ctx context.Context, symbol string) (usage, bool) {
 			encoded, _ = json.Marshal(payload)
 		}
 		s.sink.Write(rawlog.GroupDepth, rawlog.Record{
-			RecvWal: unixNano(end), RecvMon: end.Sub(processStart).Nanoseconds(),
+			RecvWal: unixNano(end), RecvMon: rawlog.Mono(),
 			Channel: "snapshot", Symbol: symbol, Payload: encoded,
 		})
 	}
@@ -284,8 +284,6 @@ func (s *Scheduler) fetch(ctx context.Context, symbol string) (usage, bool) {
 	}
 	return u, readErr != nil
 }
-
-var processStart = time.Now()
 
 func unixNano(t time.Time) int64 { return t.UnixNano() }
 

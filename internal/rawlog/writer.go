@@ -280,7 +280,10 @@ func (w *Writer) Run(ctx context.Context) {
 
 var processStart = time.Now()
 
-func monoNow() int64 { return int64(time.Since(processStart)) }
+// Mono is the process-wide monotonic clock (ns) used for every record's rm field.
+func Mono() int64 { return int64(time.Since(processStart)) }
+
+func monoNow() int64 { return Mono() }
 
 func (w *Writer) open(group string, hour time.Time) (*outFile, error) {
 	key := group + "-" + hour.Format("2006010215")
@@ -288,14 +291,9 @@ func (w *Writer) open(group string, hour time.Time) (*outFile, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, err
 	}
-	final := filepath.Join(dir, key+".jsonl.zst")
-	// A finished file for this hour (restart within the hour) is reopened and extended;
-	// concatenated zstd frames stay valid.
-	if _, err := os.Stat(final); err == nil {
-		if err := os.Rename(final, final+".part"); err != nil {
-			return nil, err
-		}
-	}
+	// A finished file is never reopened: it may already be uploaded. A restart inside the hour
+	// writes a new segment (<key>.r1, .r2, ...).
+	final := uniqueFinal(filepath.Join(dir, key))
 	f, err := os.OpenFile(final+".part", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
 	if err != nil {
 		return nil, err
@@ -316,12 +314,39 @@ func recoverParts(dir string) error {
 		return err
 	}
 	for _, p := range parts {
-		if err := os.Rename(p, strings.TrimSuffix(p, ".part")); err != nil {
+		stem := strings.TrimSuffix(p, ".jsonl.zst.part")
+		if i := strings.LastIndex(stem, ".r"); i > strings.LastIndexByte(stem, '-') {
+			stem = stem[:i]
+		}
+		dst := stem + ".jsonl.zst"
+		for n := 1; ; n++ {
+			if _, err := os.Stat(dst); err != nil {
+				break
+			}
+			dst = fmt.Sprintf("%s.r%d.jsonl.zst", stem, n)
+		}
+		if err := os.Rename(p, dst); err != nil {
 			return err
 		}
-		log.Printf("rawlog: recovered %s", p)
+		log.Printf("rawlog: recovered %s as %s", p, dst)
 	}
 	return nil
+}
+
+// uniqueFinal returns <stem>.jsonl.zst, or <stem>.rN.jsonl.zst for the first N where neither
+// the final file nor its .part exists.
+func uniqueFinal(stem string) string {
+	for n := 0; ; n++ {
+		name := stem + ".jsonl.zst"
+		if n > 0 {
+			name = fmt.Sprintf("%s.r%d.jsonl.zst", stem, n)
+		}
+		_, e1 := os.Stat(name)
+		_, e2 := os.Stat(name + ".part")
+		if e1 != nil && e2 != nil {
+			return name
+		}
+	}
 }
 
 // Sweep lists finished hour files strictly older than the hour containing now.
@@ -336,7 +361,11 @@ func Sweep(dir string, now time.Time) []Closed {
 		if i < 0 {
 			continue
 		}
-		hour, err := time.ParseInLocation("2006010215", base[i+1:], time.UTC)
+		hs := base[i+1:]
+		if d := strings.IndexByte(hs, '.'); d >= 0 {
+			hs = hs[:d]
+		}
+		hour, err := time.ParseInLocation("2006010215", hs, time.UTC)
 		if err != nil || !hour.Before(cur) {
 			continue
 		}

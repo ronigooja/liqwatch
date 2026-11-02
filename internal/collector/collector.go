@@ -38,7 +38,6 @@ type Shard struct {
 type Collector struct {
 	sink   rawlog.Sink
 	shards []Shard
-	t0     time.Time
 
 	Reconnects atomic.Int64
 	Stalls     atomic.Int64
@@ -46,7 +45,7 @@ type Collector struct {
 }
 
 func New(sink rawlog.Sink, shards []Shard) *Collector {
-	return &Collector{sink: sink, shards: shards, t0: time.Now()}
+	return &Collector{sink: sink, shards: shards}
 }
 
 // BuildShards lays out the tier A streams plus depth, per decision 0007.
@@ -235,7 +234,7 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		c.Messages.Add(1)
 		ch, sym := classify(data)
 		c.sink.Write(groupOf(ch), rawlog.Record{
-			Conn: k.id, CSeq: cseq, RecvWal: rw.UnixNano(), RecvMon: int64(rw.Sub(c.t0)),
+			Conn: k.id, CSeq: cseq, RecvWal: rw.UnixNano(), RecvMon: rawlog.Mono(),
 			Channel: ch, Symbol: sym, Payload: data,
 		})
 	}
@@ -249,7 +248,7 @@ func (c *Collector) gap(sh Shard, k *conn, cause string) {
 	p, _ := json.Marshal(map[string]any{"event": "conn_closed", "cause": cause, "err": e, "shard": sh.Name, "streams": sh.Streams})
 	now := time.Now()
 	c.sink.Write(rawlog.GroupGap, rawlog.Record{
-		Conn: k.id, RecvWal: now.UnixNano(), RecvMon: int64(now.Sub(c.t0)), Channel: "gap", Payload: p,
+		Conn: k.id, RecvWal: now.UnixNano(), RecvMon: rawlog.Mono(), Channel: "gap", Payload: p,
 	})
 }
 
