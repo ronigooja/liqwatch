@@ -6,8 +6,6 @@ Move an item to "Verified" with source and date once checked.
 
 | Question | Affects |
 |---|---|
-| Approve recorder host setup: UTC timezone, chrony, higher open-file limit, `wicker` user and directories | [infrastructure](infrastructure.md) |
-| Tighten `/root/pass/openlist` to mode 0600 | [infrastructure](infrastructure.md) |
 | Measure sustained chunked upload throughput over several days; re-test a 500 MB single PUT; check nginx temp-file disk use during large uploads | [infrastructure](infrastructure.md) |
 | Plan for more storage capacity (storage gateway has ~6 GB free) | [infrastructure](infrastructure.md) |
 | Monthly budget for compute and storage | Recording scale |
@@ -20,7 +18,7 @@ Move an item to "Verified" with source and date once checked.
 
 ## Unverified facts (check against official sources)
 
-- Still unverified: whether the futures WebSocket has an undocumented new-connection or per-IP connection limit (none is documented); which message types count toward the 10 messages/s limit; live `exchangeInfo` values for `contractType` (including `TRADIFI_PERPETUAL`) and `underlyingType`; load per depth update speed on the host (measure in the trial).
+- Still unverified: whether the futures WebSocket has an undocumented new-connection or per-IP connection limit (none is documented); which message types count toward the 10 messages/s limit; whether `@depth@250ms` is a valid stream name (the R4 250 ms run received nothing; documented default is `@depth`); OpenList/OneDrive quota for ~18 GB/day of uploads; forced 24 h disconnect behavior (observed in the production collector's first two days).
 - The spot-doc limits (1024 streams, 5 control messages/s, 300 connections per 5 min per IP, 24 h connection life) are spot only.
 
 - Current Binance WebSocket connection and stream limits; forced-disconnect interval.
@@ -46,4 +44,6 @@ Move an item to "Verified" with source and date once checked.
 | REST limits are per IP; 429 = back off; continued requests cause 418 IP ban from 2 minutes to 3 days; numeric limits are in `exchangeInfo` `rateLimits` | developers.binance.com futures general-info | 2026-11-01 |
 | All-market `!bookTicker` update speed is 5 s | developers.binance.com ws-streams/public (All Book Tickers Stream) | 2026-11-01 |
 | `exchangeInfo` `symbols[]` fields: `symbol`, `pair`, `status`, `contractType`, `baseAsset`, `quoteAsset`, `marginAsset`, `onboardDate`, `deliveryDate`, `underlyingType`; `rateLimits` entries have `rateLimitType` (`REQUEST_WEIGHT`, `ORDERS`), `interval`, `intervalNum`, `limit` (docs example shows 6000 per minute; read the real value at runtime) | developers.binance.com USDⓈ-M REST market-data (Exchange Information) and OpenAPI schema, via subagent | 2026-11-01 |
+| Live `exchangeInfo`: `contractType` counts PERPETUAL 703, TRADIFI_PERPETUAL 235, CURRENT_QUARTER 2, NEXT_QUARTER 2; USDT + PERPETUAL + TRADING = 522 symbols; `rateLimits` REQUEST_WEIGHT 2400/min, ORDERS 1200/min and 300/10 s; `markPrice` stream includes non-crypto symbols (e.g. XAUUSDT, TSLAUSDT) | Trial R0, `/fapi/v1/exchangeInfo` on the recorder | 2026-11-01 |
+| Load on the 2 vCPU / 4 GB host with 522 `aggTrade` + `markPrice` + `forceOrder` + 10 depth symbols + `bookTicker` top 50: CPU mean 18%, peak 53% of one core, 0 drops | [trial-plan](trial-plan.md) Results | 2026-11-02 |
 | No new-connection rate limit or per-IP concurrent-connection limit is stated in the futures WebSocket Connect or general-info pages; only 1024 streams per connection and 10 incoming messages/s | developers.binance.com futures websocket-market-streams/Connect.md, general-info.md, via subagent | 2026-11-01 |

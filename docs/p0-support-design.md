@@ -4,7 +4,7 @@ Components 1, 6, 7, 9, 10, 11 from [components.md](components.md). Core componen
 
 Markers as in [p0-core-design.md](p0-core-design.md): **[V]** verified in [open-questions.md](open-questions.md); **[U]** unverified.
 
-## Tier A channel choice (open, decided by trial)
+## Tier A channel choice (decided: option 2, top 50; see [decision 0007](decisions/0007-trial-outcome.md), measurements in [trial-plan.md](trial-plan.md))
 
 - The all-market `!bookTicker` stream updates every 5 s [V, official]. That is too coarse for 1–60 s spikes, so it is not a substitute for per-symbol `@bookTicker` (real time).
 - Per-symbol `@bookTicker` for every perpetual may be too heavy for 2 vCPU / 4 GB. Candidates, to be compared in the trial:
