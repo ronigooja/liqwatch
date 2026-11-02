@@ -2,6 +2,13 @@
 // Secrets are not in this file; they come from the environment (/etc/wicker/secrets.env).
 package config
 
+import (
+	"fmt"
+	"os"
+
+	"github.com/pelletier/go-toml/v2"
+)
+
 type Config struct {
 	DataDir  string   `toml:"data_dir"` // default /var/lib/wicker
 	Collect  Collect  `toml:"collect"`
@@ -44,3 +51,51 @@ const (
 	EnvWebDAVUser = "WICKER_WEBDAV_USER"
 	EnvWebDAVPass = "WICKER_WEBDAV_PASS"
 )
+
+func Load(path string) (*Config, error) {
+	c := Config{
+		DataDir:  "/var/lib/wicker",
+		Collect:  Collect{MetricsAddr: "127.0.0.1:9101", QuoteTopN: 50, DepthSpeed: "100ms", MaxStreamsPerWS: 100, QueueSize: 10000},
+		Snapshot: Snapshot{Limit: 1000, VerifyEveryMin: 5, WeightFraction: 0.25},
+		Archive:  Archive{ChunkMB: 64, DeleteAfterH: 6, FullVerifyDays: 7, MaxKBps: 0},
+		Checks:   Checks{DiskWarnPct: 80, StaleWriteSec: 120, UnverifiedHours: 3},
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := toml.Unmarshal(b, &c); err != nil {
+		return nil, fmt.Errorf("decode config: %w", err)
+	}
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func (c Config) validate() error {
+	if c.DataDir == "" || c.Collect.MetricsAddr == "" {
+		return fmt.Errorf("data_dir and collect.metrics_addr are required")
+	}
+	if c.Collect.QuoteTopN <= 0 || len(c.Collect.DepthSymbols) < 1 || len(c.Collect.DepthSymbols) > 20 {
+		return fmt.Errorf("collect.quote_top_n must be positive and depth_symbols must contain 1-20 entries")
+	}
+	for i, symbol := range c.Collect.DepthSymbols {
+		if symbol == "" {
+			return fmt.Errorf("collect.depth_symbols[%d] is empty", i)
+		}
+	}
+	if c.Collect.DepthSpeed == "" || c.Collect.MaxStreamsPerWS <= 0 || c.Collect.QueueSize <= 0 {
+		return fmt.Errorf("collect depth_speed, max_streams_per_ws, and queue_size must be positive")
+	}
+	if c.Snapshot.Limit <= 0 || c.Snapshot.VerifyEveryMin <= 0 || c.Snapshot.WeightFraction <= 0 || c.Snapshot.WeightFraction > 1 {
+		return fmt.Errorf("snapshot values are invalid")
+	}
+	if c.Archive.ChunkMB <= 0 || c.Archive.DeleteAfterH < 0 || c.Archive.FullVerifyDays < 0 {
+		return fmt.Errorf("archive values are invalid")
+	}
+	if c.Checks.DiskWarnPct < 1 || c.Checks.DiskWarnPct > 100 || c.Checks.StaleWriteSec <= 0 || c.Checks.UnverifiedHours <= 0 {
+		return fmt.Errorf("checks values are invalid")
+	}
+	return nil
+}

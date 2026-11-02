@@ -1,0 +1,7 @@
+[Unit]
+Description=Run wicker health checks
+
+[Service]
+Type=oneshot
+User=wicker
+ExecStart=/opt/wicker/current/wicker-checks -config /etc/wicker/config.toml
