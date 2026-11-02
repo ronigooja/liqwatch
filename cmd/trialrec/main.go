@@ -558,11 +558,6 @@ func writer(ctx context.Context, cfg config, queue <-chan record) {
 			for _, x := range files {
 				x.enc.Flush()
 			}
-			var total int64
-			for _, x := range files {
-				total += x.cw.n.Load()
-			}
-			st.compress.Store(total)
 			lastFlush = time.Now()
 		}
 	}
@@ -579,6 +574,7 @@ type countWriter struct {
 func (c *countWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
 	c.n.Add(int64(n))
+	st.compress.Add(int64(n))
 	return n, err
 }
 
