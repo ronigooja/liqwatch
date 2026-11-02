@@ -16,16 +16,20 @@ jobs:
           cache: false
       - name: Vet
         run: go vet ./...
+      - name: Test
+        run: go test ./internal/...
       - name: Build
         run: |
           mkdir -p out
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o out/trialrec ./cmd/trialrec
-          sha256sum out/trialrec | tee out/trialrec.sha256
+          for c in wicker-collector wicker-archiver wicker-checks trialrec; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o out/$c ./cmd/$c
+          done
+          cp deploy/* config/*.example out/
+          (cd out && sha256sum * > SHA256SUMS)
+          cat out/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: trialrec-linux-amd64
-          path: |
-            out/trialrec
-            out/trialrec.sha256
+          name: wicker-linux-amd64
+          path: out/
           retention-days: 7
           if-no-files-found: error
