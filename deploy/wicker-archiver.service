@@ -1,0 +1,10 @@
+[Unit]
+Description=Wicker archiver
+
+[Service]
+Type=oneshot
+User=wicker
+EnvironmentFile=/etc/wicker/secrets.env
+ExecStart=/opt/wicker/current/wicker-archiver -config /etc/wicker/config.toml
+Nice=15
+IOSchedulingClass=idle
