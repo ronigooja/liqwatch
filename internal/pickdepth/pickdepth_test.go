@@ -59,3 +59,24 @@ func TestEligibleSymbols(t *testing.T) {
 		t.Fatalf("eligible = %#v", got)
 	}
 }
+
+func TestSpikeCount(t *testing.T) {
+	var cs []Candle
+	for i := 0; i < 20; i++ { // quiet: 0.1% range
+		cs = append(cs, Candle{OpenTime: time.Date(2026, 1, 1, 0, i, 0, 0, time.UTC), Open: 100, High: 100.1, Low: 100, Close: 100.05, QuoteVol: 1})
+	}
+	cs = append(cs, Candle{OpenTime: time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC), Open: 100, High: 100.2, Low: 97, Close: 99.9, QuoteVol: 1}) // spike: lower wick, pulled back
+	cs = append(cs, Candle{OpenTime: time.Date(2026, 1, 1, 1, 1, 0, 0, time.UTC), Open: 100, High: 100.2, Low: 97, Close: 97.2, QuoteVol: 1}) // trend candle: body large
+	m := ComputeMetrics("X", cs, 2)
+	if m.SpikeCount != 1 {
+		t.Fatalf("spike count = %d", m.SpikeCount)
+	}
+	loud := make([]Candle, 0, 21)
+	for i := 0; i < 20; i++ { // always loud: median range 4%, a 3% wick is not a spike
+		loud = append(loud, Candle{OpenTime: time.Date(2026, 1, 1, 0, i, 0, 0, time.UTC), Open: 100, High: 102, Low: 98, Close: 100, QuoteVol: 1})
+	}
+	loud = append(loud, Candle{OpenTime: time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC), Open: 100, High: 100.1, Low: 97, Close: 99.9, QuoteVol: 1})
+	if m := ComputeMetrics("Y", loud, 2); m.SpikeCount != 0 {
+		t.Fatalf("loud symbol spike count = %d", m.SpikeCount)
+	}
+}

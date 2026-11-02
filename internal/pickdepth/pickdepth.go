@@ -1,6 +1,7 @@
 package pickdepth
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -55,8 +57,19 @@ type Metrics struct {
 	MeanDailyQuote    float64
 	WickCount         int
 	DominantWickCount int
+	SpikeCount        int // one-sided wick, large vs the symbol's own median range, price pulled back
+	MedianRangePct    float64
 	MaxRangePct       float64
 }
+
+// Spike definition (per 1m candle): the larger one-sided wick is at least spikeMinWickPct of the
+// open and at least spikeMedianMult times the symbol's median 1m range, and the body is at most
+// spikeMaxBodyFrac of the candle range (the move was largely reversed).
+const (
+	spikeMinWickPct  = 1.0
+	spikeMedianMult  = 8.0
+	spikeMaxBodyFrac = 0.3
+)
 
 type Selection struct {
 	Metrics
@@ -70,6 +83,7 @@ type Options struct {
 	N            int
 	Controls     int
 	LimitSymbols int
+	CacheDir     string // optional: per-symbol candle cache, reused across runs
 	Now          time.Time
 }
 
@@ -83,6 +97,16 @@ func ComputeMetrics(symbol string, candles []Candle, wickPct float64) Metrics {
 		return m
 	}
 	daily := make(map[string]float64)
+	ranges := make([]float64, 0, len(candles))
+	for _, c := range candles {
+		if c.Open > 0 {
+			ranges = append(ranges, (c.High-c.Low)/c.Open*100)
+		}
+	}
+	if len(ranges) > 0 {
+		sort.Float64s(ranges)
+		m.MedianRangePct = ranges[len(ranges)/2]
+	}
 	for _, c := range candles {
 		day := c.OpenTime.UTC().Format("2006-01-02")
 		daily[day] += c.QuoteVol
@@ -97,6 +121,13 @@ func ComputeMetrics(symbol string, candles []Candle, wickPct float64) Metrics {
 			m.WickCount++
 		}
 		span := c.High - c.Low
+		if span > 0 {
+			wick := math.Max(c.High-math.Max(c.Open, c.Close), math.Min(c.Open, c.Close)-c.Low) / c.Open * 100
+			body := math.Abs(c.Close-c.Open) / span
+			if wick >= spikeMinWickPct && wick >= spikeMedianMult*m.MedianRangePct && body <= spikeMaxBodyFrac {
+				m.SpikeCount++
+			}
+		}
 		if span > 0 && rangePct >= 1 && math.Max(c.High-c.Close, c.Close-c.Low)/span >= .7 {
 			m.DominantWickCount++
 		}
@@ -136,8 +167,8 @@ func Select(metrics []Metrics, opts Options) ([]Selection, error) {
 	}
 	spikes := append([]Metrics(nil), eligible...)
 	sort.SliceStable(spikes, func(i, j int) bool {
-		if spikes[i].WickCount != spikes[j].WickCount {
-			return spikes[i].WickCount > spikes[j].WickCount
+		if spikes[i].SpikeCount != spikes[j].SpikeCount {
+			return spikes[i].SpikeCount > spikes[j].SpikeCount
 		}
 		if spikes[i].MeanDailyQuote != spikes[j].MeanDailyQuote {
 			return spikes[i].MeanDailyQuote > spikes[j].MeanDailyQuote
@@ -177,9 +208,14 @@ func Fetch(ctx context.Context, client HTTPDoer, opts Options) ([]Metrics, error
 	all := make([]Metrics, 0, len(symbols))
 	for i, symbol := range symbols {
 		fmt.Fprintf(os.Stderr, "[%d/%d] %s\n", i+1, len(symbols), symbol.Symbol)
-		candles, err := fetchKlines(ctx, client, rate, symbol.Symbol, start, end)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", symbol.Symbol, err)
+		candles, ok := loadCache(opts.CacheDir, symbol.Symbol, opts.Days)
+		if !ok {
+			var err error
+			candles, err = fetchKlines(ctx, client, rate, symbol.Symbol, start, end)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", symbol.Symbol, err)
+			}
+			saveCache(opts.CacheDir, symbol.Symbol, opts.Days, candles)
 		}
 		all = append(all, ComputeMetrics(symbol.Symbol, candles, opts.WickPct))
 	}
@@ -345,4 +381,56 @@ func getJSON(ctx context.Context, client HTTPDoer, rawURL string, query url.Valu
 		return nil
 	}
 	return errors.New("too many rate-limit retries")
+}
+
+func cachePath(dir, symbol string, days int) string {
+	return filepath.Join(dir, fmt.Sprintf("%s-%dd.json.gz", symbol, days))
+}
+
+func loadCache(dir, symbol string, days int) ([]Candle, bool) {
+	if dir == "" {
+		return nil, false
+	}
+	f, err := os.Open(cachePath(dir, symbol, days))
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, false
+	}
+	defer zr.Close()
+	var c []Candle
+	if json.NewDecoder(zr).Decode(&c) != nil || len(c) == 0 {
+		return nil, false
+	}
+	return c, true
+}
+
+func saveCache(dir, symbol string, days int, c []Candle) {
+	if dir == "" || len(c) == 0 {
+		return
+	}
+	if os.MkdirAll(dir, 0o755) != nil {
+		return
+	}
+	tmp := cachePath(dir, symbol, days) + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return
+	}
+	zw := gzip.NewWriter(f)
+	err = json.NewEncoder(zw).Encode(c)
+	if e := zw.Close(); err == nil {
+		err = e
+	}
+	if e := f.Close(); err == nil {
+		err = e
+	}
+	if err != nil {
+		os.Remove(tmp)
+		return
+	}
+	os.Rename(tmp, cachePath(dir, symbol, days))
 }
