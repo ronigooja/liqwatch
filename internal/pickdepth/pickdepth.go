@@ -271,9 +271,15 @@ func fetchKlines(ctx context.Context, client HTTPDoer, pace func(context.Context
 			}
 			vals := make([]float64, 5)
 			for i, field := range []int{1, 2, 3, 4, 7} {
-				if err := json.Unmarshal(row[field], &vals[i]); err != nil {
+				var s string
+				if err := json.Unmarshal(row[field], &s); err != nil {
 					return nil, err
 				}
+				v, err := strconv.ParseFloat(s, 64)
+				if err != nil {
+					return nil, err
+				}
+				vals[i] = v
 			}
 			var millis int64
 			if err := json.Unmarshal(row[0], &millis); err != nil {
