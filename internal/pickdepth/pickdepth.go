@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -174,7 +175,8 @@ func Fetch(ctx context.Context, client HTTPDoer, opts Options) ([]Metrics, error
 	}
 	start := end.Add(-time.Duration(opts.Days) * 24 * time.Hour)
 	all := make([]Metrics, 0, len(symbols))
-	for _, symbol := range symbols {
+	for i, symbol := range symbols {
+		fmt.Fprintf(os.Stderr, "[%d/%d] %s\n", i+1, len(symbols), symbol.Symbol)
 		candles, err := fetchKlines(ctx, client, rate, symbol.Symbol, start, end)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", symbol.Symbol, err)
