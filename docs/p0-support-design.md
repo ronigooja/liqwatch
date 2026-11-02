@@ -27,16 +27,16 @@ Markers as in [p0-core-design.md](p0-core-design.md): **[V]** verified in [open-
 
 Recorder-side job is packing, upload, and verification only. Parquet conversion is **not** done on the recorder (CPU is scarce); it moves to the research side. This replaces the earlier Parquet-on-recorder idea in [data-recording.md](data-recording.md).
 
-Daily run, after the last hour file of the previous UTC day is closed:
+Hourly run (timer, a few minutes after each UTC hour boundary), per [decision 0008](decisions/0008-hourly-archive-and-retention.md):
 
-1. List closed hour files from the manifest. Skip files still open.
+1. List closed hour files from the manifest that are not yet `verified`. Skip files still open.
 2. Compute SHA-256 for each file.
 3. Split each file into chunks (initial size 64 MB; nginx limit is 1 GB, observed 100 MB uploads worked [measured]). Name `…jsonl.zst.part0000`, and so on, and upload one chunk at a time.
 4. Remote layout (under the remote root): `raw/<venue>/<UTC date>/<group>-<HH>.jsonl.zst.partNNNN` plus `<group>-<HH>.jsonl.zst.meta.json` (size, sha256, chunk list, parser-independent record count).
 5. Verify: remote size equals local size per chunk. Download-and-hash verification for the first 7 days, then a sampled fraction (download measured ~12–20 MB/s [measured]).
-6. Only after verification mark the file `verified` in the manifest, and delete local data older than the retention window (keep at least 3 days locally even if verified).
+6. Only after verification mark the file `verified` in the manifest, and delete a local file once it has been `verified` for 6 hours. A file that is not `verified` is never deleted.
 7. Throttle: cap upload rate and run at low CPU/IO priority so it never competes with recording. Upload throughput seen: ~4.5 MB/s [measured, single test]; re-measure over several days.
-8. On any failure, retry with backoff and leave the file in `uploading`; alert if a file is not `verified` after 24 hours.
+8. On any failure, retry with backoff and leave the file in `uploading`; alert if a file is not `verified` after 3 hours.
 
 Storage host free disk is small (~6 GB) and nginx buffers request bodies [measured], so one chunk at a time. Uses the dedicated `wicker` WebDAV account ([infrastructure.md](infrastructure.md)); never the admin account. Remote root: `/dav/raw_data/ronigooja_onedrive/wicker/`.
 
@@ -58,7 +58,7 @@ The manifest is the index. The raw files and the validator log remain the source
 
 - Each process serves metrics on localhost in Prometheus text format. No Prometheus or Grafana on the recorder in the first stage (memory). A check job (systemd timer, every minute) reads the metrics, evaluates thresholds, and records history locally. Prometheus/Grafana can be added later on a separate host.
 - Metrics: per channel message rate; `recv_time − event_time` P50/P99; reconnect count; stalls; queue depth; drops; sequence breaks; snapshot refetches; unavailable-interval seconds; book mismatch rate; archiver backlog; disk usage; CPU, memory; clock offset; REST weight used.
-- Initial thresholds (tune from the trial): stall longer than the per-channel timeout; queue above 50%; any drop of depth or snapshot data; disk above 80%; clock offset above 50 ms; mismatch rate above a value set after the trial; unverified file older than 24 h.
+- Initial thresholds (tune from the trial): stall longer than the per-channel timeout; queue above 50%; any drop of depth or snapshot data; disk above 80%; clock offset above 50 ms; mismatch rate above a value set after the trial; unverified file older than 3 h.
 - Alerts are emitted through the alert interface below, not through any specific chat or app. Alerts are deduplicated and repeated at a low rate until cleared.
 - Alerts are about data health. Nothing here triggers trades.
 
@@ -123,4 +123,4 @@ Contents: per channel message counts and rates; coverage (valid seconds over tot
 | Tier A quote channel: option 1, 2, or 3 | Trial result |
 | Whether exchangeInfo returns `TRADIFI_PERPETUAL` and how `underlyingType` marks non-crypto contracts | Check a live response in the trial |
 | First consumer: none yet, generic interface first | Owner |
-| Local retention window and hot-buffer disk size | Trial |
+| Local retention: decided, 6 h after verification | [decision 0008](decisions/0008-hourly-archive-and-retention.md) |
