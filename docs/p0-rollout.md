@@ -29,6 +29,7 @@ Subscriptions: `@aggTrade` all 522 symbols, `!markPrice@arr@1s`, `!forceOrder@ar
 | `p0-1` | First production build | 2026-11-02 22:56 |
 | `p0-2` | `checks` fix for the unverified-age threshold; collector binary identical to `p0-1` (hard link) | 2026-11-03 00:10 |
 | `p0-3` | `archiver`: `MkdirAll` creates the root and verifies the path; `chunk_mb` 128; remote root `/dav/ronigooja_onedrive/wicker/`. Collector and checks binaries unchanged (hard links) | 2026-11-03 00:42 |
+| `p0-4` | Zero-gap handoff ([0009](decisions/0009-zero-gap-handoff.md)): collector slots, depth snapshot after reconnect, aggTrade backfill, multi-endpoint checks. First handoff from the unnumbered unit to slot `b` with no gap (no trade-id gap across 514 symbols). Observation period kept running | 2026-11-03 21:41 |
 
 Observation period restarted from scratch 2026-11-03 00:32:08 UTC: local data and manifest cleared, WebDAV cleared by the owner, `chunk_mb` raised from 64 to 128.
 
