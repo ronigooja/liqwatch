@@ -7,7 +7,34 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/wicker/wicker/internal/manifest"
 )
+
+func TestUnverifiedHonorsAge(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "manifest"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	s, err := manifest.Open(filepath.Join(dir, "manifest", "manifest.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	now := time.Now()
+	for path, closed := range map[string]time.Time{"a": now.Add(-time.Minute), "b": now.Add(-4 * time.Hour)} {
+		if err := s.RegisterClosed(manifest.File{Path: path, Group: "g", HourStart: closed, ClosedAt: closed, State: manifest.StateClosed}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, ok, err := unverified(dir, 3*time.Hour)
+	if err != nil || !ok || n != 1 {
+		t.Fatalf("n=%d ok=%v err=%v, want only the 4h-old file", n, ok, err)
+	}
+	if n, _, _ := unverified(dir, 5*time.Hour); n != 0 {
+		t.Fatalf("n=%d, want 0 when nothing is older than 5h", n)
+	}
+}
 
 func TestAlertStateTransitionsOnce(t *testing.T) {
 	dir := t.TempDir()

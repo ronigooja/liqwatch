@@ -241,7 +241,7 @@ func unverified(dataDir string, age time.Duration) (int, bool, error) {
 	}
 	defer db.Close()
 	cutoff := time.Now().Add(-age)
-	rows, err := db.Query("SELECT closed_at FROM files WHERE state <> 'verified' AND state <> 'deleted' AND closed_at < ?", cutoff.UTC().Format(time.RFC3339))
+	rows, err := db.Query("SELECT closed_at FROM files WHERE state <> 'verified' AND state <> 'deleted' AND closed_at < ?", cutoff.UnixNano())
 	if err != nil {
 		return 0, true, err
 	}
