@@ -22,6 +22,15 @@ Subscriptions: `@aggTrade` all 522 symbols, `!markPrice@arr@1s`, `!forceOrder@ar
 - Config in `/etc/wicker/config.toml`; WebDAV credentials in `/etc/wicker/secrets.env` mode 0600, copied from `/root/pass/openlist` on the host, never into the repo.
 - Start order: collector, then archiver timer, then checks timer. Do not run `trialrec` and the collector at the same time on the host.
 
+## Deployment log
+
+| Release | Contents | Live from (UTC) |
+|---|---|---|
+| `p0-1` | First production build | 2026-11-02 22:56 |
+| `p0-2` | `checks` fix for the unverified-age threshold; collector binary identical to `p0-1` (hard link) | 2026-11-03 00:10 |
+
+Observation period restarted 2026-11-03 00:16 UTC: local raw data and manifest were cleared; files already uploaded to WebDAV were left in place.
+
 ## Observation period (first 48 h)
 
 The period replaces the dropped R5 soak. It counts from the first clean start; any collector crash restarts the count only if it caused unexplained data loss.
