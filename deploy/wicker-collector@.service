@@ -7,7 +7,7 @@ StartLimitBurst=5
 
 [Service]
 User=wicker
-ExecStart=${WICKER_BIN} -config /etc/wicker/config.toml -instance %i -metrics-addr ${WICKER_METRICS_ADDR}
+ExecStart=/opt/wicker/slots/%i/wicker-collector -config /etc/wicker/config.toml -instance %i -metrics-addr ${WICKER_METRICS_ADDR}
 EnvironmentFile=/etc/wicker/slot-%i.env
 Restart=always
 RestartSec=1s

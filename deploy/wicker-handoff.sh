@@ -33,9 +33,11 @@ NEW_PORT=$(port_of $NEW)
 [ $LEGACY = 1 ] && NEW=b && NEW_PORT=$PORT_B
 
 echo "old=$OLD new=$NEW release=$REL port=$NEW_PORT"
-# The slot runs the binary from the release dir; /opt/wicker/current only moves after success,
-# so a crash-restart of the old slot meanwhile still uses the old release.
-printf 'WICKER_METRICS_ADDR=127.0.0.1:%s\nWICKER_BIN=%s/wicker-collector\n' "$NEW_PORT" "$REL" > /etc/wicker/slot-$NEW.env
+# Each slot runs the binary through its own link /opt/wicker/slots/<slot>; /opt/wicker/current only
+# moves after success, so a crash-restart of the old slot meanwhile still uses the old release.
+mkdir -p /opt/wicker/slots
+ln -sfn "$REL" /opt/wicker/slots/$NEW
+printf 'WICKER_METRICS_ADDR=127.0.0.1:%s\n' "$NEW_PORT" > /etc/wicker/slot-$NEW.env
 NEW_UNIT=wicker-collector@$NEW.service
 
 fail() {
