@@ -31,7 +31,7 @@ Hourly run (timer, a few minutes after each UTC hour boundary), per [decision 00
 
 1. List closed hour files from the manifest that are not yet `verified`. Skip files still open.
 2. Compute SHA-256 for each file.
-3. Split each file into chunks (initial size 64 MB; nginx limit is 1 GB, observed 100 MB uploads worked [measured]). Name `…jsonl.zst.part0000`, and so on, and upload one chunk at a time.
+3. Split each file into chunks (initial size 128 MB; nginx limit is 1 GB, observed 100 MB uploads worked [measured]). Name `…jsonl.zst.part0000`, and so on, and upload one chunk at a time.
 4. Remote layout (under the remote root): `raw/<venue>/<UTC date>/<group>-<HH>.jsonl.zst.partNNNN` plus `<group>-<HH>.jsonl.zst.meta.json` (size, sha256, chunk list, parser-independent record count).
 5. Verify: remote size equals local size per chunk. Download-and-hash verification for the first 7 days, then a sampled fraction (download measured ~12–20 MB/s [measured]).
 6. Only after verification mark the file `verified` in the manifest, and delete a local file once it has been `verified` for 6 hours. A file that is not `verified` is never deleted.

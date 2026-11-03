@@ -29,7 +29,7 @@ Subscriptions: `@aggTrade` all 522 symbols, `!markPrice@arr@1s`, `!forceOrder@ar
 | `p0-1` | First production build | 2026-11-02 22:56 |
 | `p0-2` | `checks` fix for the unverified-age threshold; collector binary identical to `p0-1` (hard link) | 2026-11-03 00:10 |
 
-Observation period restarted 2026-11-03 00:16 UTC: local raw data and manifest were cleared; files already uploaded to WebDAV were left in place.
+Observation period restarted from scratch 2026-11-03 00:32:08 UTC: local data and manifest cleared, WebDAV cleared by the owner, `chunk_mb` raised from 64 to 128.
 
 ## Observation period (first 48 h)
 

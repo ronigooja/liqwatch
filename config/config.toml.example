@@ -16,7 +16,7 @@ weight_fraction = 0.25
 
 [archive]
 remote_root = "https://example.invalid/dav/raw_data/ronigooja_onedrive/wicker/"
-chunk_mb = 64
+chunk_mb = 128
 delete_after_h = 6
 full_verify_days = 7
 max_kbps = 0
