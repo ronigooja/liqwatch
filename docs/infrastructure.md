@@ -36,7 +36,7 @@ The owner created a dedicated WebDAV account `wicker`. Its credentials are in `/
 
 Tests from the recorder: MKCOL 201; PUT 1 MB 201; PUT 100 MB 201 in 22 s (~4.8 MB/s); GET 100 MB 8.3 s (~12.7 MB/s); checksums match; DELETE 204; the test folder was removed. Wrong password returns 401.
 
-The archiver remote path is therefore `https://icandrinkmore.beer/dav/raw_data/ronigooja_onedrive/wicker/...`.
+The archiver remote path is therefore `https://icandrinkmore.beer/dav/ronigooja_onedrive/wicker/...`.
 
 ## Storage probe (2026-11-01, admin account, historical)
 

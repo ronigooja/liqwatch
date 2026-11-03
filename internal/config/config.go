@@ -33,7 +33,7 @@ type Snapshot struct {
 }
 
 type Archive struct {
-	RemoteRoot     string `toml:"remote_root"`      // https://.../dav/raw_data/ronigooja_onedrive/wicker/
+	RemoteRoot     string `toml:"remote_root"`      // https://.../dav/ronigooja_onedrive/wicker/
 	ChunkMB        int    `toml:"chunk_mb"`         // 128
 	DeleteAfterH   int    `toml:"delete_after_h"`   // 6, counted from verified
 	FullVerifyDays int    `toml:"full_verify_days"` // 7: download-and-hash

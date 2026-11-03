@@ -15,7 +15,7 @@ verify_every_min = 5
 weight_fraction = 0.25
 
 [archive]
-remote_root = "https://example.invalid/dav/raw_data/ronigooja_onedrive/wicker/"
+remote_root = "https://example.invalid/dav/ronigooja_onedrive/wicker/"
 chunk_mb = 128
 delete_after_h = 6
 full_verify_days = 7

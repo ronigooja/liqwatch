@@ -38,7 +38,7 @@ Hourly run (timer, a few minutes after each UTC hour boundary), per [decision 00
 7. Throttle: cap upload rate and run at low CPU/IO priority so it never competes with recording. Upload throughput seen: ~4.5 MB/s [measured, single test]; re-measure over several days.
 8. On any failure, retry with backoff and leave the file in `uploading`; alert if a file is not `verified` after 3 hours.
 
-Storage host free disk is small (~6 GB) and nginx buffers request bodies [measured], so one chunk at a time. Uses the dedicated `wicker` WebDAV account ([infrastructure.md](infrastructure.md)); never the admin account. Remote root: `/dav/raw_data/ronigooja_onedrive/wicker/`.
+Storage host free disk is small (~6 GB) and nginx buffers request bodies [measured], so one chunk at a time. Uses the dedicated `wicker` WebDAV account ([infrastructure.md](infrastructure.md)); never the admin account. Remote root: `/dav/ronigooja_onedrive/wicker/` (see [infrastructure.md](infrastructure.md)).
 
 ## Component 7: Manifest
 

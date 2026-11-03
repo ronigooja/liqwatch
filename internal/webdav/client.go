@@ -42,6 +42,9 @@ func (c *Client) do(ctx context.Context, method, name string, body io.Reader, si
 		return nil, err
 	}
 	req.SetBasicAuth(c.user, c.pass)
+	if method == "PROPFIND" {
+		req.Header.Set("Depth", "0")
+	}
 	if size >= 0 {
 		req.ContentLength = size
 	}
@@ -73,12 +76,22 @@ func (c *Client) retry(ctx context.Context, fn func() error) error {
 	}
 	return err
 }
+
+// MkdirAll creates the root directory and every level of name, then confirms the full path
+// exists. MKCOL 405/409 are tolerated per level because servers differ on "already exists",
+// but some also answer 405 when the parent is missing, so existence is checked at the end.
 func (c *Client) MkdirAll(ctx context.Context, name string) error {
-	parts := strings.Split(strings.Trim(name, "/"), "/")
+	levels := []string{""}
 	cur := ""
-	for _, p := range parts {
+	for _, p := range strings.Split(strings.Trim(name, "/"), "/") {
+		if p == "" {
+			continue
+		}
 		cur = path.Join(cur, p)
-		n := cur
+		levels = append(levels, cur)
+	}
+	for _, n := range levels {
+		n := n
 		err := c.retry(ctx, func() error {
 			r, e := c.do(ctx, "MKCOL", n, nil, -1)
 			if e != nil && !strings.Contains(e.Error(), "status 405") && !strings.Contains(e.Error(), "status 409") {
@@ -93,7 +106,14 @@ func (c *Client) MkdirAll(ctx context.Context, name string) error {
 			return err
 		}
 	}
-	return nil
+	return c.retry(ctx, func() error {
+		r, e := c.do(ctx, "PROPFIND", cur, nil, -1)
+		if e != nil {
+			return fmt.Errorf("directory %q not present after MKCOL: %w", cur, e)
+		}
+		r.Body.Close()
+		return nil
+	})
 }
 func (c *Client) Put(ctx context.Context, name string, r io.Reader, size int64) error {
 	b, err := io.ReadAll(r)

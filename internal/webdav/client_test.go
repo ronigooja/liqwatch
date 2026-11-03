@@ -26,6 +26,10 @@ func TestPutResumeAndBasicAuth(t *testing.T) {
 			w.WriteHeader(201)
 			return
 		}
+		if r.Method == "PROPFIND" {
+			w.WriteHeader(207)
+			return
+		}
 		if r.Method == "HEAD" {
 			b, ok := files[r.URL.Path]
 			if !ok {
@@ -54,6 +58,22 @@ func TestPutResumeAndBasicAuth(t *testing.T) {
 	}
 	if n, err := c.Stat(ctx, "raw/20261103/a.part0000"); err != nil || n != 3 {
 		t.Fatalf("stat %d %v", n, err)
+	}
+}
+
+func TestMkdirAllFailsWhenParentMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "MKCOL" {
+			w.WriteHeader(405)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	c := New(srv.URL+"/gone/wicker", "u", "p")
+	c.Retries = 1
+	if err := c.MkdirAll(context.Background(), "raw/20261103"); err == nil {
+		t.Fatal("MkdirAll must fail when the directory cannot be created")
 	}
 }
 
