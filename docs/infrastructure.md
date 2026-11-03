@@ -32,7 +32,7 @@ Network from the recorder to Binance (3 curl probes on 2026-11-02, not a benchma
 
 ## Storage account and re-test (2026-11-02)
 
-The owner created a dedicated WebDAV account `wicker`. Its credentials are in `/root/pass/openlist` on the recorder host (line 1 user, line 2 password, file mode 0644, should be 0600). Scope: the account's root is `/dav/raw_data/`, which contains the mount `ronigooja_onedrive/`; writes go inside that mount (creating a folder directly under `raw_data/` returns 405).
+The owner created a dedicated WebDAV account `wicker`. Its credentials are in `/root/pass/openlist` on the recorder host (line 1 user, line 2 password, file mode 0644, should be 0600). Scope (changed by the owner on 2026-11-03): the account's root is `/dav/`, which contains the mount `ronigooja_onedrive/`; writes go inside that mount (creating a folder directly under the root returns 405).
 
 Tests from the recorder: MKCOL 201; PUT 1 MB 201; PUT 100 MB 201 in 22 s (~4.8 MB/s); GET 100 MB 8.3 s (~12.7 MB/s); checksums match; DELETE 204; the test folder was removed. Wrong password returns 401.
 
