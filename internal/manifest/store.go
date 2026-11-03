@@ -41,14 +41,23 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 	return err
 }
 
+// RegisterClosed is idempotent: a path that is already registered keeps its original closed_at,
+// msg_count and state, so re-registration (sweeps, a second collector instance) changes nothing.
 func (s *SQLiteStore) RegisterClosed(f File) error {
 	if f.State == "" {
 		f.State = StateClosed
 	}
 	_, err := s.db.Exec(`INSERT INTO files(path,group_name,hour_start,msg_count,bytes,sha256,closed_at,state,remote_path,chunk_count,verified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)
-ON CONFLICT(path) DO UPDATE SET group_name=excluded.group_name,hour_start=excluded.hour_start,msg_count=excluded.msg_count,bytes=excluded.bytes,sha256=excluded.sha256,closed_at=excluded.closed_at`,
+ON CONFLICT(path) DO NOTHING`,
 		f.Path, f.Group, f.HourStart.UnixNano(), f.MsgCount, f.Bytes, f.SHA256, f.ClosedAt.UnixNano(), f.State, f.RemotePath, f.ChunkCount, nanos(f.VerifiedAt))
 	return err
+}
+
+// Known reports whether path is already registered.
+func (s *SQLiteStore) Known(path string) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(1) FROM files WHERE path=?`, path).Scan(&n)
+	return n > 0, err
 }
 
 func (s *SQLiteStore) ListByState(state State) ([]File, error) {

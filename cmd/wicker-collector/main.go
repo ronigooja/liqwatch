@@ -29,21 +29,33 @@ import (
 
 func main() {
 	cfgPath := flag.String("config", "/etc/wicker/config.toml", "config file")
+	instance := flag.String("instance", "", "writer slot name (a or b) for handoff; empty is the legacy single process")
+	metricsAddr := flag.String("metrics-addr", "", "override collect.metrics_addr")
 	flag.Parse()
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
-	if err := run(cfg); err != nil {
+	if *metricsAddr != "" {
+		cfg.Collect.MetricsAddr = *metricsAddr
+	}
+	if err := run(cfg, *instance); err != nil {
 		log.Fatalf("collector: %v", err)
 	}
 }
 
-func run(cfg *config.Config) error {
+func run(cfg *config.Config, instance string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	rawDir := filepath.Join(cfg.DataDir, "raw")
+	if instance != "" {
+		unlock, err := lockInstance(cfg.DataDir, instance)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+	}
 	store, err := openManifest(cfg)
 	if err != nil {
 		return err
@@ -54,6 +66,9 @@ func run(cfg *config.Config) error {
 	register := func(c rawlog.Closed) {
 		regMu.Lock()
 		defer regMu.Unlock()
+		if ok, err := store.Known(filepath.ToSlash(c.Path)); err == nil && ok {
+			return
+		}
 		sum, err := fileSHA(filepath.Join(rawDir, c.Path))
 		if err != nil {
 			log.Printf("manifest: hash %s: %v", c.Path, err)
@@ -68,7 +83,7 @@ func run(cfg *config.Config) error {
 	}
 
 	w, err := rawlog.NewWriter(rawlog.Options{
-		Dir: rawDir, QueueSize: cfg.Collect.QueueSize, MaxDiskPct: 92,
+		Dir: rawDir, QueueSize: cfg.Collect.QueueSize, MaxDiskPct: 92, Instance: instance,
 		OnClosed: func(c rawlog.Closed) { go register(c) },
 	})
 	if err != nil {
@@ -79,6 +94,7 @@ func run(cfg *config.Config) error {
 		register(c)
 	}
 
+	ready := &readiness{}
 	uni, err := symbols.Load(ctx, filepath.Join(cfg.DataDir, "state"))
 	if err != nil {
 		return fmt.Errorf("symbols: %w", err)
@@ -92,7 +108,10 @@ func run(cfg *config.Config) error {
 
 	shards := collector.BuildShards(uni.All, quotes, depth, cfg.Collect.DepthSpeed, cfg.Collect.MaxStreamsPerWS)
 	col := collector.New(w, shards)
+	col.OpenSpacing = time.Duration(cfg.Collect.OpenSpacingMS) * time.Millisecond
 	snap := snapshot.New(cfg.Snapshot, depth, w, uni.WeightPerMinLimit, &http.Client{Timeout: 15 * time.Second})
+	col.OnOpen = ready.shardOpened
+	ready.expectShards(len(shards))
 	col.OnReconnect = func(sh collector.Shard) {
 		if sh.Name != "depth" {
 			return
@@ -113,7 +132,7 @@ func run(cfg *config.Config) error {
 	go func() { defer prod.Done(); col.Run(ctx) }()
 	go func() { defer prod.Done(); snap.Run(ctx) }()
 
-	go serveMetrics(cfg.Collect.MetricsAddr, w, col, snap)
+	go serveMetrics(cfg.Collect.MetricsAddr, w, col, snap, ready, len(depth))
 	go sweepLoop(ctx, rawDir, register)
 
 	<-ctx.Done()
@@ -179,7 +198,7 @@ func sweepLoop(ctx context.Context, rawDir string, register func(rawlog.Closed))
 	}
 }
 
-func serveMetrics(addr string, w *rawlog.Writer, col *collector.Collector, snap *snapshot.Scheduler) {
+func serveMetrics(addr string, w *rawlog.Writer, col *collector.Collector, snap *snapshot.Scheduler, ready *readiness, depthSyms int) {
 	if addr == "" {
 		return
 	}
@@ -196,8 +215,56 @@ func serveMetrics(addr string, w *rawlog.Writer, col *collector.Collector, snap 
 			s.DiskStops, col.Reconnects.Load(), col.Stalls.Load(), col.Messages.Load())
 		fmt.Fprintf(rw, "wicker_snapshot_requests_total %d\nwicker_rest_weight_used %d\nwicker_rest_rate_limited_total %d\n",
 			ss.Requests, ss.WeightUsed, ss.RateLimited)
+		fmt.Fprintf(rw, "wicker_shards_open %d\nwicker_shards_expected %d\nwicker_snapshots_written %d\nwicker_snapshots_expected %d\nwicker_start_unix %d\n",
+			ready.open(), ready.expected(), ss.Written, depthSyms, startUnix)
+	})
+	mux.HandleFunc("/ready", func(rw http.ResponseWriter, _ *http.Request) {
+		if ready.open() < ready.expected() || ready.expected() == 0 || snap.Stats().Written < uint64(depthSyms) {
+			http.Error(rw, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprintln(rw, "ready")
 	})
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Printf("metrics: %v", err)
 	}
+}
+
+var startUnix = time.Now().Unix()
+
+// readiness tracks how many shards have an open connection, for the handoff script.
+type readiness struct {
+	mu   sync.Mutex
+	want int
+	seen map[string]bool
+}
+
+func (r *readiness) expectShards(n int) { r.mu.Lock(); r.want = n; r.mu.Unlock() }
+func (r *readiness) shardOpened(sh collector.Shard) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.seen == nil {
+		r.seen = map[string]bool{}
+	}
+	r.seen[sh.Name] = true
+}
+func (r *readiness) open() int     { r.mu.Lock(); defer r.mu.Unlock(); return len(r.seen) }
+func (r *readiness) expected() int { r.mu.Lock(); defer r.mu.Unlock(); return r.want }
+
+// lockInstance takes an exclusive flock on <data_dir>/state/instance-<name>.lock for the life of
+// the process, so two processes can never run as the same slot.
+func lockInstance(dataDir, name string) (func(), error) {
+	dir := filepath.Join(dataDir, "state")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "instance-"+name+".lock"), os.O_CREATE|os.O_RDWR, 0o640)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("instance %q is already running: %w", name, err)
+	}
+	return func() { syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, nil
 }

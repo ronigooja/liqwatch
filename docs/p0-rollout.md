@@ -32,6 +32,10 @@ Subscriptions: `@aggTrade` all 522 symbols, `!markPrice@arr@1s`, `!forceOrder@ar
 
 Observation period restarted from scratch 2026-11-03 00:32:08 UTC: local data and manifest cleared, WebDAV cleared by the owner, `chunk_mb` raised from 64 to 128.
 
+## Releases and handoff
+
+Release method and the zero-gap procedure: [0009](decisions/0009-zero-gap-handoff.md). Run `deploy/wicker-handoff.sh <release-dir>` for every collector change; the first one from the unnumbered unit uses `--bootstrap-legacy`.
+
 ## Observation period (first 48 h)
 
 The period replaces the dropped R5 soak. It counts from the first clean start; any collector crash restarts the count only if it caused unexplained data loss.

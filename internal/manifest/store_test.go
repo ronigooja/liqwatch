@@ -65,3 +65,28 @@ func TestTransitionsOnlyForward(t *testing.T) {
 		t.Fatal("backward transition accepted")
 	}
 }
+
+func TestRegisterIsIdempotent(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "manifest.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	first := time.Now().Add(-5 * time.Hour).UTC().Truncate(time.Nanosecond)
+	if err := s.RegisterClosed(File{Path: "p", Group: "g", HourStart: first, ClosedAt: first, MsgCount: 42, SHA256: "h1"}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := s.Known("p"); !ok {
+		t.Fatal("Known must be true after register")
+	}
+	if ok, _ := s.Known("other"); ok {
+		t.Fatal("Known must be false for an unregistered path")
+	}
+	if err := s.RegisterClosed(File{Path: "p", Group: "g", HourStart: first, ClosedAt: time.Now(), MsgCount: -1, SHA256: "h2"}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.ListByState(StateClosed)
+	if len(got) != 1 || got[0].MsgCount != 42 || !got[0].ClosedAt.Equal(first) || got[0].SHA256 != "h1" {
+		t.Fatalf("re-register changed the row: %+v", got)
+	}
+}

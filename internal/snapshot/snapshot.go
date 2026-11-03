@@ -33,6 +33,7 @@ type Doer interface {
 // Statistics are cumulative counters, except WeightUsed which is total request
 // weight accounted by this scheduler.
 type Statistics struct {
+	Written     uint64 // snapshot records handed to the sink with a 200 status
 	Requests    uint64
 	WeightUsed  int
 	RateLimited uint64
@@ -272,6 +273,11 @@ func (s *Scheduler) fetch(ctx context.Context, symbol string) (usage, bool) {
 		if marshalErr != nil {
 			payload.Body, _ = json.Marshal(string(body))
 			encoded, _ = json.Marshal(payload)
+		}
+		if resp.StatusCode == http.StatusOK {
+			s.statsMu.Lock()
+			s.stats.Written++
+			s.statsMu.Unlock()
 		}
 		s.sink.Write(rawlog.GroupDepth, rawlog.Record{
 			RecvWal: unixNano(end), RecvMon: rawlog.Mono(),

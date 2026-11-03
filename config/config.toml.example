@@ -2,6 +2,8 @@ data_dir = "/var/lib/wicker"
 
 [collect]
 metrics_addr = "127.0.0.1:9101"
+extra_metrics_addrs = ["127.0.0.1:9102"]
+open_spacing_ms = 500
 quote_top_n = 50
 # Replace every placeholder with an owner-selected perpetual symbol.
 depth_symbols = ["REPLACE_ME_01", "REPLACE_ME_02", "REPLACE_ME_03", "REPLACE_ME_04", "REPLACE_ME_05", "REPLACE_ME_06", "REPLACE_ME_07", "REPLACE_ME_08", "REPLACE_ME_09", "REPLACE_ME_10", "REPLACE_ME_11", "REPLACE_ME_12", "REPLACE_ME_13", "REPLACE_ME_14", "REPLACE_ME_15"]

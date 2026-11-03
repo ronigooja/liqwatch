@@ -42,6 +42,10 @@ type Collector struct {
 	// OnReconnect is called after a shard reopens following an unplanned disconnect, once the
 	// new connection is open. Planned 23 h replacements overlap and do not call it.
 	OnReconnect func(Shard)
+	// OpenSpacing is the delay between starting consecutive shards; default 500 ms.
+	OpenSpacing time.Duration
+	// OnOpen is called every time a connection of a shard opens (first, reconnect or replacement).
+	OnOpen func(Shard)
 
 	Reconnects atomic.Int64
 	Stalls     atomic.Int64
@@ -49,7 +53,7 @@ type Collector struct {
 }
 
 func New(sink rawlog.Sink, shards []Shard) *Collector {
-	return &Collector{sink: sink, shards: shards}
+	return &Collector{sink: sink, shards: shards, OpenSpacing: openSpacing}
 }
 
 // BuildShards lays out the tier A streams plus depth, per decision 0007.
@@ -95,7 +99,7 @@ func (c *Collector) Run(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(time.Duration(i) * openSpacing):
+			case <-time.After(time.Duration(i) * c.OpenSpacing):
 			}
 			c.runShard(ctx, sh)
 		}()
@@ -210,6 +214,9 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 	defer ws.CloseNow()
 	ws.SetReadLimit(16 << 20)
 	close(k.opened)
+	if c.OnOpen != nil {
+		c.OnOpen(sh)
+	}
 	log.Printf("shard %s conn %s open (%d streams)", sh.Name, k.id, len(sh.Streams))
 
 	var last atomic.Int64

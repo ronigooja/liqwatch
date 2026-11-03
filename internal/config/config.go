@@ -18,12 +18,14 @@ type Config struct {
 }
 
 type Collect struct {
-	MetricsAddr     string   `toml:"metrics_addr"`       // e.g. 127.0.0.1:9101
-	QuoteTopN       int      `toml:"quote_top_n"`        // bookTicker for top N by volume; 50
-	DepthSymbols    []string `toml:"depth_symbols"`      // owner-edited list, 10-20
-	DepthSpeed      string   `toml:"depth_speed"`        // "100ms"
-	MaxStreamsPerWS int      `toml:"max_streams_per_ws"` // 100
+	MetricsAddr     string   `toml:"metrics_addr"`        // e.g. 127.0.0.1:9101
+	ExtraMetrics    []string `toml:"extra_metrics_addrs"` // other slots checked too, e.g. 127.0.0.1:9102
+	QuoteTopN       int      `toml:"quote_top_n"`         // bookTicker for top N by volume; 50
+	DepthSymbols    []string `toml:"depth_symbols"`       // owner-edited list, 10-20
+	DepthSpeed      string   `toml:"depth_speed"`         // "100ms"
+	MaxStreamsPerWS int      `toml:"max_streams_per_ws"`  // 100
 	QueueSize       int      `toml:"queue_size"`
+	OpenSpacingMS   int      `toml:"open_spacing_ms"` // gap between opening shard connections; 500
 }
 
 type Snapshot struct {
@@ -55,7 +57,7 @@ const (
 func Load(path string) (*Config, error) {
 	c := Config{
 		DataDir:  "/var/lib/wicker",
-		Collect:  Collect{MetricsAddr: "127.0.0.1:9101", QuoteTopN: 50, DepthSpeed: "100ms", MaxStreamsPerWS: 100, QueueSize: 10000},
+		Collect:  Collect{MetricsAddr: "127.0.0.1:9101", QuoteTopN: 50, DepthSpeed: "100ms", MaxStreamsPerWS: 100, QueueSize: 10000, OpenSpacingMS: 500},
 		Snapshot: Snapshot{Limit: 1000, VerifyEveryMin: 5, WeightFraction: 0.25},
 		Archive:  Archive{ChunkMB: 64, DeleteAfterH: 6, FullVerifyDays: 7, MaxKBps: 0},
 		Checks:   Checks{DiskWarnPct: 80, StaleWriteSec: 120, UnverifiedHours: 3},
@@ -85,7 +87,7 @@ func (c Config) validate() error {
 			return fmt.Errorf("collect.depth_symbols[%d] is empty", i)
 		}
 	}
-	if c.Collect.DepthSpeed == "" || c.Collect.MaxStreamsPerWS <= 0 || c.Collect.QueueSize <= 0 {
+	if c.Collect.DepthSpeed == "" || c.Collect.MaxStreamsPerWS <= 0 || c.Collect.QueueSize <= 0 || c.Collect.OpenSpacingMS < 0 {
 		return fmt.Errorf("collect depth_speed, max_streams_per_ws, and queue_size must be positive")
 	}
 	if c.Snapshot.Limit <= 0 || c.Snapshot.VerifyEveryMin <= 0 || c.Snapshot.WeightFraction <= 0 || c.Snapshot.WeightFraction > 1 {

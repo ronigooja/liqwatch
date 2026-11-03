@@ -142,18 +142,26 @@ func evaluate(c *config.Config) ([]finding, error) {
 	} else if ok && age > time.Duration(c.Checks.StaleWriteSec)*time.Second {
 		out = append(out, finding{"data.stale_write", "critical", "data.stale_write", "raw part file has not been updated", map[string]any{"age_seconds": int(age.Seconds())}})
 	}
-	metrics, err := readMetrics(c.Collect.MetricsAddr)
-	if err != nil {
-		out = append(out, finding{"collector.metrics", "critical", "collector.metrics", "collector metrics endpoint is unreachable", map[string]any{"error": err.Error()}})
-	} else {
+	reachable := 0
+	var lastErr error
+	for _, addr := range append([]string{c.Collect.MetricsAddr}, c.Collect.ExtraMetrics...) {
+		metrics, err := readMetrics(addr)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		reachable++
 		if v, ok := metrics["wicker_queue_depth_ratio"]; ok && v > .5 {
-			out = append(out, finding{"collector.queue", "warning", "data.queue", "collector queue is above 50%", map[string]any{"ratio": v}})
+			out = append(out, finding{"collector.queue:" + addr, "warning", "data.queue", "collector queue is above 50%", map[string]any{"ratio": v, "addr": addr}})
 		}
 		for k, v := range metrics {
 			if strings.HasPrefix(k, "wicker_dropped_total{") && v > 0 {
-				out = append(out, finding{"collector.drops:" + k, "critical", "data.drop", "collector dropped messages", map[string]any{"metric": k, "count": v}})
+				out = append(out, finding{"collector.drops:" + addr + ":" + k, "critical", "data.drop", "collector dropped messages", map[string]any{"metric": k, "count": v, "addr": addr}})
 			}
 		}
+	}
+	if reachable == 0 {
+		out = append(out, finding{"collector.metrics", "critical", "collector.metrics", "collector metrics endpoint is unreachable", map[string]any{"error": fmt.Sprint(lastErr)}})
 	}
 	if n, ok, err := unverified(c.DataDir, time.Duration(c.Checks.UnverifiedHours)*time.Hour); err != nil {
 		return nil, err

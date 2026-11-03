@@ -24,6 +24,7 @@ The validator reads the written log, not the live queue, so it can lag or crash 
 - Answer server ping frames promptly; do not rely on the exchange for liveness: a connection with no message for a per-channel timeout is treated as stalled and replaced.
 - Replacement connection: open the new connection and subscribe first, run both in parallel for a short overlap, then close the old one. Duplicates are kept in the log (tagged by connection id) and removed by the replay reader.
 - Reconnect or stall emits a `gap` marker record for every affected stream.
+- Planned restarts use an overlapping handoff between two slots ([0009](decisions/0009-zero-gap-handoff.md)). An unplanned depth reconnect triggers a fresh snapshot for every depth symbol.
 - Futures docs do not describe a shutdown event; treat any close as a reconnect.
 
 ## Component 3: Snapshot Scheduler
@@ -43,7 +44,7 @@ Record envelope (one record per message, one record per line):
 
 - The payload is embedded without re-serialization, so the original bytes are preserved. Source of truth for order: `(rm, wseq)`.
 - Exchange event time is not copied into the envelope; it stays in the payload and is read at parse time.
-- Files: one per hour per channel group, `raw/<venue>/<date>/<group>-<HH>.jsonl.zst`. zstd frames are closed every few seconds so a crash loses at most the last few seconds. Files are written as `.part` and renamed on close.
+- Files: one per hour per channel group, `raw/<date>/<group>-<YYYYMMDDHH>[.<slot>][.rN].jsonl.zst` (slot names and recovery rules in [0009](decisions/0009-zero-gap-handoff.md)). zstd frames are closed every few seconds so a crash loses at most the last few seconds. Files are written as `.part` and renamed on close.
 - Bounded queue between reader and disk. When full, drop in this order and write a `drop` marker with counts: tier A mark price, tier A best bid/ask, tier A trades. Never drop depth, snapshots, gap markers, or liquidations.
 - fsync policy and compression level are chosen from the trial; measure CPU on the 2 vCPU host before fixing them.
 - Every file gets a manifest entry on close (component 7).

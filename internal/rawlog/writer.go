@@ -41,6 +41,9 @@ type Options struct {
 	FlushEvery time.Duration // zstd frame close + fsync interval
 	MaxDiskPct float64       // stop writing above this; 0 disables
 	OnClosed   func(Closed)  // called when an hour file is finished by rotation
+	// Instance names the writer slot ("a", "b"; empty for the legacy single process). It is part
+	// of every file name, and crash recovery only touches .part files of the same instance.
+	Instance string
 }
 
 type Stats struct {
@@ -83,6 +86,9 @@ func NewWriter(opts Options) (*Writer, error) {
 	if opts.FlushEvery <= 0 {
 		opts.FlushEvery = 5 * time.Second
 	}
+	if !validInstance(opts.Instance) {
+		return nil, fmt.Errorf("rawlog: invalid instance %q", opts.Instance)
+	}
 	if err := os.MkdirAll(opts.Dir, 0o750); err != nil {
 		return nil, err
 	}
@@ -93,7 +99,7 @@ func NewWriter(opts Options) (*Writer, error) {
 	for ch := range dropAt {
 		w.dropCnt[ch] = new(atomic.Int64)
 	}
-	if err := recoverParts(opts.Dir); err != nil {
+	if err := recoverParts(opts.Dir, opts.Instance); err != nil {
 		return nil, err
 	}
 	return w, nil
@@ -293,7 +299,11 @@ func (w *Writer) open(group string, hour time.Time) (*outFile, error) {
 	}
 	// A finished file is never reopened: it may already be uploaded. A restart inside the hour
 	// writes a new segment (<key>.r1, .r2, ...).
-	final := uniqueFinal(filepath.Join(dir, key))
+	stem := filepath.Join(dir, key)
+	if w.opts.Instance != "" {
+		stem += "." + w.opts.Instance
+	}
+	final := uniqueFinal(stem)
 	f, err := os.OpenFile(final+".part", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
 	if err != nil {
 		return nil, err
@@ -306,17 +316,63 @@ func (w *Writer) open(group string, hour time.Time) (*outFile, error) {
 	return &outFile{f: f, enc: enc, key: key, hour: hour, final: final}, nil
 }
 
-// recoverParts renames leftover .part files (crash) to their final names. A torn last frame
-// is possible; readers must tolerate a truncated tail.
-func recoverParts(dir string) error {
+// validInstance accepts "" or 1-8 lowercase letters.
+func validInstance(s string) bool {
+	if len(s) > 8 {
+		return false
+	}
+	for _, r := range s {
+		if r < 'a' || r > 'z' {
+			return false
+		}
+	}
+	return true
+}
+
+// partOwner returns the instance and the stem (path without .rN and .jsonl.zst.part) of a
+// part file named <group>-<YYYYMMDDHH>[.<instance>][.rN].jsonl.zst.part.
+func partOwner(p string) (instance, stem string) {
+	stem = strings.TrimSuffix(p, ".jsonl.zst.part")
+	dash := strings.LastIndexByte(stem, '-')
+	if dash < 0 {
+		return "", stem
+	}
+	segs := strings.Split(stem[dash+1:], ".")
+	keep := segs[:1]
+	for _, sg := range segs[1:] {
+		if isSegment(sg) {
+			continue
+		}
+		instance = sg
+		keep = append(keep, sg)
+	}
+	return instance, stem[:dash+1] + strings.Join(keep, ".")
+}
+
+func isSegment(sg string) bool {
+	if len(sg) < 2 || sg[0] != 'r' {
+		return false
+	}
+	for _, r := range sg[1:] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// recoverParts renames leftover .part files (crash) of this instance to their final names. A
+// torn last frame is possible; readers must tolerate a truncated tail. Parts of other instances
+// belong to a process that may still be running and are left alone.
+func recoverParts(dir, instance string) error {
 	parts, err := filepath.Glob(filepath.Join(dir, "*", "*.jsonl.zst.part"))
 	if err != nil {
 		return err
 	}
 	for _, p := range parts {
-		stem := strings.TrimSuffix(p, ".jsonl.zst.part")
-		if i := strings.LastIndex(stem, ".r"); i > strings.LastIndexByte(stem, '-') {
-			stem = stem[:i]
+		owner, stem := partOwner(p)
+		if owner != instance {
+			continue
 		}
 		dst := stem + ".jsonl.zst"
 		for n := 1; ; n++ {

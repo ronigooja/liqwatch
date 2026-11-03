@@ -3,11 +3,15 @@ package checks
 import (
 	"bufio"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/wicker/wicker/internal/config"
 	"github.com/wicker/wicker/internal/manifest"
 )
 
@@ -71,5 +75,59 @@ func TestAlertStateTransitionsOnce(t *testing.T) {
 	}
 	if len(events) != 2 || events[0].State != "firing" || events[1].State != "resolved" {
 		t.Fatalf("events = %+v", events)
+	}
+}
+
+func TestEvaluateUsesAnyReachableMetricsEndpoint(t *testing.T) {
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("wicker_queue_depth_ratio 0.1\nwicker_dropped_total{channel=\"aggTrade\"} 0\n"))
+	}))
+	defer good.Close()
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("wicker_queue_depth_ratio 0.9\nwicker_dropped_total{channel=\"aggTrade\"} 5\n"))
+	}))
+	defer bad.Close()
+	addr := func(s *httptest.Server) string { return strings.TrimPrefix(s.URL, "http://") }
+
+	cfg := &config.Config{DataDir: t.TempDir()}
+	cfg.Checks = config.Checks{DiskWarnPct: 100, StaleWriteSec: 120, UnverifiedHours: 3}
+
+	cfg.Collect.MetricsAddr = "127.0.0.1:1" // old slot gone
+	cfg.Collect.ExtraMetrics = []string{addr(good)}
+	f, err := evaluate(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range f {
+		if x.Type == "collector.metrics" {
+			t.Fatalf("one reachable slot must be enough: %+v", x)
+		}
+	}
+
+	cfg.Collect.MetricsAddr = addr(bad)
+	cfg.Collect.ExtraMetrics = []string{addr(good)}
+	f, _ = evaluate(cfg)
+	var queue, drops int
+	for _, x := range f {
+		switch x.Type {
+		case "data.queue":
+			queue++
+		case "data.drop":
+			drops++
+		}
+	}
+	if queue != 1 || drops != 1 {
+		t.Fatalf("each reachable slot is judged on its own: queue=%d drops=%d", queue, drops)
+	}
+
+	cfg.Collect.MetricsAddr = "127.0.0.1:1"
+	cfg.Collect.ExtraMetrics = []string{"127.0.0.1:2"}
+	f, _ = evaluate(cfg)
+	found := false
+	for _, x := range f {
+		found = found || x.Type == "collector.metrics"
+	}
+	if !found {
+		t.Fatal("no reachable slot must raise collector.metrics")
 	}
 }

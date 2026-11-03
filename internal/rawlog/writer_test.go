@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,5 +145,83 @@ func TestDropOrderAndProtectedChannels(t *testing.T) {
 	}
 	if w.Stats().Dropped["depth"] != 0 {
 		t.Fatal("depth is never counted as dropped")
+	}
+}
+
+func TestInstanceNamesAndRecoveryIsolation(t *testing.T) {
+	dir := t.TempDir()
+	d := filepath.Join(dir, "20261103")
+	os.MkdirAll(d, 0o750)
+	mine := filepath.Join(d, "quote-2026110310.a.jsonl.zst.part")
+	other := filepath.Join(d, "quote-2026110310.b.jsonl.zst.part")
+	legacy := filepath.Join(d, "quote-2026110310.jsonl.zst.part")
+	for _, p := range []string{mine, other, legacy} {
+		os.WriteFile(p, []byte("x"), 0o640)
+	}
+	if _, err := NewWriter(Options{Dir: dir, Instance: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(strings.TrimSuffix(mine, ".part")); err != nil {
+		t.Fatal("own part not recovered:", err)
+	}
+	for _, p := range []string{other, legacy} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("foreign part %s must stay untouched: %v", filepath.Base(p), err)
+		}
+	}
+
+	at := time.Date(2026, 11, 3, 11, 5, 0, 0, time.UTC)
+	for _, inst := range []string{"a", "b"} {
+		w, err := NewWriter(Options{Dir: dir, Instance: inst})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() { w.Run(ctx); close(done) }()
+		w.Write(GroupTrade, rec("aggTrade", at, `{"i":1}`))
+		cancel()
+		<-done
+	}
+	for _, n := range []string{"trade-2026110311.a.jsonl.zst", "trade-2026110311.b.jsonl.zst"} {
+		if len(readAll(t, filepath.Join(d, n))) != 1 {
+			t.Fatalf("missing or wrong %s", n)
+		}
+	}
+	if _, err := NewWriter(Options{Dir: dir, Instance: "Bad1"}); err == nil {
+		t.Fatal("invalid instance accepted")
+	}
+}
+
+func TestPartOwner(t *testing.T) {
+	cases := []struct{ in, inst, stem string }{
+		{"/r/20261103/trade-2026110310.jsonl.zst.part", "", "/r/20261103/trade-2026110310"},
+		{"/r/20261103/trade-2026110310.r2.jsonl.zst.part", "", "/r/20261103/trade-2026110310"},
+		{"/r/20261103/trade-2026110310.b.jsonl.zst.part", "b", "/r/20261103/trade-2026110310.b"},
+		{"/r/20261103/trade-2026110310.b.r3.jsonl.zst.part", "b", "/r/20261103/trade-2026110310.b"},
+	}
+	for _, c := range cases {
+		inst, stem := partOwner(c.in)
+		if inst != c.inst || stem != c.stem {
+			t.Errorf("%s -> (%q,%q), want (%q,%q)", c.in, inst, stem, c.inst, c.stem)
+		}
+	}
+}
+
+func TestSweepSeesInstanceFiles(t *testing.T) {
+	dir := t.TempDir()
+	d := filepath.Join(dir, "20261103")
+	os.MkdirAll(d, 0o750)
+	for _, n := range []string{"trade-2026110310.a.jsonl.zst", "trade-2026110310.b.r1.jsonl.zst", "trade-2026110312.a.jsonl.zst"} {
+		os.WriteFile(filepath.Join(d, n), []byte("x"), 0o640)
+	}
+	got := Sweep(dir, time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC))
+	if len(got) != 2 {
+		t.Fatalf("sweep returned %d files: %+v", len(got), got)
+	}
+	for _, c := range got {
+		if c.Group != "trade" || c.HourStart.Hour() != 10 {
+			t.Fatalf("bad entry %+v", c)
+		}
 	}
 }
