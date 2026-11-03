@@ -93,6 +93,15 @@ func run(cfg *config.Config) error {
 	shards := collector.BuildShards(uni.All, quotes, depth, cfg.Collect.DepthSpeed, cfg.Collect.MaxStreamsPerWS)
 	col := collector.New(w, shards)
 	snap := snapshot.New(cfg.Snapshot, depth, w, uni.WeightPerMinLimit, &http.Client{Timeout: 15 * time.Second})
+	col.OnReconnect = func(sh collector.Shard) {
+		if sh.Name != "depth" {
+			return
+		}
+		log.Printf("depth shard reconnected, requesting snapshots for %d symbols", len(depth))
+		for _, s := range depth {
+			snap.Trigger(s)
+		}
+	}
 
 	var writerDone sync.WaitGroup
 	writerCtx, writerStop := context.WithCancel(context.Background())

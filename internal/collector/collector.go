@@ -39,6 +39,10 @@ type Collector struct {
 	sink   rawlog.Sink
 	shards []Shard
 
+	// OnReconnect is called after a shard reopens following an unplanned disconnect, once the
+	// new connection is open. Planned 23 h replacements overlap and do not call it.
+	OnReconnect func(Shard)
+
 	Reconnects atomic.Int64
 	Stalls     atomic.Int64
 	Messages   atomic.Int64
@@ -104,10 +108,21 @@ func (c *Collector) runShard(ctx context.Context, sh Shard) {
 	backoff := time.Second
 	var gen int
 	var cur *conn
+	var reconnected bool
 	for ctx.Err() == nil {
 		gen++
 		cur = c.start(ctx, sh, url, gen)
 		started := time.Now()
+		if reconnected && c.OnReconnect != nil {
+			go func(k *conn) {
+				select {
+				case <-k.opened:
+					c.OnReconnect(sh)
+				case <-k.done:
+				case <-ctx.Done():
+				}
+			}(cur)
+		}
 		for {
 			select {
 			case <-ctx.Done():
@@ -136,6 +151,7 @@ func (c *Collector) runShard(ctx context.Context, sh Shard) {
 			}
 		}
 	retry:
+		reconnected = true
 		if time.Since(started) > time.Minute {
 			backoff = time.Second
 		}
