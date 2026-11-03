@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wicker/wicker/internal/backfill"
 	"github.com/wicker/wicker/internal/collector"
 	"github.com/wicker/wicker/internal/config"
 	"github.com/wicker/wicker/internal/manifest"
@@ -107,9 +108,32 @@ func run(cfg *config.Config, instance string) error {
 	log.Printf("universe=%d quotes=%d depth=%v weight_limit=%d", len(uni.All), len(quotes), depth, uni.WeightPerMinLimit)
 
 	shards := collector.BuildShards(uni.All, quotes, depth, cfg.Collect.DepthSpeed, cfg.Collect.MaxStreamsPerWS)
-	col := collector.New(w, shards)
+	tap := backfill.NewTap(w)
+	col := collector.New(tap, shards)
 	col.OpenSpacing = time.Duration(cfg.Collect.OpenSpacingMS) * time.Millisecond
 	snap := snapshot.New(cfg.Snapshot, depth, w, uni.WeightPerMinLimit, &http.Client{Timeout: 15 * time.Second})
+	bf := backfill.New(tap, tap, &http.Client{Timeout: 20 * time.Second}, uni.WeightPerMinLimit, 0.10)
+	shardSyms := map[string][]string{}
+	for _, sh := range shards {
+		if !strings.HasPrefix(sh.Name, "trade") {
+			continue
+		}
+		for _, st := range sh.Streams {
+			shardSyms[sh.Name] = append(shardSyms[sh.Name], strings.ToUpper(strings.TrimSuffix(st, "@aggTrade")))
+		}
+	}
+	col.OnDisconnect = func(sh collector.Shard) uint64 {
+		if _, ok := shardSyms[sh.Name]; !ok {
+			return 0
+		}
+		return tap.Mark()
+	}
+	col.OnReconnectToken = func(sh collector.Shard, marker uint64) {
+		if syms, ok := shardSyms[sh.Name]; ok && marker != 0 {
+			log.Printf("trade shard %s reconnected, backfilling %d symbols", sh.Name, len(syms))
+			bf.RequestShardAfter(syms, marker)
+		}
+	}
 	col.OnOpen = ready.shardOpened
 	ready.expectShards(len(shards))
 	col.OnReconnect = func(sh collector.Shard) {
@@ -128,9 +152,10 @@ func run(cfg *config.Config, instance string) error {
 	go func() { defer writerDone.Done(); w.Run(writerCtx) }()
 
 	var prod sync.WaitGroup
-	prod.Add(2)
+	prod.Add(3)
 	go func() { defer prod.Done(); col.Run(ctx) }()
 	go func() { defer prod.Done(); snap.Run(ctx) }()
+	go func() { defer prod.Done(); bf.Run(ctx) }()
 
 	go serveMetrics(cfg.Collect.MetricsAddr, w, col, snap, ready, len(depth))
 	go sweepLoop(ctx, rawDir, register)

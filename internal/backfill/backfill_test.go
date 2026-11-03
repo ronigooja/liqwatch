@@ -145,3 +145,42 @@ func TestRateLimitRetry(t *testing.T) {
 		t.Fatalf("retry requests=%d waits=%v", len(d.requests), waits)
 	}
 }
+
+type errDoer struct{ calls int }
+
+func (d *errDoer) Do(*http.Request) (*http.Response, error) {
+	d.calls++
+	return nil, io.ErrUnexpectedEOF
+}
+
+func TestNetworkErrorsBackOffAndCountAgainstBudget(t *testing.T) {
+	tap := NewTap(nil)
+	tap.Write(rawlog.GroupTrade, trade(10))
+	d := &errDoer{}
+	b := New(tap, nil, d, 2400, 0.2)
+	var slept []time.Duration
+	b.sleep = func(_ context.Context, dur time.Duration) error { slept = append(slept, dur); return nil }
+	b.RequestShard([]string{"ENAUSDT"})
+	b.runRequest(context.Background(), <-b.requests)
+	if d.calls != maxPages {
+		t.Fatalf("calls = %d, want the page cap %d", d.calls, maxPages)
+	}
+	if len(slept) < maxPages-1 || slept[0] != time.Second || slept[1] <= slept[0] {
+		t.Fatalf("errors must back off exponentially, slept=%v", slept)
+	}
+	if len(b.usage) != maxPages {
+		t.Fatalf("failed requests must count against the weight budget, usage=%d", len(b.usage))
+	}
+}
+
+func TestMarkIsReleased(t *testing.T) {
+	tap := NewTap(nil)
+	tap.Write(rawlog.GroupTrade, trade(10))
+	b := New(tap, nil, &testDoer{responses: []response{{status: 200, body: "[]"}}}, 2400, 0.2)
+	b.sleep = func(context.Context, time.Duration) error { return nil }
+	b.RequestShard([]string{"ENAUSDT"})
+	b.runRequest(context.Background(), <-b.requests)
+	if len(tap.marks) != 0 || len(tap.starts) != 0 {
+		t.Fatalf("marker state leaked: %d %d", len(tap.marks), len(tap.starts))
+	}
+}

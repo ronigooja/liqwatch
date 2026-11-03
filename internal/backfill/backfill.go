@@ -115,6 +115,16 @@ func (t *Tap) FirstAfter(symbol string, marker uint64) (int64, bool) {
 	return id, seen
 }
 
+func (t *Tap) release(marker uint64) {
+	if marker == 0 {
+		return
+	}
+	t.mu.Lock()
+	delete(t.marks, marker)
+	delete(t.starts, marker)
+	t.mu.Unlock()
+}
+
 func (t *Tap) lastAt(symbol string, marker uint64) (int64, bool) {
 	t.mu.RLock()
 	id, ok := t.starts[marker][symbol]
@@ -197,6 +207,9 @@ func (b *Backfiller) runRequest(ctx context.Context, r request) {
 				if ctx.Err() != nil {
 					return
 				}
+				if e := b.sleep(ctx, retry); e != nil {
+					return
+				}
 				continue
 			}
 			b.write(symbol, from, start, status, body, end)
@@ -230,6 +243,7 @@ func (b *Backfiller) runRequest(ctx context.Context, r request) {
 			log.Printf("aggTrade backfill page cap reached: %s", symbol)
 		}
 	}
+	b.tap.release(r.marker)
 }
 
 func (b *Backfiller) fetch(ctx context.Context, symbol string, from int64) ([]byte, int, time.Time, time.Time, time.Duration, error) {
@@ -244,11 +258,13 @@ func (b *Backfiller) fetch(ctx context.Context, symbol string, from int64) ([]by
 	}
 	resp, err := b.doer.Do(req)
 	end := b.now()
+	b.mu.Lock()
+	b.usage = append(b.usage, start)
+	b.mu.Unlock()
 	if err != nil {
 		return nil, 0, start, end, b.nextBackoff(), err
 	}
 	b.mu.Lock()
-	b.usage = append(b.usage, start)
 	if v, e := strconv.Atoi(resp.Header.Get("X-MBX-USED-WEIGHT-1M")); e == nil {
 		b.headerUsed, b.headerAt = v, end
 	}

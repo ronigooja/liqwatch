@@ -42,6 +42,11 @@ type Collector struct {
 	// OnReconnect is called after a shard reopens following an unplanned disconnect, once the
 	// new connection is open. Planned 23 h replacements overlap and do not call it.
 	OnReconnect func(Shard)
+	// OnDisconnect is called right after an unplanned disconnect, before the shard reopens. The
+	// returned token is passed to OnReconnectToken once the new connection is open.
+	OnDisconnect func(Shard) uint64
+	// OnReconnectToken replaces OnReconnect when set and receives the OnDisconnect token.
+	OnReconnectToken func(Shard, uint64)
 	// OpenSpacing is the delay between starting consecutive shards; default 500 ms.
 	OpenSpacing time.Duration
 	// OnOpen is called every time a connection of a shard opens (first, reconnect or replacement).
@@ -113,19 +118,25 @@ func (c *Collector) runShard(ctx context.Context, sh Shard) {
 	var gen int
 	var cur *conn
 	var reconnected bool
+	var token uint64
 	for ctx.Err() == nil {
 		gen++
 		cur = c.start(ctx, sh, url, gen)
 		started := time.Now()
-		if reconnected && c.OnReconnect != nil {
-			go func(k *conn) {
+		if reconnected && (c.OnReconnect != nil || c.OnReconnectToken != nil) {
+			go func(k *conn, tok uint64) {
 				select {
 				case <-k.opened:
-					c.OnReconnect(sh)
+					if c.OnReconnect != nil {
+						c.OnReconnect(sh)
+					}
+					if c.OnReconnectToken != nil {
+						c.OnReconnectToken(sh, tok)
+					}
 				case <-k.done:
 				case <-ctx.Done():
 				}
-			}(cur)
+			}(cur, token)
 		}
 		for {
 			select {
@@ -156,6 +167,10 @@ func (c *Collector) runShard(ctx context.Context, sh Shard) {
 		}
 	retry:
 		reconnected = true
+		token = 0
+		if c.OnDisconnect != nil {
+			token = c.OnDisconnect(sh)
+		}
 		if time.Since(started) > time.Minute {
 			backoff = time.Second
 		}

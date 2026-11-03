@@ -69,3 +69,44 @@ func TestOnReconnectOnlyAfterUnplannedDrop(t *testing.T) {
 		t.Fatalf("server saw %d connections", conns.Load())
 	}
 }
+
+func TestTokenFlowOnDisconnect(t *testing.T) {
+	var conns atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		if conns.Add(1) == 1 {
+			ws.Close(websocket.StatusGoingAway, "drop")
+			return
+		}
+		defer ws.CloseNow()
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	base := "ws" + strings.TrimPrefix(srv.URL, "http") + "/?streams="
+	c := New(nopSink{}, []Shard{{Name: "trade00", Base: base, Streams: []string{"btcusdt@aggTrade"}}})
+	var disc atomic.Int32
+	got := make(chan uint64, 2)
+	c.OnDisconnect = func(Shard) uint64 { disc.Add(1); return 42 }
+	c.OnReconnectToken = func(_ Shard, tok uint64) { got <- tok }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { c.Run(ctx); close(done) }()
+	select {
+	case tok := <-got:
+		if tok != 42 {
+			t.Fatalf("token = %d, want the value returned by OnDisconnect", tok)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("OnReconnectToken not called")
+	}
+	cancel()
+	<-done
+	if disc.Load() != 1 {
+		t.Fatalf("OnDisconnect called %d times", disc.Load())
+	}
+}

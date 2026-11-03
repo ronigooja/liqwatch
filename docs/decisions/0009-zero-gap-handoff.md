@@ -21,7 +21,11 @@ Fields were checked against recorded data on 2026-11-04. Per symbol: `aggTrade` 
 - A restart for an upgrade lost seconds of data and started new `.rN` segments; depth needed up to 5 minutes for the next snapshot. Doubling connections for a short overlap removes that loss for planned work.
 - The futures docs state no per-IP connection cap or connection-attempt rate ([open-questions.md](../open-questions.md)). Handoff opens up to nine extra connections for a short time, so they are spaced and failures back off.
 
+## aggTrade backfill
+
+After an unplanned disconnect of a trade shard, the collector backfills each symbol of that shard over REST `GET /fapi/v1/aggTrades` from `lastSeenId + 1` until it meets the first id delivered by the new connection. Pages are written to the raw log as channel `aggTrade_backfill` with the request time and status. Facts [V, official, 2026-11-04]: request weight 20, `limit` max 1000, `fromId` inclusive ([source](https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Compressed-Aggregate-Trades-List)). Budget: 10% of the per-minute weight limit, backoff on 429/418, at most 20 pages per symbol per event. `bookTicker` has no replay endpoint and is not backfilled.
+
 ## Not covered
 
-- Crashes and network cuts still lose the time to reconnect. `bookTicker` has no replay; `aggTrade` can be backfilled over REST (separate work); depth recovers through the new snapshot.
+- Crashes and network cuts still lose the time to reconnect for `bookTicker`, `markPrice` and `forceOrder`; `aggTrade` is backfilled (above) and depth recovers through the new snapshot.
 - Whole-host failure. Always-on dual recording would cover more but doubles cloud storage (~36 GB/day); not chosen.
