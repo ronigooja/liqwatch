@@ -30,15 +30,18 @@ Checked on recorded data, 2026-11-06:
 | `snapshot` | `depth` | symbol | `{req_start_ns, req_end_ns, status, body:{lastUpdateId, bids, asks, E, T}}` |
 | `forceOrder_all` | `liq` | empty | `{stream, data:{E, o:{s, S, o, f, q, p, ap, X, l, z, T}}}` |
 | `bookTicker` | `quote` | symbol | `{stream, data:{u, s, b, B, a, A, T, E}}` |
+| `gap` | `gap` | empty | `{event:"conn_closed", cause:"reconnect", err, shard, streams}`; `conn` is the connection that ended, `rw` is when its end was noticed |
 
-Read from code, not yet seen in recorded data (no sample existed on 2026-11-06):
+The `gap` file group exists only for hours in which something happened, so most hours have no `gap` file. They are archived like the others and deleted locally after verification.
+
+Read from code, not yet seen in recorded data:
 
 | `ch` | File group | Payload `p` |
 |---|---|---|
-| `gap` | `gap` | `{event:"conn_closed", cause, err, shard, streams}` from [collector](../internal/collector/collector.go); `{event:"drop", channel, count, since_ns}` from [writer](../internal/rawlog/writer.go) |
-| `aggTrade_backfill` | `trade` | `{req_start_ns, req_end_ns, status, from_id, body:[aggTrade rows]}` from [backfill](../internal/backfill/backfill.go) |
+| `gap` (writer) | `gap` | `{event:"drop", channel, count, since_ns}` from [writer](../internal/rawlog/writer.go); no drop has happened yet |
+| `aggTrade_backfill` | `trade` | `{req_start_ns, req_end_ns, status, from_id, body:[aggTrade rows]}` from [backfill](../internal/backfill/backfill.go); sample lives in remote trade files |
 
-Treat these two as unverified until a sample is checked; then move them into the table above.
+Treat these as unverified until a sample is checked; then move them into the table above.
 
 ## Replay rules
 
@@ -48,7 +51,7 @@ Merging the raw log of one day into one stream:
 2. **Order.** Within one process, order by `(rm, wseq)`. Across processes `rm` is not comparable; use `rw` ([0009](decisions/0009-zero-gap-handoff.md)). Replay time is `rw`.
 3. **Duplicates.** Drop by the per-symbol keys in [0009](decisions/0009-zero-gap-handoff.md) (aggTrade `a`, bookTicker `u`, depth `(U,u)`, markPrice `E`+`s`, forceOrder `E`+`o.s`). Keep the earliest `rw` of each key.
 4. **Backfill.** Rows inside an `aggTrade_backfill` page become `aggTrade` events keyed by `a`, with replay time equal to the page's `req_end_ns` (when the data was actually known), flagged `backfilled`. If the live stream already delivered the same `a`, the live one wins.
-5. **Gaps.** `gap` records open an unavailable interval for the affected streams until the next message of that stream. `drop` records mark the stated channel as incomplete for the window. Labels must exclude or flag steps inside such intervals.
+5. **Gaps.** A `conn_closed` record carries no start or end time of the hole. Derive it per stream in `streams`: start = `rw` of the last message of that stream before the record, end = `rw` of the first message of that stream from a different `conn`. Unplanned only; a planned replacement overlaps and produces no `conn_closed`. `drop` records mark the stated channel as incomplete for the window `since_ns` to `rw`. Labels must exclude or flag steps inside such intervals. A trade-shard hole is closed by backfill (rule 4); `bookTicker`, `markPrice` and `forceOrder` holes stay.
 6. **Book.** `book_at` rebuilds from the latest `snapshot` plus `depth` diffs, per [p0-core-design.md](p0-core-design.md) Component 5. Depth exists for the depth symbols only.
 7. **Truncated tail.** A recovered `.part` file can end in a torn frame; the reader stops at the last complete line and reports it.
 
