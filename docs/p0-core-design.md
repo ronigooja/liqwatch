@@ -60,7 +60,7 @@ Record envelope (one record per message, one record per line):
 
 ## Component 8: Replay Engine
 
-- Input: raw log plus validation log. Output: a stream of events ordered by `(rm, wseq)`, with duplicates from overlapping connections removed.
+- Input: raw log plus validation log. Output: a stream of events in causal order with duplicates removed. Merge, ordering, de-duplication, backfill and gap rules, including the two collector slots: [p1-data-pipeline.md](p1-data-pipeline.md) Replay rules. Within one process the order is `(rm, wseq)`; across processes it is `rw`.
 - Causality: the stream carries a replay clock equal to the event's receive time. Consumers (features, simulator) see only events at or before the clock; there is no random access to future events.
 - `book_at(symbol, t)`: rebuilt book as of receive time t, built from the nearest earlier snapshot and diffs; returns "unavailable" inside unavailable intervals.
 - Latency injection: replay can shift event delivery by a configured delay, so simulated order latency and data latency are modeled in one place ([trading-and-risk.md](trading-and-risk.md)).
