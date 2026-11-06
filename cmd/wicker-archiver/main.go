@@ -141,7 +141,7 @@ func archiveOne(ctx context.Context, cfg config.Config, store manifest.Store, da
 	m := meta{Size: n, SHA256: sum, Chunks: chunks}
 	body, _ := json.Marshal(m)
 	metaName := filepath.ToSlash(filepath.Join(remoteDir, base+".meta.json"))
-	if err = putBytes(ctx, dav, metaName, body); err != nil {
+	if err = putVerified(ctx, dav, metaName, body); err != nil {
 		return err
 	}
 	if s, ok := store.(*manifest.SQLiteStore); ok {
@@ -158,6 +158,30 @@ func archiveOne(ctx context.Context, cfg config.Config, store manifest.Store, da
 func putBytes(ctx context.Context, dav *webdav.Client, name string, b []byte) error {
 	return dav.Put(ctx, name, bytes.NewReader(b), int64(len(b)))
 }
+
+// putVerified uploads small metadata and reads it back; the storage once accepted a PUT and kept
+// a zero-byte file, which the size check on data chunks does not cover.
+func putVerified(ctx context.Context, dav *webdav.Client, name string, b []byte) error {
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err = putBytes(ctx, dav, name, b); err != nil {
+			continue
+		}
+		var got []byte
+		var r io.ReadCloser
+		if r, _, err = dav.Get(ctx, name); err != nil {
+			continue
+		}
+		got, err = io.ReadAll(r)
+		r.Close()
+		if err == nil && bytes.Equal(got, b) {
+			return nil
+		}
+		err = fmt.Errorf("metadata read-back mismatch for %s (%d of %d bytes)", name, len(got), len(b))
+	}
+	return err
+}
+
 func pathDate(p string) string {
 	parts := strings.Split(filepath.ToSlash(p), "/")
 	for _, x := range parts {
@@ -199,9 +223,11 @@ func verifyOne(ctx context.Context, cfg config.Config, dav *webdav.Client, f man
 	if f.RemotePath == "" {
 		f.RemotePath = filepath.ToSlash(filepath.Join("raw", pathDate(f.Path), filepath.Base(f.Path)))
 	}
-	// Metadata is not needed for verification because the manifest records the local size and chunk count.
 	if f.ChunkCount <= 0 {
 		return errors.New("missing chunk count")
+	}
+	if err := ensureMeta(ctx, dav, f); err != nil {
+		return err
 	}
 	chunkSize := int64(cfg.Archive.ChunkMB) * 1024 * 1024
 	h := sha256.New()
@@ -236,6 +262,28 @@ func verifyOne(ctx context.Context, cfg config.Config, dav *webdav.Client, f man
 		return errors.New("remote verification checksum mismatch")
 	}
 	return nil
+}
+
+// ensureMeta makes sure the .meta.json next to the chunks is readable and matches the manifest. The
+// data chunks are the truth, so a bad metadata object is rewritten from the manifest.
+func ensureMeta(ctx context.Context, dav *webdav.Client, f manifest.File) error {
+	if f.SHA256 == "" {
+		return nil
+	}
+	name := f.RemotePath + ".meta.json"
+	chunks := make([]string, f.ChunkCount)
+	for i := range chunks {
+		chunks[i] = fmt.Sprintf("%s.part%04d", filepath.Base(f.RemotePath), i)
+	}
+	want, _ := json.Marshal(meta{Size: f.Bytes, SHA256: f.SHA256, Chunks: chunks})
+	if r, _, err := dav.Get(ctx, name); err == nil {
+		got, _ := io.ReadAll(r)
+		r.Close()
+		if bytes.Equal(got, want) {
+			return nil
+		}
+	}
+	return putVerified(ctx, dav, name, want)
 }
 
 func deleteFiles(cfg config.Config, store manifest.Store) error {
