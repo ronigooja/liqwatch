@@ -59,7 +59,7 @@ class Validator:
             self.states[sym] = dict(book=None, last=None, first=False, buffer=[], history=deque(),
                                     pending=[], unavailable=rw, diffs=0, breaks=0,
                                     verifies=0, passed=0, max_mismatch=0, unavailable_ns=0,
-                                    last_rw=rw, unverifiable=0)
+                                    last_rw=rw, unverifiable=0, inside=0, inside_passed=0)
         return self.states[sym]
 
     def _emit(self, sym, kind, start, end=None, **details):
@@ -134,23 +134,34 @@ class Validator:
                 continue
             book = s['book']
             bids, asks = book.bids.copy(), book.asks.copy()
+            after = None
             exact = target == s['last']
             for U, u, undo, _ in reversed(s['history']):
                 if u <= target:
                     exact = u == target
                     break
+                inside = U <= target < u
+                if inside:
+                    after = ({p for k, p, _ in undo if k == 'b'}, {p for k, p, _ in undo if k == 'a'})
                 for key, price, old in reversed(undo):
                     side = bids if key == 'b' else asks
                     if old is None:
                         side.pop(price, None)
                     else:
                         side[price] = old
-                if U <= target < u:
+                if inside:
                     break
             if not exact:
                 s['unverifiable'] += 1
+                if after is None:
+                    for n in (20, 100):
+                        self._emit(sym, 'verify', rw, n=n, mismatch_levels=None, **{'pass': None}, reason='update_id_not_observed')
+                    continue
                 for n in (20, 100):
-                    self._emit(sym, 'verify', rw, n=n, mismatch_levels=None, **{'pass': None}, reason='update_id_not_observed')
+                    mismatch = self._between(body, (bids, asks), after, n)
+                    self._emit(sym, 'verify', rw, n=n, mismatch_levels=mismatch, **{'pass': mismatch == 0}, reason='inside_diff')
+                    s['inside'] += 1
+                    s['inside_passed'] += mismatch == 0
                 continue
             expected = OrderBook(body)
             actual = (sorted(bids.items(), reverse=True), sorted(asks.items()))
@@ -163,6 +174,27 @@ class Validator:
                 s['passed'] += mismatch == 0
                 s['max_mismatch'] = max(s['max_mismatch'], mismatch)
         s['pending'] = remaining
+
+    @staticmethod
+    def _between(body, before, touched, n):
+        """Snapshot id L lies inside one diff [U, u], so the snapshot is a state partway through that diff.
+        Levels the diff changes may hold any value; every other level among the snapshot's top n per side
+        (and every non-empty level of the book inside that price range) must match the book exactly.
+        Returns the number of untouched levels that differ. Cannot detect an error on a touched level."""
+        bad = 0
+        for side, key, rev in ((0, 'bids', True), (1, 'asks', False)):
+            snap = {float(p): float(q) for p, q in body[key] if float(q)}
+            top = sorted(snap, reverse=rev)[:n]
+            if not top:
+                continue
+            lo, hi = min(top), max(top)
+            keep = {p for p in top} | {p for p in before[side] if lo <= p <= hi}
+            for price in keep:
+                if price in touched[side]:
+                    continue
+                if snap.get(price, 0.0) != before[side].get(price, 0.0):
+                    bad += 1
+        return bad
 
     def finish(self):
         for sym, s in self.states.items():
@@ -178,7 +210,7 @@ class Validator:
         return self.summary()
 
     def summary(self):
-        return {sym: {k: s[k] for k in ('diffs', 'breaks', 'verifies', 'passed', 'max_mismatch', 'unavailable_ns', 'unverifiable')}
+        return {sym: {k: s[k] for k in ('diffs', 'breaks', 'verifies', 'passed', 'max_mismatch', 'unavailable_ns', 'unverifiable', 'inside', 'inside_passed')}
                 for sym, s in self.states.items()}
 
     def write_parquet(self, path):

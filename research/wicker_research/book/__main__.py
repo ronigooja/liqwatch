@@ -22,7 +22,8 @@ def main():
         rate = f"{s['passed'] / s['verifies']:.1%}" if s['verifies'] else 'n/a'
         print(f"{sym}: diffs={s['diffs']} seq_breaks={s['breaks']} verifies={s['verifies']} "
               f"pass_rate={rate} max_mismatch={s['max_mismatch']} "
-              f"unavailable_seconds={s['unavailable_ns'] / 1e9:.3f} unverifiable_snapshots={s['unverifiable']}")
+              f"unavailable_seconds={s['unavailable_ns'] / 1e9:.3f} unverifiable_snapshots={s['unverifiable']} "
+              f"inside_diff_checks={s['inside']} inside_diff_passed={s['inside_passed']}")
 
 
 if __name__ == '__main__':

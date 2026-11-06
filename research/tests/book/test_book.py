@@ -58,6 +58,24 @@ def test_book_removal_missing_and_imbalance():
     assert b.imbalance(1) == 0
 
 
+def test_snapshot_inside_a_diff_is_checked_between_before_and_after():
+    v = Validator()
+    v.feed(snap(5, [['10', '1'], ['8', '5']]))
+    v.feed(diff(5, 10, 4, [['10', '3'], ['9', '1']]))
+    v.feed(snap(8, [['10', '2'], ['9', '1'], ['8', '5']]))
+    v.feed(diff(11, 12, 10, [['9', '2']]))
+    v.finish()
+    r = v.summary()['X']
+    assert r['inside'] == 2 and r['inside_passed'] == 2
+    w = Validator()
+    w.feed(snap(5, [['10', '1'], ['8', '5']]))
+    w.feed(diff(5, 10, 4, [['10', '3'], ['9', '1']]))
+    w.feed(snap(8, [['10', '3'], ['9', '1'], ['8', '9']]))
+    w.feed(diff(11, 12, 10, [['9', '2']]))
+    w.finish()
+    assert w.summary()['X']['inside_passed'] == 0
+
+
 @pytest.mark.real
 def test_real_sample():
     path = '/tmp/wicker-sample/depth-2026110617.b.jsonl.zst'
