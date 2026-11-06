@@ -11,6 +11,8 @@ Durations are rough estimates; replace with measured values.
 | P4 Simulated and minimal-capital trading | Real order path, latency and fill quality measurement | Live-vs-shadow gap bounded; risk controls trigger as designed | staged |
 | P5 Scale and iterate | Gradual capital increase; add feature layers by ablation | Each layer shows independent out-of-sample gain | ongoing |
 
+Status 2026-11-07: P0 recording is running and in its observation period (see [p0-rollout.md](p0-rollout.md)). P1 has started by owner decision: code for replay, validation, fetch, labels and the evaluation framework is written in Python under `research/` ([language rule](p1-data-pipeline.md)). Recording stays unchanged.
+
 Data chain from raw log to training, with build order: [p1-data-pipeline.md](p1-data-pipeline.md).
 
 P0 runs in parallel with: event statistics from tier A data, fill-simulator design, label ambiguity rules.
