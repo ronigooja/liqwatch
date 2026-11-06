@@ -113,7 +113,7 @@ class Client:
                         if out.tell() - offset != size:
                             raise requests.ConnectionError("incomplete chunk")
                         break
-                    except (requests.Timeout, requests.ConnectionError, requests.ChunkedEncodingError):
+                    except (requests.Timeout, requests.ConnectionError, requests.exceptions.ChunkedEncodingError):
                         out.seek(offset)
                         out.truncate()
                         if attempt == self.retries - 1:
