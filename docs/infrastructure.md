@@ -8,7 +8,7 @@ Hosts and storage. Credentials are never written in this repo. Provider choice i
 |---|---|---|---|
 | Recorder (P0) | 136.0.11.159, Japan, hostname EV02OK | 2 vCPU, ~3.9 GB RAM, 30 GB disk (~25 GB free), Debian 12, 2 GB swap | Reinstalled clean by the owner on 2026-11-01 and confirmed as the recorder. Still to do: timezone is Asia/Shanghai, uses systemd-timesyncd (no chrony), open-file limit 1024, no Go. Docker, python3, curl, zstd present |
 | Storage gateway | 45.45.217.235 | 2 vCPU, ~3.9 GB RAM, 19 GB disk (~6 GB free), Debian 12 | Runs OpenList (127.0.0.1:5244, behind nginx), Docker services (including a MySQL port), and other processes; shared host |
-| Training (later) | Vultr, on demand | TBD | Large-scale training only |
+| Processing and training (later) | Vultr, on demand; owner agreed 2026-11-07, not yet opened | TBD, CPU only | Full conversion to Parquet, labels, LightGBM. Needed once the Mac small-sample pipeline works. Until then the Mac runs small samples (1-2 hours of data) |
 
 Network from the recorder to Binance (3 curl probes on 2026-11-02, not a benchmark): `fapi.binance.com` TCP connect 20–49 ms, TLS done 40–74 ms; `fstream.binance.com` TCP connect 11–13 ms, TLS done 33–37 ms. Proper latency measurement is part of the P0 trial ([data-recording.md](data-recording.md)).
 

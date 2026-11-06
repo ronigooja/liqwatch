@@ -55,21 +55,25 @@ Merging the raw log of one day into one stream:
 6. **Book.** `book_at` rebuilds from the latest `snapshot` plus `depth` diffs, per [p0-core-design.md](p0-core-design.md) Component 5. Depth exists for the depth symbols only.
 7. **Truncated tail.** A recovered `.part` file can end in a torn frame; the reader stops at the last complete line and reports it.
 
-## Columnar layout (proposal, not yet built)
+## Columnar layout (frozen 2026-11-07)
 
-One directory per stream type, partitioned by UTC date and symbol, zstd Parquet, written by the conversion stage from replay output (so duplicates and ordering are already resolved).
+One directory per dataset, partitioned by UTC date and symbol, zstd Parquet, written from replay output (duplicates and order already resolved). Raw log stays the only source of truth; Parquet is rebuildable, so research files use floats.
 
 | Dataset | Rows | Columns |
 |---|---|---|
 | `trades/date=/sym=` | one aggTrade | `rw, T, a, price, qty, buyer_is_maker, backfilled` |
 | `mark/date=/sym=` | one markPrice entry | `rw, E, mark, index, funding_rate, next_funding_T` |
 | `quotes/date=/sym=` | one bookTicker | `rw, T, u, bid, bid_qty, ask, ask_qty` |
-| `depth/date=/sym=` | one depth diff | `rw, E, U, u, pu, bids, asks` |
+| `depth/date=/sym=` | one depth diff | `rw, E, U, u, pu, bids, asks` (lists of `[price, qty]`) |
 | `book_snapshots/date=/sym=` | one snapshot | `rw, lastUpdateId, bids, asks` |
 | `liquidations/date=` | one forceOrder | `rw, E, sym, side, price, avg_price, qty, filled_qty, status` |
 | `quality/date=` | one interval | `stream, sym, start_rw, end_rw, kind` (`gap`, `drop`, `seq_break`, `unavailable`) |
 
-Prices and quantities are kept as decimal strings or scaled integers, not floats, until features are computed. Every file records the parser version ([p0-core-design.md](p0-core-design.md) Determinism). Open: whether to store `depth` diffs or only periodic book checkpoints; decide after measuring size on real data.
+Rules: `price`, `qty`, `bid`, `ask`, `mark`, `index`, `funding_rate` are float64. `rw` is int64 nanoseconds and the sort key of every dataset. `T`, `E` are int64 milliseconds as sent by the exchange. Depth keeps every diff plus snapshots, so a book can be rebuilt exactly at any time; size is re-evaluated after the first real conversion. Each file records the parser version in its Parquet metadata ([p0-core-design.md](p0-core-design.md) Determinism).
+
+## Language rule
+
+Code that is still being debugged is written in Python under `research/`. Once its output format and behavior are stable it may be ported to Go; the Python version then becomes the reference for comparison tests. Recording and online paths stay Go ([architecture.md](architecture.md)).
 
 ## Build order
 
