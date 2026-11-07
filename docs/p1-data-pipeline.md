@@ -8,10 +8,10 @@ One page for the whole chain after recording. Recording itself: [p0-core-design.
 |---|---|---|---|---|---|
 | 1 | Record | Binance streams | Raw log `raw/<date>/<group>-<YYYYMMDDHH>[.<slot>][.rN].jsonl.zst` | 2, 3, 4 | done |
 | 2 | Archive | Raw log | Remote copy, verified, local delete after 6 h | 6, 7 | done |
-| 3 | Replay | Raw log, validation log | Event stream in causal order; `book_at(symbol, t)` | 8 | todo |
-| 4 | Validate | Raw log | Validation log: sequence breaks, snapshot mismatches, unavailable intervals | 5 | todo |
-| 5 | Convert | Replay output | Columnar files for training (layout below) | 6 | todo |
-| 6 | Label | Columnar files | Four label tasks per time step | 12, 13 | todo |
+| 3 | Replay | Raw log, validation log | Event stream in causal order; `python -m wicker_research.replay`. `book_at` not yet built | 8 | partly done |
+| 4 | Validate | Raw log | Validation log: sequence breaks, snapshot mismatches, unavailable intervals; `python -m wicker_research.book` | 5 | done (15 depth symbols, 1 h) |
+| 5 | Convert | Replay output | Columnar files for training (layout below); `python -m wicker_research.convert` | 6 | done (checked on 1 h sample; trades match raw exactly) |
+| 6 | Label | Trades | Four label tasks per time step; `python -m wicker_research.labels`. Reads raw trades, not yet the Parquet files | 12, 13 | first version |
 | 7 | Train and evaluate | Features, labels | Metrics and calibration | 15, P2 | todo |
 
 Rule that every stage keeps: a value at time t may use only messages with receive time at or before t ([architecture.md](architecture.md) Invariants). Replay enforces it; later stages must not bypass replay.
@@ -74,6 +74,15 @@ Rules: `price`, `qty`, `bid`, `ask`, `mark`, `index`, `funding_rate` are float64
 ## Language rule
 
 Code that is still being debugged is written in Python under `research/`. Once its output format and behavior are stable it may be ported to Go; the Python version then becomes the reference for comparison tests. Recording and online paths stay Go ([architecture.md](architecture.md)).
+
+## Measured on the 2026-11-06 17:00 UTC sample (1 hour)
+
+| Input | Rows | Parquet size | Time | Peak memory |
+|---|---|---|---|---|
+| trade + liq | 2.0 M trades, 3.5 M mark, 1.7 k liquidations | 99 MB | 49 s | 2.1 GB |
+| depth | 279 k diffs, 179 snapshots | 90 MB | 19 s | 3.6 GB |
+
+The quote file (530 MB compressed) is not yet converted. Depth is the largest Parquet per row; revisit storing every diff once full days are converted.
 
 ## Build order
 
