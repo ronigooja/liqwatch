@@ -54,7 +54,7 @@ Per simulated trade: signal time, side, requested size, fill price, filled size,
 
 ## Build order
 
-1. Market-order walk on `book_at` with latency and taker fee (needs replay `book_at`, not yet built).
+1. Market-order walk on `book_at` (built: `BookView.walk`) with latency and taker fee.
 2. Limit-order queue model, both bounds.
 3. Stop orders on mark price.
 4. Sensitivity runner over the grid above and the output table.
