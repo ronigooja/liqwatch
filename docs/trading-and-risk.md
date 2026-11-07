@@ -11,6 +11,8 @@
 
 ## Fill simulator (built in P1)
 
+Design, measured inputs and parameter grid: [fill-simulator.md](fill-simulator.md).
+
 - Walk the replayed book for market orders.
 - Add order latency; start with 200 ms to 1 s and run sensitivity analysis.
 - Limit orders: simulate queue position and partial fills; never assume a resting order fills at the touch price.

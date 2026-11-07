@@ -28,7 +28,7 @@ Flow: 1→2→4, 3→4, 4→5, 4→6→7, 6→8, {2,3,4,5}→9→10.
 | 13 | Event Labeler | k·σ events; ambiguity rule ([labels-and-evaluation.md](labels-and-evaluation.md)) |
 | 14 | Event Catalog | Event store with per-tier and per-liquidity-band statistics |
 | 15 | Baseline Evaluator | Conditional-frequency baseline and evaluation framework |
-| 16 | Fill Simulator | Book-walk fills, latency, limit-order queue, fees ([trading-and-risk.md](trading-and-risk.md)) |
+| 16 | Fill Simulator | Book-walk fills, latency, limit-order queue, fees ([fill-simulator.md](fill-simulator.md)) |
 
 ## P2–P4 (design after P1 results)
 
