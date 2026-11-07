@@ -105,7 +105,12 @@ class SymbolBooks:
         self.first = True
         self.at = body['rw'][snap_i]
         self.broken_since = None
-        self.pos = bisect.bisect_left(self.diff_rw, self.at)
+        # The diff that contains the snapshot's update id may have been received before the snapshot itself,
+        # so start at the first diff with u >= lastUpdateId, not at the first diff received afterwards.
+        back = bisect.bisect_left(self.diff_rw, self.at)
+        self.pos = back
+        while self.pos > 0 and self.diffs['u'][self.pos - 1] >= self.last:
+            self.pos -= 1
 
     def _apply_until(self, t):
         d = self.diffs
@@ -115,12 +120,39 @@ class SymbolBooks:
             self.pos += 1
             if self.first and u < self.last:
                 continue
-            if (self.first and not U <= self.last <= u) or (not self.first and pu != self.last):
+            joins = (U <= self.last <= u) or pu == self.last
+            if (self.first and not joins) or (not self.first and pu != self.last):
                 self.book = None
                 self.broken_since = d['rw'][i]
                 return
             self.book.apply({'b': d['bids'][i], 'a': d['asks'][i]})
             self.last, self.first, self.at = u, False, d['rw'][i]
+
+    def book_at_update(self, symbol_update_id):
+        """Book exactly at an update id, for verification: the state after the last diff with u <= id.
+        Returns None if the id falls inside a diff (cannot be reached exactly)."""
+        k = bisect.bisect_right(self.snaps['lastUpdateId'], symbol_update_id) - 1
+        ids = self.snaps['lastUpdateId']
+        order = sorted(range(len(ids)), key=lambda i: self.snaps['rw'][i])
+        starts = [i for i in order if ids[i] <= symbol_update_id]
+        if not starts:
+            return None
+        self._reset()
+        self._start_from(starts[-1])
+        d = self.diffs
+        while self.pos < len(self.diff_rw) and d['u'][self.pos] <= symbol_update_id:
+            i = self.pos
+            self.pos += 1
+            if self.first and d['u'][i] < self.last:
+                continue
+            if (self.first and not (d['U'][i] <= self.last <= d['u'][i] or d['pu'][i] == self.last)) or (not self.first and d['pu'][i] != self.last):
+                return None
+            self.book.apply({'b': d['bids'][i], 'a': d['asks'][i]})
+            self.last, self.first, self.at = d['u'][i], False, d['rw'][i]
+        if self.last != symbol_update_id and self.pos < len(self.diff_rw) and d['U'][self.pos] <= symbol_update_id < d['u'][self.pos]:
+            return None
+        bids, asks = self.book.top_n(10 ** 9)
+        return BookView(self.at or 0, self.symbol, bids, asks, self.last)
 
     def book_at(self, t):
         """BookView at receive time t, or None when unavailable.

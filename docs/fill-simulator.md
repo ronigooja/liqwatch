@@ -52,11 +52,19 @@ Per simulated trade: signal time, side, requested size, fill price, filled size,
 | Are 1000 snapshot levels enough for majors? | Level cover in bp above | Limit sizes on majors, no recording change needed |
 | Is cancel behavior needed? | Order-level data is not available from Binance | Not recorded; use the two queue bounds |
 
-## Build order
+## Status
 
-1. Market-order walk on `book_at` (built: `BookView.walk`) with latency and taker fee.
+Built in `research/wicker_research/fillsim`: market-order walk, limit orders with both queue bounds, stops on mark price, funding, round trips with exit retries (a failed exit is reported as `exit_failed`, never given a price), and the grid runner. Tests use hand-computed examples, including that nothing reads the book before `t_s + L`.
+
+Sanity check on the 1 h sample, random entry times (no edge), 5 bp taker fee each way, 0.2 s latency, 10 s hold: BTCUSDT net about -9.9 bp at every size up to 20 k USD (fees only); FLOCKUSDT -15.5 bp at 100 USD, -23.5 bp at 1 k, -35 bp at 5 k, -72 bp at 20 k; XANUSDT -22 bp at 100 USD, -31 bp at 1 k, -65 bp at 20 k. Latency 0.2 s versus 1 s changes little at random times; it matters when the signal is a fast move. The cost of simply trading a small coin is therefore 15 to 70 bp per round trip before any edge.
+
+Open: the 10 bp impact threshold flags nearly every small-coin trade above 1 k USD, so those results exclude our own impact; limit-order results depend on the queue bound and have not been checked against real fills.
+
+## Build order (done in this order)
+
+1. Market-order walk on `book_at` with latency and taker fee.
 2. Limit-order queue model, both bounds.
 3. Stop orders on mark price.
-4. Sensitivity runner over the grid above and the output table.
+4. Sensitivity runner over the grid and the output table.
 
 Tests: hand-computed walks on tiny books, a queue example with and without cancels, rejection when the book is too shallow, and a check that no result uses the book before `t_s + L`.

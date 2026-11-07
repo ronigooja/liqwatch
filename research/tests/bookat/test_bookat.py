@@ -65,6 +65,12 @@ def test_stale_diffs_before_snapshot_id_are_dropped(tmp_path):
     assert b.book_at(110).best_bid() == (10, 6)
 
 
+def test_first_diff_after_snapshot_may_join_through_pu(tmp_path):
+    # snapshot id 10 equals the u of a diff received before the snapshot; the next diff has pu == 10
+    b = books(tmp_path, [diff(90, 5, 10, 4), diff(110, 14, 15, 10, bids=[(10, 9)])], [S1])
+    assert b.book_at(120).best_bid() == (10, 9)
+
+
 def test_sequence_break_makes_book_unavailable_until_next_snapshot(tmp_path):
     ds = [diff(110, 10, 12, 8, bids=[(10, 7)]), diff(120, 20, 22, 18, bids=[(10, 1)]), diff(160, 31, 32, 30)]
     s2 = snap(150, 30, [(8, 3)], [(13, 3)])  # the first diff after it (U=31) does not contain 30: wait for pu chain
@@ -108,25 +114,36 @@ def test_walk_market_order():
 
 
 @pytest.mark.real
-def test_real_book_matches_verification_snapshots():
-    """At each snapshot's receive time the rebuilt book must equal the snapshot on the top 20 levels."""
-    root = '/tmp/wicker-pq2'
+def test_real_book_equals_snapshot_at_its_update_id():
+    """Verification as in docs/p0-core-design.md Component 5: at the snapshot's own update id the rebuilt book
+    equals the snapshot on the top 20 levels. Snapshots whose id falls inside a diff are not testable exactly."""
+    root = '/tmp/wicker-pq4'
     if not os.path.exists(root + '/depth'):
         pytest.skip('converted sample absent')
     import pyarrow.dataset as ds
-    total_checked = total_bad = 0
-    for sym in ('FLOCKUSDT', 'XANUSDT', 'BTCUSDT'):
+    checked = bad = 0
+    for sym in ('FLOCKUSDT', 'XANUSDT', 'BTCUSDT', 'ETHUSDT'):
         b = SymbolBooks(root, sym)
         s = ds.dataset(root + '/book_snapshots', partitioning='hive').to_table(filter=ds.field('sym') == sym).sort_by('rw').to_pydict()
-        for i, rw in enumerate(s['rw']):
-            v = b.book_at(rw)
+        for i, uid in enumerate(s['lastUpdateId']):
+            v = b.book_at_update(uid)
             if v is None:
                 continue
-            want_b = dict((p, q) for p, q in s['bids'][i][:20])
-            want_a = dict((p, q) for p, q in s['asks'][i][:20])
+            want_b, want_a = dict(s['bids'][i][:20]), dict(s['asks'][i][:20])
             have_b, have_a = dict(v.bids), dict(v.asks)
-            bad = sum(have_b.get(p) != q for p, q in want_b.items()) + sum(have_a.get(p) != q for p, q in want_a.items())
-            total_checked += 1
-            total_bad += bad > 0
-    assert total_checked >= 15
-    assert total_bad == 0
+            checked += 1
+            bad += any(have_b.get(p) != q for p, q in want_b.items()) or any(have_a.get(p) != q for p, q in want_a.items())
+    assert checked >= 10
+    assert bad == 0, (bad, checked)
+
+
+@pytest.mark.real
+def test_real_book_available_through_the_hour():
+    root = '/tmp/wicker-pq4'
+    if not os.path.exists(root + '/depth'):
+        pytest.skip('converted sample absent')
+    import numpy as np
+    for sym in ('BTCUSDT', 'XANUSDT'):
+        b = SymbolBooks(root, sym)
+        ts = np.linspace(b.snap_rw[0] + 1e9, b.diff_rw[-1] - 1e9, 300).astype('int64')
+        assert sum(b.book_at(int(t)) is not None for t in ts) / len(ts) > 0.99

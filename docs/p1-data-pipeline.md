@@ -90,4 +90,4 @@ The quote file (530 MB compressed) is not yet converted. Depth is the largest Pa
 2. Validator and `quality` dataset.
 3. Conversion to the columnar layout.
 4. Volatility estimator, labeler, baseline evaluator (components 12, 13, 15).
-5. Fill simulator (component 16): design done in [fill-simulator.md](fill-simulator.md); it found no needed change to the record format. `book_at` is built.
+5. Fill simulator (component 16): design done in [fill-simulator.md](fill-simulator.md); it found no needed change to the record format. `book_at` and the simulator are built (`wicker_research.fillsim`).
