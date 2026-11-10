@@ -14,13 +14,15 @@ For symbol S, time t, direction d (push up or down) and position size N (USD): w
 | Mark price, funding | `mark` dataset | Recorded |
 | Trades | `trades` dataset | Recorded, all symbols |
 | Liquidations | `liquidations` dataset | Recorded; lower bound only, per symbol the stream shows the latest order within 1000 ms |
-| Open interest | none | Not recorded. Needs a periodic REST pull; add only after the open-question check below |
-| Leverage brackets and maintenance margin | exchange REST | Unverified, not recorded |
+| Open interest | `/fapi/v1/openInterest` (public, current) and `openInterestHist` (public, 5 m periods) | Verified usable, not yet recorded. Needs a periodic pull added to the recorder or a separate poller |
+| Index composition and weights | `/fapi/v1/constituents` (public) | Verified usable, not recorded. Weights change, so sample periodically |
+| Index price | `/fapi/v1/premiumIndex` | Verified usable, not recorded |
+| Leverage brackets and maintenance margin | `/fapi/v1/leverageBracket` | Needs a signed key (401 unsigned). Until then assume a bracket table as a parameter |
 
 ## Quantities (each defined once)
 
 1. **Liquidation map** `Q_d(P)`: estimated notional that is liquidated when mark price crosses P in direction d. Built from recent trade flow (where positions were likely opened, volume-weighted), an assumed leverage distribution, and maintenance margin. Total scale comes from open interest when available, otherwise from calibration. Every parameter is an assumption until calibrated against recorded liquidations.
-2. **Push cost** `C_d(P, N)`: taker fees plus book-walk slippage to reach the level where mark price would be P, using the contract book, plus the cost of unwinding. Depends on how mark price is formed (open question 1); if the index dominates, a contract-only push does not move mark and `C` is not defined by the contract book alone.
+2. **Push cost** `C_d(P, N)`: taker fees plus book-walk slippage to move the *contract* price to the level that moves *mark price* to P, plus the cost of unwinding. Mark price is the median of Price 1 (index with funding adjustment), Price 2 (index plus 1-minute average basis) and the contract price ([verified](open-questions.md)). Consequence: a contract-only push moves mark price only if it moves the median, so the push must move the contract price past both index-based prices; the index is a spot-venue average and the contract push does not move it. Where the index has no Binance venue (e.g. FLOCKUSDT), the actor would also have to move spot elsewhere. `C` is therefore model-dependent; the first step is to test on recorded data how far mark price follows contract price during spikes.
 3. **Forced flow** `F_d(P)` = `Q_d(P)` arriving as market orders into the book at P. Price after the flow `P_after` comes from walking the thinned book with `F`.
 4. **Gain** `G` = actor inventory marked from P to `P_after`, minus unwind slippage, funding and failure cost. Inventory is limited to N.
 5. **Net and ratio**: `G - C` and `G / C`, reported with N.
@@ -35,10 +37,14 @@ Fill and walk code is reused from [fill-simulator.md](fill-simulator.md).
 
 ## Open questions (to verify before use)
 
-1. How the mark price is computed (index weighting, which venues, smoothing) and whether Binance contract trading alone can move it.
-2. Which price triggers liquidation (mark price, per Binance docs?) and how maintenance margin and brackets are defined.
-3. Whether `GET /fapi/v1/openInterest` and leverage-bracket endpoints exist as expected, their weights and update frequency.
-4. Insurance fund and auto-deleveraging behavior at the sizes seen.
+Settled (see Verified in [open-questions.md](open-questions.md)): mark price formula, mark price as the liquidation trigger, public open-interest and index endpoints, insurance fund and ADL outline.
+
+Still open:
+1. How far mark price follows the contract price during spikes: measure on recorded `mark` and `trades` (decides whether `C` is defined by the contract book).
+2. The definition of "Contract Price" in the median.
+3. Maintenance margin tiers and leverage brackets (signed endpoint, or a parameter table).
+4. Liquidation clearance fee rate and ADL ranking details.
+5. Request weights of the open-interest and index endpoints, and the polling interval.
 
 ## Output and display
 
@@ -55,7 +61,7 @@ Python under `research/` first; Go after the formats are frozen and results are 
 
 ## Build order
 
-1. Verify the open questions above.
+1. Measure mark-price versus contract-price behavior on recorded data (open question 1); settle the remaining open questions.
 2. Liquidation map from trades and liquidations; calibration on available days.
 3. Push cost and forced-flow walk on `book_at`.
 4. Backtest against the baseline, report with N.
