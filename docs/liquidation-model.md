@@ -29,6 +29,20 @@ For symbol S, time t, direction d (push up or down) and position size N (USD): w
 
 Fill and walk code is reused from [fill-simulator.md](fill-simulator.md).
 
+## Venue adapter
+
+Scope now: Binance only. The core (quantities above, backtest, dashboard) reads only the unified inputs: order book, trades, mark price, liquidations, open interest, index price and constituents. An adapter supplies what differs by venue:
+
+- mark-price formula and its inputs;
+- the price that triggers liquidation;
+- maintenance margin and leverage brackets;
+- insurance fund and auto-deleveraging rules;
+- endpoints, field names and fee rates.
+
+The Binance values are defined once, in the Verified table of [open-questions.md](open-questions.md). In code, `research/` holds one adapter interface with Binance as the only implementation. Existing Parquet data is Binance data; a new venue gets its own root directory, so the frozen layout in [p1-data-pipeline.md](p1-data-pipeline.md) and the Go recorder are not changed now.
+
+Expectation, not verified: Binance's index uses spot prices from other venues (see the constituents in open-questions), so recording those venues later could improve the push-cost estimate.
+
 ## Calibration and backtest
 
 - Calibrate `Q` so that the predicted liquidated notional matches the recorded liquidation flow after crossings of the mark price. Because the stream is a lower bound, report the match as a ratio with that caveat.

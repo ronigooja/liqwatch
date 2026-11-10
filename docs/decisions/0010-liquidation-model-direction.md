@@ -10,6 +10,7 @@ Date: 2026-11-10. Changes the priority set in [0002](0002-risk-state-and-in-spik
 4. The fill simulator, label pipeline and evaluation framework stay. They are the backtest tools for this model.
 5. Languages: Python under `research/` while the model changes; port to Go when the model's input and output formats are frozen and results are stable on multi-day data. Ported output must match the Python output on the same replay before the switch. Dashboard: static HTML plus JavaScript reading a JSON file, no framework or build step. `wicker-alertd` is written in Go later, when a consumer exists.
 6. Retention (owner confirmed 2026-11-10): keep full raw data for a recent window (proposed 30 days, to be fixed once storage cost is known); older data is reduced to a summary (per-second book thickness, liquidations, mark price, trades). Summary fields are defined in [liquidation-model.md](../liquidation-model.md) when calibration needs are known. Decision 0001 (self-record) is unchanged.
+7. Binance only for now (owner, 2026-11-10); other venues are added later. The model core must not use Binance field names or rules. Venue-specific rules live in one adapter per venue ([liquidation-model.md](../liquidation-model.md) Venue adapter). A venue's rules must be verified in [open-questions.md](../open-questions.md) before its adapter is written. This keeps [0004](0004-defer-game-layers-and-multi-venue.md) in force: no collection or model code for other venues now.
 
 ## Why
 
