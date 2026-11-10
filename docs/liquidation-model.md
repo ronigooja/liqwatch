@@ -29,6 +29,17 @@ For symbol S, time t, direction d (push up or down) and position size N (USD): w
 
 Fill and walk code is reused from [fill-simulator.md](fill-simulator.md).
 
+## Measurement: does mark price follow the contract price
+
+Script `research/scripts/mark_follow.py`, 1 h sample (2026-11-06 17:00 UTC), 15 depth symbols, calm period. Contract price here is the last trade price; the "Contract Price" input of the median is not defined in the docs we read.
+
+- The contract price sits away from the index for long stretches: median gap 10 to 60 bp on most small symbols, up to 127 bp (1000CATUSDT, 99th percentile). BTC and ETH stay within about 8 bp.
+- On 12 of 13 small symbols, when the contract is more than 5 bp from its usual gap, mark price moved with it: median response 0.67 to 1.0 (ratio of mark move to contract move). Mark equals the last trade price in 22% to 53% of seconds.
+- Exceptions: ZECUSDT response 0.02, mark equals the funding-adjusted index in 20% of seconds; BULLAUSDT 0.37.
+- Not established: the response includes the lag of the 1-minute basis average (Price 2), so this does not separate "the contract price enters the median directly" from "Price 2 follows the contract with a delay". Calm hour only; spikes may differ.
+
+Reading: for small symbols a contract-only push appears able to move mark price, at least through the basis, so the contract book is a usable first definition of push cost. Index-venue books stay out of the first version; revisit if spike data shows mark price lagging the contract.
+
 ## Venue adapter
 
 Scope now: Binance only. The core (quantities above, backtest, dashboard) reads only the unified inputs: order book, trades, mark price, liquidations, open interest, index price and constituents. An adapter supplies what differs by venue:
@@ -54,7 +65,7 @@ Expectation, not verified: Binance's index uses spot prices from other venues (s
 Settled (see Verified in [open-questions.md](open-questions.md)): mark price formula, mark price as the liquidation trigger, public open-interest and index endpoints, insurance fund and ADL outline.
 
 Still open:
-1. How far mark price follows the contract price during spikes: measure on recorded `mark` and `trades` (decides whether `C` is defined by the contract book).
+1. How far mark price follows the contract price during spikes. Calm-hour result above; repeat on spike windows and on days of data.
 2. The definition of "Contract Price" in the median.
 3. Maintenance margin tiers and leverage brackets (signed endpoint, or a parameter table).
 4. Liquidation clearance fee rate and ADL ranking details.
