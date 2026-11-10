@@ -29,16 +29,16 @@ For symbol S, time t, direction d (push up or down) and position size N (USD): w
 
 Fill and walk code is reused from [fill-simulator.md](fill-simulator.md).
 
-## Measurement: does mark price follow the contract price
+## Measured: does mark price follow the contract price
 
-Script `research/scripts/mark_follow.py`, 1 h sample (2026-11-06 17:00 UTC), 15 depth symbols, calm period. Contract price here is the last trade price; the "Contract Price" input of the median is not defined in the docs we read.
+Script: `research/scripts/mark_vs_contract.py`. Sample: 1 h, 2026-11-06 17:00 UTC, 15 depth symbols, 1 s steps. gap = (last trade − index) / index; dev = (mark − index) / index; pass99 = median of dev / gap over the seconds with the largest 1% of |gap|.
 
-- The contract price sits away from the index for long stretches: median gap 10 to 60 bp on most small symbols, up to 127 bp (1000CATUSDT, 99th percentile). BTC and ETH stay within about 8 bp.
-- On 12 of 13 small symbols, when the contract is more than 5 bp from its usual gap, mark price moved with it: median response 0.67 to 1.0 (ratio of mark move to contract move). Mark equals the last trade price in 22% to 53% of seconds.
-- Exceptions: ZECUSDT response 0.02, mark equals the funding-adjusted index in 20% of seconds; BULLAUSDT 0.37.
-- Not established: the response includes the lag of the 1-minute basis average (Price 2), so this does not separate "the contract price enters the median directly" from "Price 2 follows the contract with a delay". Calm hour only; spikes may differ.
+| Group | Mean \|gap\| (bp) | pass99 | corr(dev, gap) |
+|---|---|---|---|
+| BTC, ETH, ZEC | 3.3–4.4 | 0.12–0.55 | 0.56–0.75 |
+| 12 spike symbols | 1.6–61 | 0.46–0.99 (BULLA −0.06) | 0.82–0.97 (BULLA 0.03) |
 
-Reading: for small symbols a contract-only push appears able to move mark price, at least through the basis, so the contract book is a usable first definition of push cost. Index-venue books stay out of the first version; revisit if spike data shows mark price lagging the contract.
+Reading: on small coins in this hour, mark price moved with the contract-index gap for most of the gap (pass99 mostly above 0.7). On BTC and ETH it followed less. This is a calm hour, one sample, and a gap that lasts for minutes also moves the 1-minute basis in Price 2, so it does not show that a short contract-only push moves mark price. BULLAUSDT is unexplained (mark far from index while the contract is near it). Open question 1 stays open until spike periods are measured.
 
 ## Venue adapter
 
@@ -65,7 +65,7 @@ Expectation, not verified: Binance's index uses spot prices from other venues (s
 Settled (see Verified in [open-questions.md](open-questions.md)): mark price formula, mark price as the liquidation trigger, public open-interest and index endpoints, insurance fund and ADL outline.
 
 Still open:
-1. How far mark price follows the contract price during spikes. Calm-hour result above; repeat on spike windows and on days of data.
+1. How far mark price follows the contract price during spikes: measure on recorded `mark` and `trades` (decides whether `C` is defined by the contract book).
 2. The definition of "Contract Price" in the median.
 3. Maintenance margin tiers and leverage brackets (signed endpoint, or a parameter table).
 4. Liquidation clearance fee rate and ADL ranking details.
