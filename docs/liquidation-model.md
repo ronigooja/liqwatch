@@ -4,7 +4,13 @@ Decision: [0010](decisions/0010-liquidation-model-direction.md). Status: design,
 
 ## Question answered
 
-For symbol S, time t, direction d (push up or down) and position size N (USD): what would it cost a hypothetical actor to push price to a liquidation cluster, and what would the forced flow beyond it be worth to them? Output is a cost, a gain and their ratio per (S, t, d, N). It estimates incentive, not intent, and promises no outcome.
+For symbol S, time t and direction d (push up or down): what would it cost a hypothetical actor to push price to a liquidation cluster, and what would the forced flow beyond it be worth to them?
+
+Two different things are called a position here; keep them apart:
+- **Liquidated positions**: other traders' positions that get force-closed. Modeled by the liquidation map `Q`.
+- **Actor inventory `N`** (USD): what the hypothetical actor holds before the push. Only the gain and the ratio depend on `N`; the push cost does not.
+
+Output: cost curve per (S, t, d); gain and ratio per (S, t, d, N); break-even `N`. It estimates incentive, not intent, and promises no outcome.
 
 ## Inputs
 
@@ -22,10 +28,10 @@ For symbol S, time t, direction d (push up or down) and position size N (USD): w
 ## Quantities (each defined once)
 
 1. **Liquidation map** `Q_d(P) = Σ_v Q_{v,d}(P)` summed over venues v; a venue not modeled contributes nothing, so the result is a lower bound and is shown with the list of venues covered (an uncovered venue is never displayed as zero). Per-venue `Q_{v,d}(P)`: estimated notional that is liquidated when mark price crosses P in direction d. Built from recent trade flow (where positions were likely opened, volume-weighted), an assumed leverage distribution, and maintenance margin. Total scale comes from open interest when available, otherwise from calibration. Every parameter is an assumption until calibrated against recorded liquidations.
-2. **Push cost** `C_d(P, N)`: taker fees plus book-walk slippage to move the *contract* price to the level that moves *mark price* to P, plus the cost of unwinding. Mark price is the median of Price 1 (index with funding adjustment), Price 2 (index plus 1-minute average basis) and the contract price ([verified](open-questions.md)). Consequence: a contract-only push moves mark price only if it moves the median, so the push must move the contract price past both index-based prices; the index is a spot-venue average and the contract push does not move it. Where the index has no Binance venue (e.g. FLOCKUSDT), the actor would also have to move spot elsewhere. `C` is therefore model-dependent; the first step is to test on recorded data how far mark price follows contract price during spikes.
+2. **Push cost** `C_d(P)`, independent of `N`: taker fees plus book-walk slippage to move the *contract* price to the level that moves *mark price* to P, plus the cost of unwinding. Mark price is the median of Price 1 (index with funding adjustment), Price 2 (index plus 1-minute average basis) and the contract price ([verified](open-questions.md)). Consequence: a contract-only push moves mark price only if it moves the median, so the push must move the contract price past both index-based prices; the index is a spot-venue average and the contract push does not move it. Where the index has no Binance venue (e.g. FLOCKUSDT), the actor would also have to move spot elsewhere. `C` is therefore model-dependent; the first step is to test on recorded data how far mark price follows contract price during spikes.
 3. **Forced flow** `F_d(P)` = `Q_d(P)` arriving as market orders into the book at P. Price after the flow `P_after` comes from walking the thinned book with `F`.
-4. **Gain** `G` = actor inventory marked from P to `P_after`, minus unwind slippage, funding and failure cost. Inventory is limited to N.
-5. **Net and ratio**: `G - C` and `G / C`, reported with N.
+4. **Gain** `G_d(P, N)` = inventory `N` marked from the entry price to `P_after`, minus unwind slippage, funding and failure cost. Grows with `N`.
+5. **Net, ratio and break-even**: `G - C` and `G / C`, reported with `N`. Break-even `N*` = the smallest `N` for which `G - C >= 0`; it is the number to alert on and to display.
 
 Fill and walk code is reused from [fill-simulator.md](fill-simulator.md).
 
@@ -83,10 +89,33 @@ Still open:
 
 First form: a static HTML page opened locally, reading a JSON file written by the Python run.
 
-- Overview table, one row per symbol: mark price; distance to the nearest estimated cluster up and down; push cost; estimated forced flow; ratio; data status (book complete, gaps).
-- Per-symbol view: price axis with the estimated liquidation map, book thickness and cumulative push cost; cost shown for N = 100, 1000, 10000 USD.
+- Overview table, one row per symbol: mark price; distance to the nearest estimated cluster up and down; push cost; estimated forced flow; break-even `N*`; data status (book complete, gaps).
+- Per-symbol view: price axis with the estimated liquidation map, book thickness and the cumulative push cost curve (one curve, not per `N`); gain and ratio shown for N = 100, 1000, 10000 USD; break-even `N*`.
 - Alert when the ratio passes a threshold, sent by `wicker-alertd` later ([0006](decisions/0006-alert-interface.md)).
 - The page states that liquidation levels are estimated, not real positions, and carries no accuracy claim.
+
+## Compute and storage
+
+Which data is saved and why:
+- Saved order books serve backtest, calibration, replay of missed or false alerts, and book-reconstruction checks. Live computation reads the in-memory live book, not saved data.
+- Retention follows [0010](decisions/0010-liquidation-model-direction.md) item 6. A per-second summary of book thickness near the touch may be enough for a rough push cost; its accuracy is not measured.
+
+Two layers:
+
+| Layer | Content | Runs | Saved |
+|---|---|---|---|
+| Score | Per symbol, every few seconds: distance to nearest cluster up and down, push cost, forced flow, `N*`, data status | For all symbols continuously. Alerts need it, and the model state is rolling (recent trades, 1-minute basis), so it cannot be started on demand without a warm-up replay | Yes, with the model version. Size and interval are not measured |
+| Detail | Full liquidation map and curves for one symbol | On demand, from the score layer's in-memory state | No; recomputable from raw data within the retention window |
+
+First version: replay-driven batch on the 15 depth symbols; on-demand detail needs a server and comes with the live stage.
+
+## Market coverage
+
+Target: all Binance USDT-M symbols (owner, 2026-11-10); other venues later. Order books are recorded for 15 symbols now. Whether to record all symbols' books as full diffs (about 35 times the current symbols; size not measured), as periodic snapshots, or only in memory in live runs is decided after the model works on the 15, by measuring how much accuracy a snapshot-level book loses. That decision gets its own record.
+
+## Separate poller
+
+Open interest, index constituents and leverage brackets are polled by a separate process, not by the collector: the collector falls under the zero-gap handoff ([0009](decisions/0009-zero-gap-handoff.md)) and a missed poll is simply retried. The existing collector has no such polling; its REST calls (depth snapshots, aggTrade backfill) are tied to its streams and share one weight budget. The poller writes the same raw-log format so the archiver and Parquet chain are reused. Binance REST weight is per IP, so the poller needs its own fixed weight cap and must read the used-weight header (header name not yet verified; see [open-questions.md](open-questions.md)).
 
 ## Language and porting
 
