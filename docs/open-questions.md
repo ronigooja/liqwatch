@@ -21,6 +21,8 @@ Move an item to "Verified" with source and date once checked.
 - Still unverified: whether the futures WebSocket has an undocumented new-connection or per-IP connection limit (none is documented); which message types count toward the 10 messages/s limit; whether `@depth@250ms` is a valid stream name (the R4 250 ms run received nothing; documented default is `@depth`); OpenList/OneDrive quota for ~18 GB/day of uploads; forced 24 h disconnect behavior (observed in the production collector's first two days).
 - The spot-doc limits (1024 streams, 5 control messages/s, 300 connections per 5 min per IP, 24 h connection life) are spot only.
 
+- Liquidation mechanics (mark-price formation, liquidation trigger price, maintenance margin and brackets, open-interest endpoint, insurance fund and ADL): list and use in [liquidation-model.md](liquidation-model.md) Open questions; verify before use.
+
 - Current Binance WebSocket connection and stream limits; forced-disconnect interval.
 - Futures depth stream update intervals and the exact local-book procedure and field names.
 - Contents of data.binance.vision futures depth (reported as aggregated only).

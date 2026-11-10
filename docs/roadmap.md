@@ -13,6 +13,8 @@ Durations are rough estimates; replace with measured values.
 
 Status 2026-11-07: P0 recording is running and in its observation period (see [p0-rollout.md](p0-rollout.md)). P1 has started by owner decision: code for replay, validation, fetch, labels and the evaluation framework is written in Python under `research/` ([language rule](p1-data-pipeline.md)). Recording stays unchanged.
 
+Liquidation-model track (owner direction 2026-11-10, [0010](decisions/0010-liquidation-model-direction.md)): cost and gain of a hypothetical actor pushing price into liquidation clusters, replay-driven, risk feature and alert only, no orders. Design and build order: [liquidation-model.md](liquidation-model.md). It uses the P1 tools and does not change the P1 gate.
+
 Data chain from raw log to training, with build order: [p1-data-pipeline.md](p1-data-pipeline.md).
 
 P0 runs in parallel with: event statistics from tier A data, fill-simulator design, label ambiguity rules.
