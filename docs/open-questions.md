@@ -21,6 +21,7 @@ Move an item to "Verified" with source and date once checked.
 - Still unverified: whether the futures WebSocket has an undocumented new-connection or per-IP connection limit (none is documented); which message types count toward the 10 messages/s limit; whether `@depth@250ms` is a valid stream name (the R4 250 ms run received nothing; documented default is `@depth`); OpenList/OneDrive quota for ~18 GB/day of uploads; forced 24 h disconnect behavior (observed in the production collector's first two days).
 - The spot-doc limits (1024 streams, 5 control messages/s, 300 connections per 5 min per IP, 24 h connection life) are spot only.
 
+- Other venues (Bybit, OKX, Bitget, Gate, MEXC, KuCoin, Coinbase): whether each publishes a liquidation feed (and whether it is sampled), open interest, leverage brackets, mark-price formula, rate limits; Binance's share of each symbol's total open interest. None checked. See [liquidation-model.md](liquidation-model.md) Multiple venues.
 - Liquidation mechanics still unverified: the definition of "Contract Price" in the mark-price median (page text was truncated); whether the median actually bounds mark price during contract-only pushes (testable on recorded `mark` and `trades`); maintenance margin tiers and leverage brackets (`/fapi/v1/leverageBracket` returns 401 without a signed key); the liquidation clearance fee rate; ADL ranking details. See [liquidation-model.md](liquidation-model.md).
 
 - Current Binance WebSocket connection and stream limits; forced-disconnect interval.

@@ -21,7 +21,7 @@ For symbol S, time t, direction d (push up or down) and position size N (USD): w
 
 ## Quantities (each defined once)
 
-1. **Liquidation map** `Q_d(P)`: estimated notional that is liquidated when mark price crosses P in direction d. Built from recent trade flow (where positions were likely opened, volume-weighted), an assumed leverage distribution, and maintenance margin. Total scale comes from open interest when available, otherwise from calibration. Every parameter is an assumption until calibrated against recorded liquidations.
+1. **Liquidation map** `Q_d(P) = Σ_v Q_{v,d}(P)` summed over venues v; a venue not modeled contributes nothing, so the result is a lower bound and is shown with the list of venues covered (an uncovered venue is never displayed as zero). Per-venue `Q_{v,d}(P)`: estimated notional that is liquidated when mark price crosses P in direction d. Built from recent trade flow (where positions were likely opened, volume-weighted), an assumed leverage distribution, and maintenance margin. Total scale comes from open interest when available, otherwise from calibration. Every parameter is an assumption until calibrated against recorded liquidations.
 2. **Push cost** `C_d(P, N)`: taker fees plus book-walk slippage to move the *contract* price to the level that moves *mark price* to P, plus the cost of unwinding. Mark price is the median of Price 1 (index with funding adjustment), Price 2 (index plus 1-minute average basis) and the contract price ([verified](open-questions.md)). Consequence: a contract-only push moves mark price only if it moves the median, so the push must move the contract price past both index-based prices; the index is a spot-venue average and the contract push does not move it. Where the index has no Binance venue (e.g. FLOCKUSDT), the actor would also have to move spot elsewhere. `C` is therefore model-dependent; the first step is to test on recorded data how far mark price follows contract price during spikes.
 3. **Forced flow** `F_d(P)` = `Q_d(P)` arriving as market orders into the book at P. Price after the flow `P_after` comes from walking the thinned book with `F`.
 4. **Gain** `G` = actor inventory marked from P to `P_after`, minus unwind slippage, funding and failure cost. Inventory is limited to N.
@@ -40,6 +40,8 @@ Script: `research/scripts/mark_vs_contract.py`. Sample: 1 h, 2026-11-06 17:00 UT
 
 Reading: on small coins in this hour, mark price moved with the contract-index gap for most of the gap (pass99 mostly above 0.7). On BTC and ETH it followed less. This is a calm hour, one sample, and a gap that lasts for minutes also moves the 1-minute basis in Price 2, so it does not show that a short contract-only push moves mark price. BULLAUSDT is unexplained (mark far from index while the contract is near it). Open question 1 stays open until spike periods are measured.
 
+Earlier run of a different script (`mark_follow.py`, removed; same sample, recorded here for its findings): contract price stays away from the index for long stretches (median gap 10 to 60 bp on most small symbols, 99th percentile up to 127 bp on 1000CATUSDT; BTC and ETH within about 8 bp); mark price equals the last trade price in 22% to 53% of seconds; ZECUSDT responds weakly (0.02) and BULLAUSDT 0.37. The response includes the lag of the 1-minute basis (Price 2), so it does not separate "contract price enters the median directly" from "Price 2 follows the contract with a delay". The "Contract Price" input of the median is not defined in the docs read so far.
+
 ## Venue adapter
 
 Scope now: Binance only. The core (quantities above, backtest, dashboard) reads only the unified inputs: order book, trades, mark price, liquidations, open interest, index price and constituents. An adapter supplies what differs by venue:
@@ -53,6 +55,12 @@ Scope now: Binance only. The core (quantities above, backtest, dashboard) reads 
 The Binance values are defined once, in the Verified table of [open-questions.md](open-questions.md). In code, `research/` holds one adapter interface with Binance as the only implementation. Existing Parquet data is Binance data; a new venue gets its own root directory, so the frozen layout in [p1-data-pipeline.md](p1-data-pipeline.md) and the Go recorder are not changed now.
 
 Expectation, not verified: Binance's index uses spot prices from other venues (see the constituents in open-questions), so recording those venues later could improve the push-cost estimate.
+
+## Multiple venues (design now, implement later)
+
+Owner point, 2026-11-10: liquidation levels cannot be judged from Binance alone. Reasons (reasoning, not verified): other venues' forced orders hit their own and spot books, which feed Binance's index and hence its mark price; a market maker sees the combined clusters. How much of a symbol's total open interest sits on Binance is unknown and decides how much a Binance-only view misses.
+
+Per venue, to verify before any adapter or recording (list in [open-questions.md](open-questions.md)): liquidation feed and whether it is sampled, open interest, leverage brackets, mark-price formula, rate limits. The first version computes Binance only, shows "venues covered: Binance", and does not claim totals. Recording other venues needs a new decision record because it changes [0004](decisions/0004-defer-game-layers-and-multi-venue.md).
 
 ## Calibration and backtest
 
