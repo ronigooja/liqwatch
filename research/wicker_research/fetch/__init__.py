@@ -1,4 +1,5 @@
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 import os
 import re
 import time
@@ -53,6 +54,12 @@ class Client:
                     raise
             time.sleep(self.backoff * 2 ** attempt)
 
+    def _get_meta(self, directory, meta_name):
+        try:
+            return self.request("GET", f"{directory}/{meta_name}").json()
+        except (ValueError, requests.RequestException) as exc:
+            return exc
+
     def list_remote(self, date):
         if not re.fullmatch(r"\d{8}", date):
             raise ValueError("date must be YYYYMMDD")
@@ -70,10 +77,15 @@ class Client:
                 if size is not None:
                     sizes[name] = int(size)
         files = []
-        for meta_name in sorted(n for n in sizes if n.endswith(".meta.json")):
+        meta_names = sorted(n for n in sizes if n.endswith(".meta.json"))
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            fetched = list(pool.map(lambda n: self._get_meta(directory, n), meta_names))
+        for meta_name, got in zip(meta_names, fetched):
             name = meta_name[:-len(".meta.json")]
             try:
-                meta = self.request("GET", f"{directory}/{meta_name}").json()
+                if isinstance(got, Exception):
+                    raise got
+                meta = got
                 chunks = meta["chunks"]
                 if (not isinstance(chunks, list) or
                     any(chunk != f"{name}.part{i:04d}" for i, chunk in enumerate(chunks)) or
@@ -83,7 +95,7 @@ class Client:
                 parts = tuple((chunk, sizes[chunk]) for chunk in chunks)
                 if sum(size for _, size in parts) != meta["size"]:
                     raise ValueError("chunk size mismatch")
-            except (ValueError, TypeError, KeyError):
+            except (ValueError, TypeError, KeyError, requests.RequestException):
                 warnings.warn(f"skipping incomplete or invalid metadata: {name}")
                 continue
             files.append(RemoteFile(date, name, meta, parts))
