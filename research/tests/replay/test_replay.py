@@ -4,7 +4,7 @@ import json
 import pytest
 import zstandard
 
-from wicker_research.replay import Replay, Stats, read_records
+from wicker_research.replay import Replay, Stats, _IdSet, read_records
 
 
 def record(rw, ch='aggTrade', sym='BTCUSDT', conn='a', p=None):
@@ -31,7 +31,10 @@ def test_overlap_and_order(tmp_path):
 
 
 def test_wall_time_reordering_and_expiry(tmp_path):
-    path = write(tmp_path / 'a', [record(3), record(1), record(8, p=record(1)['p'])])
+    # depth diffs are never backfilled, so their dedup keys still expire
+    def diff(rw, u):
+        return record(rw, 'depth', p={'stream': 'btcusdt@depth', 'data': dict(E=1, U=1, u=u, pu=0, b=[], a=[])})
+    path = write(tmp_path / 'a', [diff(3, 7), diff(1, 2), diff(8, 2)])
     replay = Replay([path], window_ns=4, reorder_ns=5)
     assert [e.rw for e in replay] == [1, 3, 8]
     assert replay.stats.duplicates == 0
@@ -51,6 +54,25 @@ def test_backfill(tmp_path):
     replay = Replay([path])
     events = list(replay)
     assert [(e.a, e.rw, e.backfilled) for e in events] == [(1, 1, False), (2, 3, True)]
+    assert replay.stats.duplicates == 1
+
+
+def test_backfill_twin_far_outside_window_is_deduplicated(tmp_path):
+    # Backfill fills a hole, so its live twin can have arrived much longer ago than the dedup window.
+    row = {'a': 5, 'T': 1, 'p': '2', 'q': '3', 'm': False}
+    live = record(10, p={'stream': 'btcusdt@aggTrade', 'data': dict(row)})
+    payload = dict(req_start_ns=1, req_end_ns=1000, status=200, from_id=5, body=[dict(row), dict(row, a=6)])
+    path = write(tmp_path / 'a', [live, record(1000, 'aggTrade_backfill', p=payload)])
+    replay = Replay([path], window_ns=100, reorder_ns=5)
+    events = list(replay)
+    assert [(e.a, e.rw, e.backfilled) for e in events] == [(5, 10, False), (6, 1000, True)]
+    assert replay.stats.duplicates == 1
+
+
+def test_live_duplicate_far_outside_window_is_deduplicated(tmp_path):
+    path = write(tmp_path / 'a', [record(10), record(1000, p=record(10)['p'])])
+    replay = Replay([path], window_ns=100, reorder_ns=5)
+    assert [e.rw for e in replay] == [10]
     assert replay.stats.duplicates == 1
 
 
@@ -83,3 +105,24 @@ def test_real():
     assert replay.stats.order_violations == 0
     assert replay.stats.channels['aggTrade'] > 0
     assert replay.stats.channels['forceOrder_all'] > 0
+
+
+def test_idset_membership_and_merging():
+    s = _IdSet()
+    for n in (5, 7, 6, 1, 2, 10, 3):
+        s.add(n)
+    assert [n for n in range(0, 12) if n in s] == [1, 2, 3, 5, 6, 7, 10]
+    assert (s.starts, s.ends) == ([1, 5, 10], [3, 7, 10])
+    s.add(4)
+    s.add(8); s.add(9)
+    assert (s.starts, s.ends) == ([1], [10])
+    s.add(5)
+    assert (s.starts, s.ends) == ([1], [10])
+
+
+def test_idset_memory_is_proportional_to_holes():
+    s = _IdSet()
+    for n in range(1, 100_001):
+        if n % 1000:
+            s.add(n)
+    assert len(s.starts) == 100

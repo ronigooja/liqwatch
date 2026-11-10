@@ -1,3 +1,4 @@
+import bisect
 import heapq
 import io
 import json
@@ -50,6 +51,35 @@ def read_records(paths, stats=None):
                     stats.torn_lines += 1
 
 
+class _IdSet:
+    """Set of integers stored as disjoint closed intervals. Trade ids arrive almost in order, so a symbol
+    needs a handful of intervals instead of one entry per trade."""
+
+    def __init__(self):
+        self.starts, self.ends = [], []
+
+    def __contains__(self, n):
+        i = bisect.bisect_right(self.starts, n) - 1
+        return i >= 0 and n <= self.ends[i]
+
+    def add(self, n):
+        i = bisect.bisect_right(self.starts, n) - 1
+        if i >= 0 and n <= self.ends[i]:
+            return
+        join_left = i >= 0 and self.ends[i] == n - 1
+        join_right = i + 1 < len(self.starts) and self.starts[i + 1] == n + 1
+        if join_left and join_right:
+            self.ends[i] = self.ends[i + 1]
+            del self.starts[i + 1], self.ends[i + 1]
+        elif join_left:
+            self.ends[i] = n
+        elif join_right:
+            self.starts[i + 1] = n
+        else:
+            self.starts.insert(i + 1, n)
+            self.ends.insert(i + 1, n)
+
+
 def _levels(levels):
     return [[float(p), float(q)] for p, q in levels]
 
@@ -100,6 +130,7 @@ class Replay:
         sources = [_reorder(read_records([path], stats), self.reorder_ns) for path in self.paths]
         merged = heapq.merge(*sources, key=lambda r: r['rw'])
         seen, expiry = set(), deque()
+        seen_trades = {}  # sym -> _IdSet; aggTrade ids never expire: a backfill row can be minutes or hours behind its live twin
         last_stream, pending = {}, {}
         previous = None
         for r in merged:
@@ -153,9 +184,16 @@ class Replay:
             for data in rows:
                 event, key = _event(r, data, event_rw, ch == 'aggTrade_backfill')
                 if key is not None:
-                    if key in seen:
-                        stats.duplicates += 1
-                        continue
-                    seen.add(key)
-                    expiry.append((event_rw, key))
+                    if key[0] == 'aggTrade':
+                        ids = seen_trades.setdefault(key[1], _IdSet())
+                        if key[2] in ids:
+                            stats.duplicates += 1
+                            continue
+                        ids.add(key[2])
+                    else:
+                        if key in seen:
+                            stats.duplicates += 1
+                            continue
+                        seen.add(key)
+                        expiry.append((event_rw, key))
                 yield event
