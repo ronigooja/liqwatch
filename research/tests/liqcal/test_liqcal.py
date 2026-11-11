@@ -5,7 +5,10 @@ import pyarrow.parquet as pq
 import pytest
 from polars.testing import assert_frame_equal
 
-from wicker_research.liqcal import INPUT_SCHEMA, baseline, fit_scale, load_day, main, moments, score
+from wicker_research.liqcal import (
+    INPUT_SCHEMA, MOMENT_SCHEMA, baseline, conditional_by_move, fit_scale,
+    load_day, main, moments, move_baseline, partial_spearman, score,
+)
 
 NS = 1_000_000_000
 
@@ -27,6 +30,9 @@ def test_crossing_and_flat():
     assert result['pred_down'].to_list() == [0., 200., 0.]
     assert result['obs_down'].to_list() == [0., 90., 0.]
     assert result['pred_up'].sum() == 0
+    assert result.columns == list(MOMENT_SCHEMA)
+    assert result['move_down'].to_list() == [0., .1, 0.]
+    assert result['move_up'].to_list() == [0., 0., 0.]
     row = score(result).row(0, named=True)
     assert row['down_n_moments'] == 3
     assert row['down_n_crossed'] == 1
@@ -99,10 +105,14 @@ def test_load_day_and_cli(tmp_path, partition_liquidations):
     assert all(df.is_empty() for df in load_day(first, 'OTHER'))
     combined = load_day([first, tmp_path / 'second'], 'BTCUSDT')
     assert [df.height for df in combined] == [2, 8, 2]
-    out, dump = tmp_path / 'score.csv', tmp_path / 'moments.csv'
-    main([str(first), '--syms', 'BTCUSDT', '--out', str(out), '--horizon', '60', '--moments', str(dump)])
+    out, dump, bins = tmp_path / 'score.csv', tmp_path / 'moments.csv', tmp_path / 'bins.csv'
+    main([str(first), '--syms', 'BTCUSDT', '--out', str(out), '--horizon', '60',
+          '--moments', str(dump), '--bins', str(bins)])
     assert pl.read_csv(out).height == 1
     assert pl.read_csv(dump).height == 3
+    conditional = pl.read_csv(bins)
+    assert conditional.columns == ['sym', 'side', 'bin', 'n', 'mean_pred', 'mean_obs', 'spearman']
+    assert conditional['n'].sum() == 2
 
 
 def test_empty_and_invalid():
@@ -128,3 +138,81 @@ def test_short_and_horizon_boundaries():
     assert result['pred_up'][0] == 200
     assert result['obs_up'][0] == 90
     assert result['obs_up'][1] == 0
+    assert result['move_up'][0] == .1
+
+
+def synthetic(pred, obs, move):
+    return pl.DataFrame({'sym': ['A'] * len(pred), 'pred_down': pred,
+                         'pred_up': np.zeros(len(pred)), 'obs_down': obs,
+                         'obs_up': np.zeros(len(pred)), 'move_down': move,
+                         'move_up': np.zeros(len(pred))})
+
+
+def test_move_only_signal():
+    rng = np.random.default_rng(41)
+    move = rng.uniform(.01, .1, 2000)
+    obs = np.round(move, 2)
+    pred = move + rng.uniform(0, .02, len(move))
+    df = synthetic(pred, obs, move)
+    assert abs(partial_spearman(df, 'down')) < .1
+    exact = synthetic(move**2, move**3, move)
+    assert np.isnan(partial_spearman(exact, 'down'))
+    row = move_baseline(synthetic(move**2, 7 * move**1.5, move)).row(0, named=True)
+    assert row['down_move_spearman'] == pytest.approx(1)
+    assert row['down_move_k'] == pytest.approx(7)
+    assert row['down_move_b'] == pytest.approx(1.5)
+
+
+def test_independent_map_signal():
+    rng = np.random.default_rng(19)
+    pred = rng.uniform(1, 10, 2000)
+    move = rng.uniform(.01, .1, len(pred))
+    df = synthetic(pred, pred + rng.normal(0, .1, len(pred)), move)
+    row = score(df, n=2).row(0, named=True)
+    assert row['down_partial_spearman'] > .5
+    assert abs(row['down_move_spearman']) < .1
+    assert row['total_partial_spearman'] == pytest.approx(row['down_partial_spearman'])
+
+
+@pytest.mark.parametrize('side', ['down', 'up', 'total'])
+def test_conditional_counts_and_ties(side):
+    df = scored_frame().with_columns(
+        pl.Series('move_down', [.01, .01, .02, .03, .04] * 2),
+        pl.Series('move_up', [.01, .01, .02, .02, .03] * 2))
+    table = conditional_by_move(df, side)
+    assert table['n'].sum() == score(df, n=1)[f'{side}_n_crossed'][0]
+    assert all(np.isnan(v) for v, n in zip(table['spearman'], table['n']) if n < 5)
+
+
+def test_total_move_and_observed_masks():
+    df = synthetic(np.arange(1., 13.), np.arange(1., 13.), np.arange(1., 13.) / 100)
+    df = df.with_columns(pl.lit(1000.).alias('obs_up'),
+                         pl.Series('move_up', np.arange(12., 0., -1) / 100))
+    row = move_baseline(df).row(0, named=True)
+    assert np.isnan(row['total_move_spearman'])
+    assert row['down_move_spearman'] == pytest.approx(1)
+    table = conditional_by_move(df, 'total', bins=1)
+    assert table['mean_obs'][0] == pytest.approx(6.5)
+
+
+@pytest.mark.parametrize('kind', ['empty', 'short', 'constant', 'nan', 'zero_obs'])
+def test_move_undefined(kind):
+    n = 0 if kind == 'empty' else 2 if kind == 'short' else 12
+    move = np.full(n, np.nan) if kind == 'nan' else np.ones(n)
+    obs = np.zeros(n) if kind == 'zero_obs' else np.ones(n)
+    df = synthetic(np.ones(n), obs, move)
+    for side in ('down', 'up', 'total'):
+        assert np.isnan(partial_spearman(df, side))
+        row = move_baseline(df).row(0, named=True)
+        assert np.isnan(row[f'{side}_move_k'])
+        assert np.isnan(row[f'{side}_move_b'])
+        assert conditional_by_move(df, side)['n'].sum() == (n if side != 'up' else 0)
+    score(df, n=1)
+
+
+def test_move_validation():
+    df = synthetic(np.ones(3), np.ones(3), np.ones(3))
+    with pytest.raises(ValueError):
+        conditional_by_move(df, 'down', bins=0)
+    with pytest.raises(ValueError):
+        partial_spearman(df, 'invalid')

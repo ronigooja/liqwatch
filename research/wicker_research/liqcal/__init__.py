@@ -8,7 +8,8 @@ lo/min and hi/max. Only complete horizons with at least one future mark qualify.
 Predicted down is Q.q_down(lo) if lo < m0, otherwise zero; predicted up is
 Q.q_up(hi) if hi > m0, otherwise zero. Observed down/up sum avg_price*filled_qty
 for SELL/BUY liquidation records in (t, t + H]: SELL closes longs, BUY shorts.
-Moment columns are t, sym, m0, lo, hi, pred_down, pred_up, obs_down, obs_up.
+Moment columns are t, sym, m0, lo, hi, pred_down, pred_up, obs_down, obs_up,
+move_down, move_up. Moves are nonnegative fractions of m0.
 
 Crossed means pred > 0 on that side. Scores sum predictions and observations
 only on crossed moments, with ratio sum_obs/sum_pred and tie-averaged Spearman
@@ -35,7 +36,8 @@ from wicker_research.liqmap import liquidation_map
 
 NS = 1_000_000_000
 MOMENT_SCHEMA = {'t': pl.Int64, 'sym': pl.String, **{
-    c: pl.Float64 for c in ('m0', 'lo', 'hi', 'pred_down', 'pred_up', 'obs_down', 'obs_up')}}
+    c: pl.Float64 for c in ('m0', 'lo', 'hi', 'pred_down', 'pred_up', 'obs_down', 'obs_up',
+                           'move_down', 'move_up')}}
 INPUT_SCHEMA = {
     'trades': {'rw': pl.Int64, 'price': pl.Float64, 'qty': pl.Float64, 'buyer_is_maker': pl.Boolean},
     'mark': {'rw': pl.Int64, 'mark': pl.Float64},
@@ -110,12 +112,13 @@ def moments(trades: pl.DataFrame, mark: pl.DataFrame, liquidations: pl.DataFrame
         rows.append((t, sym, m0, lo, hi,
                      float(q.q_down(lo)) if lo < m0 else 0.,
                      float(q.q_up(hi)) if hi > m0 else 0.,
-                     float(observed['down'][i]), float(observed['up'][i])))
+                     float(observed['down'][i]), float(observed['up'][i]),
+                     max((m0 - lo) / m0, 0.), max((hi - m0) / m0, 0.)))
     return pl.DataFrame(rows, schema=MOMENT_SCHEMA, orient='row')
 
 
 def _spearman(x, y):
-    if len(x) < 2:
+    if len(x) < 2 or not (np.isfinite(x).all() and np.isfinite(y).all()):
         return float('nan')
     a, b = [pl.Series(v).rank(method='average').to_numpy() for v in (x, y)]
     a, b = a - a.mean(), b - b.mean()
@@ -141,6 +144,97 @@ def _selected(pred, obs, side):
 def _metrics(pred, obs):
     total = float(pred.sum())
     return float(obs.sum() / total) if total else float('nan'), _spearman(pred, obs)
+
+
+def _with_move(df, side):
+    if side not in ('down', 'up', 'total'):
+        raise ValueError("side must be 'down', 'up' or 'total'")
+    pred, obs = _arrays(df)
+    p, o = _selected(pred, obs, side)
+    moves = np.column_stack([
+        df[f'move_{s}'].to_numpy().astype(float) if f'move_{s}' in df.columns
+        else np.full(df.height, np.nan) for s in ('down', 'up')])
+    if side == 'total':
+        move = moves.sum(axis=1)[(pred > 0).any(axis=1)]
+    else:
+        j = 0 if side == 'down' else 1
+        move = moves[pred[:, j] > 0, j]
+    return p, o, move
+
+
+def partial_spearman(df: pl.DataFrame, side: str) -> float:
+    """Correlate rank residuals after linear adjustment for move ranks.
+
+    Use the model's crossed moments. Fewer than three moments, nonfinite
+    inputs, or zero rank/residual variance yield NaN.
+    """
+    values = _with_move(df, side)
+    if len(values[0]) < 3 or not all(np.isfinite(v).all() for v in values):
+        return float('nan')
+    p, o, m = [pl.Series(v).rank(method='average').to_numpy() for v in values]
+    p, o, m = [v - v.mean() for v in (p, o, m)]
+    if not all(np.linalg.norm(v) > 0 for v in (p, o, m)):
+        return float('nan')
+    residuals = [v - m * (np.dot(m, v) / np.dot(m, m)) for v in (p, o)]
+    if any(np.linalg.norm(r) <= 1e-12 * np.linalg.norm(v)
+           for r, v in zip(residuals, (p, o))):
+        return float('nan')
+    a, b = residuals
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+
+def move_baseline(df: pl.DataFrame) -> pl.DataFrame:
+    """Return crossed-moment move correlations and power-law fit coefficients.
+
+    For each side, pred_move = k * move**b; *_move_k and *_move_b fit
+    log(obs) = log(k) + b*log(move) by least squares using finite positive
+    obs/move pairs. Fewer than ten pairs or constant log(move) yields NaN.
+    Fits are in-sample diagnostics, not held-out predictions. Total move is
+    move_down + move_up; total observed counts only crossed sides. Legacy
+    frames without move columns yield NaN move diagnostics.
+    """
+    result = {}
+    for side in ('down', 'up', 'total'):
+        _, obs, move = _with_move(df, side)
+        result[f'{side}_move_spearman'] = _spearman(move, obs)
+        result[f'{side}_partial_spearman'] = partial_spearman(df, side)
+        valid = np.isfinite(move) & np.isfinite(obs) & (move > 0) & (obs > 0)
+        k = b = float('nan')
+        if valid.sum() >= 10:
+            x, y = np.log(move[valid]), np.log(obs[valid])
+            if np.ptp(x) > 0:
+                slope, intercept = np.linalg.lstsq(
+                    np.column_stack((x, np.ones(len(x)))), y, rcond=None)[0]
+                with np.errstate(over='ignore', invalid='ignore'):
+                    k = float(np.exp(intercept))
+                b = float(slope)
+        result.update({f'{side}_move_k': k, f'{side}_move_b': b})
+    return pl.DataFrame([result])
+
+
+def conditional_by_move(df: pl.DataFrame, side: str, bins: int = 5) -> pl.DataFrame:
+    """Compare crossed moments within move quantiles (zero-based bin labels).
+
+    Duplicate boundaries collapse; ties stay together. Nonfinite moves occupy
+    bin -1 so counts still cover all crossings. Correlations require five
+    moments and finite, nonconstant inputs; otherwise they are NaN.
+    """
+    if not isinstance(bins, (int, np.integer)) or bins <= 0:
+        raise ValueError('bins must be a positive integer')
+    pred, obs, move = _with_move(df, side)
+    schema = {'bin': pl.Int64, 'n': pl.Int64, 'mean_pred': pl.Float64,
+              'mean_obs': pl.Float64, 'spearman': pl.Float64}
+    finite = np.isfinite(move)
+    labels = np.full(len(move), -1, dtype=np.int64)
+    if finite.any():
+        edges = np.unique(np.quantile(move[finite], np.linspace(0, 1, bins + 1)))
+        labels[finite] = np.searchsorted(edges[1:-1], move[finite], side='right')
+    rows = []
+    for label in np.unique(labels):
+        p, o = pred[labels == label], obs[labels == label]
+        rows.append((int(label), len(p), float(p.mean()), float(o.mean()),
+                     _spearman(p, o) if len(p) >= 5 else float('nan')))
+    return pl.DataFrame(rows, schema=schema, orient='row')
 
 
 def baseline(df: pl.DataFrame, seed: int, n: int = 200) -> pl.DataFrame:
@@ -178,7 +272,7 @@ def score(df: pl.DataFrame, *, seed: int = 0, n: int = 200) -> pl.DataFrame:
         result.update({f'{side}_n_moments': df.height, f'{side}_n_crossed': len(p),
                        f'{side}_sum_pred': float(p.sum()), f'{side}_sum_obs': float(o.sum()),
                        f'{side}_ratio': ratio, f'{side}_spearman': correlation})
-    return pl.DataFrame([result]).hstack(baseline(df, seed, n))
+    return pl.DataFrame([result]).hstack(baseline(df, seed, n)).hstack(move_baseline(df))
 
 
 def fit_scale(df: pl.DataFrame) -> float:
@@ -202,15 +296,23 @@ def main(argv=None):
     parser.add_argument('--syms', required=True)
     parser.add_argument('--out', required=True)
     parser.add_argument('--moments')
+    parser.add_argument('--bins')
     parser.add_argument('--step', type=int, default=60)
     parser.add_argument('--horizon', type=int, default=300)
     args = parser.parse_args(argv)
-    scores, evaluated = [], []
+    scores, evaluated, conditional = [], [], []
     for sym in args.syms.split(','):
         frame = moments(*load_day(args.roots, sym), sym, step_s=args.step, horizon_s=args.horizon)
         scores.append(score(frame).with_columns(pl.lit(sym).alias('sym')))
         if args.moments:
             evaluated.append(frame)
+        if args.bins:
+            for side in ('down', 'up', 'total'):
+                conditional.append(conditional_by_move(frame, side).with_columns(
+                    pl.lit(sym).alias('sym'), pl.lit(side).alias('side'))
+                    .select('sym', 'side', 'bin', 'n', 'mean_pred', 'mean_obs', 'spearman'))
     pl.concat(scores).write_csv(args.out)
     if args.moments:
         pl.concat(evaluated).write_csv(args.moments)
+    if args.bins:
+        pl.concat(conditional).write_csv(args.bins)
