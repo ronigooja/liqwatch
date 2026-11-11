@@ -38,7 +38,11 @@ for all-missing columns); training mean/std standardize, constant columns use
 unit std. An unpenalized intercept and fixed alpha=10 solve squared error
 plus alpha*sum(beta**2); no tuning or test fit. Scores need no inverse transform.
 For model='gbm', HistGradientBoostingRegressor uses the same transformed
-features with native NaN handling (no imputation or standardization), fixed
+features with native NaN handling (no imputation or standardization). GBM drops
+columns with fewer than two distinct finite training values from both matrices,
+logs their names once per fit, and predicts the training log-target mean if none
+remain. Output records the dropped names per a/b/c and their union in
+gbm_dropped_columns (comma-separated; empty for ridge or no drops). GBM uses fixed
 max_depth=3, learning_rate=0.05, max_iter=200, min_samples_leaf=50,
 l2_regularization=1.0, early_stopping=False, random_state=0; no tuning.
 scikit-learn is imported only when GBM is selected.
@@ -339,12 +343,22 @@ def ridge_predict(train, test, columns, outcome, *, alpha=10.):
     return z @ beta + y.mean()
 
 
-def gbm_predict(train, test, columns, outcome):
+def gbm_predict(train, test, columns, outcome, *, dropped_columns=None):
     from sklearn.ensemble import HistGradientBoostingRegressor
 
     x, z = _transform(train, columns), _transform(test, columns)
     y = np.log1p(train[outcome].to_numpy().astype(float))
-    return HistGradientBoostingRegressor(**GBM_PARAMS).fit(x, y).predict(z)
+    keep = np.array([len(np.unique(c[np.isfinite(c)])) >= 2 for c in x.T], dtype=bool)
+    dropped = [name for name, usable in zip(columns, keep) if not usable]
+    if dropped_columns is not None:
+        dropped_columns.extend(dropped)
+    if dropped:
+        logging.getLogger(__name__).warning(
+            'Dropped GBM columns with fewer than two distinct finite training values: %s',
+            ','.join(dropped))
+    if not keep.any():
+        return np.full(test.height, y.mean())
+    return HistGradientBoostingRegressor(**GBM_PARAMS).fit(x[:, keep], y).predict(z[:, keep])
 
 
 def bootstrap_differences(times, predictions, outcome, threshold, *, step_s=60,
@@ -396,9 +410,12 @@ def evaluate(train, test, side, *, q=.9, alpha=10., step_s=60, horizon_s=300,
     local = [c for c in train.columns if c.startswith(('mass_', 'nearest_')) and c in test.columns]
     predict = ridge_predict if model == 'ridge' else gbm_predict
     options = {'alpha': alpha} if model == 'ridge' else {}
-    predictions = {name: predict(train, test, columns, target, **options)
-                   for name, columns in [('a', baseline), ('b', baseline + totals),
-                                         ('c', baseline + totals + local)]}
+    predictions, dropped = {}, {name: [] for name in 'abc'}
+    for name, columns in [('a', baseline), ('b', baseline + totals),
+                          ('c', baseline + totals + local)]:
+        if model == 'gbm':
+            options = {'dropped_columns': dropped[name]}
+        predictions[name] = predict(train, test, columns, target, **options)
     times, outcomes = test['t'].to_numpy(), test[target].to_numpy()
     hourly = test.group_by((pl.col('t') // (3600 * NS)).alias('hour')).agg(
         (pl.col('liq_down_usd') + pl.col('liq_up_usd')).sum().alias('usd')).sort(
@@ -418,6 +435,10 @@ def evaluate(train, test, side, *, q=.9, alpha=10., step_s=60, horizon_s=300,
                'largest_event_hour_ns': largest * 3600 * NS,
                'train_start_ns': int(train['t'].min()), 'train_end_ns': int(train['t'].max()),
                'test_start_ns': int(times.min()), 'test_end_ns': int(times.max())}
+        row['gbm_dropped_columns'] = ','.join(dict.fromkeys(
+            column for names in dropped.values() for column in names))
+        for name, names in dropped.items():
+            row[f'{name}_gbm_dropped_columns'] = ','.join(names)
         scores = {name: metrics(values, y, threshold, step_s=cadence, budgets=budgets)
                   for name, values in p.items()}
         for name, values in scores.items():

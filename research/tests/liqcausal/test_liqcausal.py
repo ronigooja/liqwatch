@@ -7,7 +7,7 @@ from polars.testing import assert_frame_equal
 
 from wicker_research.liqcal import INPUT_SCHEMA
 from wicker_research.liqcausal import (
-    DAY, NS, average_precision, bootstrap_differences, evaluate, load_day, main,
+    DAY, NS, average_precision, bootstrap_differences, evaluate, gbm_predict, load_day, main,
     map_features, metrics, moments, ridge_predict, roc_auc, rolling_pairs,
     split_moments,
 )
@@ -303,10 +303,73 @@ def test_gbm_localised_signal_and_determinism():
     second = evaluate(train, test, 'down', model='gbm', n_boot=25)
     assert_frame_equal(first, second, check_exact=True)
     assert first['model'].to_list() == ['gbm'] * 3
+    assert first['gbm_dropped_columns'].to_list() == [''] * 3
     row = first.row(0, named=True)
     assert row['c_minus_b_spearman'] > .3
     assert row['c_minus_b_spearman_lo'] > 0
     assert row['c_pr_auc'] > row['b_pr_auc']
+
+
+def test_gbm_drops_missing_and_constant_training_columns(caplog):
+    train, test = world()
+    train = train.with_columns(pl.lit(float('nan')).alias('missing'),
+                               pl.lit(7.).alias('constant'),
+                               pl.when(pl.int_range(pl.len()) % 2 == 0).then(None)
+                               .otherwise(3.).alias('one_finite_value'))
+    # Test-only variation must not rescue an unusable training column.
+    test = test.with_columns(pl.int_range(pl.len()).cast(pl.Float64).alias('missing'),
+                             pl.lit(99.).alias('constant'),
+                             pl.lit(-4.).alias('one_finite_value'))
+    dropped = ['missing', 'constant', 'one_finite_value']
+    columns = ['volume_5m', *dropped, 'mass_down_10']
+    prediction = gbm_predict(train, test, columns, 'liq_down_usd')
+    expected = gbm_predict(train, test, ['volume_5m', 'mass_down_10'], 'liq_down_usd')
+    np.testing.assert_array_equal(prediction, expected)
+    warnings = [r for r in caplog.records if 'Dropped GBM' in r.message]
+    assert len(warnings) == 1
+    assert all(c in warnings[0].message for c in dropped)
+
+
+@pytest.mark.parametrize('columns', [[], ['missing', 'constant']])
+def test_gbm_no_usable_columns_predicts_training_log_mean(columns):
+    train, test = world(n=200)
+    train = train.with_columns(pl.lit(float('inf')).alias('missing'),
+                               pl.lit(7.).alias('constant'))
+    test = test.with_columns(pl.lit(1.).alias('missing'), pl.lit(99.).alias('constant'))
+    prediction = gbm_predict(train, test, columns, 'liq_down_usd')
+    np.testing.assert_array_equal(prediction, np.full(test.height,
+                                 np.log1p(train['liq_down_usd'].to_numpy()).mean()))
+
+
+def test_gbm_dropped_columns_recorded_per_variant_and_csv(tmp_path):
+    train, test = world(n=200)
+    train = train.with_columns(pl.lit(float('nan')).alias('time_to_next_funding'),
+                               pl.lit(0.).alias('total_up'),
+                               pl.lit(float('nan')).alias('nearest_down_bp'))
+    test = test.with_columns(pl.lit(1.).alias('time_to_next_funding'),
+                             pl.lit(1.).alias('nearest_down_bp'))
+    result = evaluate(train, test, 'down', model='gbm', n_boot=2)
+    expected = {'a_gbm_dropped_columns': 'time_to_next_funding',
+                'b_gbm_dropped_columns': 'time_to_next_funding,total_up',
+                'c_gbm_dropped_columns': 'time_to_next_funding,total_up,nearest_down_bp',
+                'gbm_dropped_columns': 'time_to_next_funding,total_up,nearest_down_bp'}
+    for key, value in expected.items():
+        assert result[key].to_list() == [value] * 3
+    path = tmp_path / 'scores.csv'
+    result.write_csv(path)
+    assert_frame_equal(result.select(list(expected)), pl.read_csv(path).select(list(expected)))
+    ridge = evaluate(train, test, 'down', n_boot=2)
+    assert ridge['gbm_dropped_columns'].to_list() == [''] * 3
+
+
+def test_ridge_missing_and_constant_columns_are_harmless():
+    train, test = world(n=200)
+    train = train.with_columns(pl.lit(float('nan')).alias('missing'),
+                               pl.lit(7.).alias('constant'))
+    test = test.with_columns(pl.lit(123.).alias('missing'), pl.lit(99.).alias('constant'))
+    expected = ridge_predict(train, test, ['volume_5m'], 'liq_down_usd')
+    actual = ridge_predict(train, test, ['volume_5m', 'missing', 'constant'], 'liq_down_usd')
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-14)
 
 
 def test_gbm_no_localised_signal_majority_of_seeds():
