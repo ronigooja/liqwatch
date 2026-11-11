@@ -97,6 +97,12 @@ At each grid moment t the map is built from data up to t; `pred` is the map's no
 - Observed/predicted: 0.01 to 0.12 with bracket tiers, 0.3 to 3 with open-interest anchoring (net increase per 5 minutes only). A ratio above 1 with a lower-bound observation does not identify which assumption fails. Not usable as a calibrated scale.
 - Bracket tiers changed scale and ranks little; open-interest anchoring fixed the order of magnitude and did not raise the partial correlation.
 
+Scale stability, `bucket_both` (open interest rise `d` creates `d` longs and `d` shorts, [open-questions.md](open-questions.md)), 8 h window, 3 days x 2 sides (2026-11-04..06). Obs/pred per symbol, max/min within the symbol: BTC 3.8x (median 0.66), ETH 7.4x (0.81), ZEC 1.8x (0.21), HOT 16x (0.42), ESPORTS 8.3x. All 30 cells span 0.05 to 1.44 (32x, median 0.33); BTC+ETH 12 cells 7.4x. The owner-set standard (within 2x across symbols, days and sides) is **not met**. `bucket_both` halves obs/pred against `bucket` (x0.46 to 0.50) and leaves ranks unchanged, so it fixes the level, not the spread.
+
+Window length, `bucket_both`, BTC/ETH/ZEC/HOT, 24 cells, max/min of obs/pred (train days 11-04/05, test day 11-06, all): 4 h 12x / 19x / 33x; 8 h 9x / 19x / 32x; 24 h 9x / 25x / 44x. Medians 0.44 / 0.42 / 0.37. Window length does not narrow the spread; 8 h kept. The per-symbol spread of HOT is 16 to 17x at every window. Only 4 symbols and 3 days, one of them extreme: this shows no window effect, it does not prove there is none.
+
+HOT is not a small-sample case (459 to 544 crossings per side-day). Its spread is mostly between sides: 11-06 predicted up mass is 2.4x the down mass while recorded up liquidations are about a quarter of the down ones (ratios 0.05 up, 0.44 down); the same sign on 11-05 (0.20 up, 0.73 down). Cause not established.
+
 Defects found by independent review and fixed (see git log): liquidation price solved exactly (the additive formula was off by up to 94 bp on ESPORTS tier 1 at 5x, 0.2 to 4 bp on BTC), levels already beyond the start mark no longer counted, bucket and window boundary aligned, invalid liquidation records dropped. Known, not fixed: the maintenance tier is chosen from entry notional of a trade fragment; trade price (not mark) decides survival in `liqmap`; isolated margin only; leverage weights invented; positions older than the window missing.
 
 ### Causal evaluation (`research/wicker_research/liqcausal`; first run done, exploratory)
