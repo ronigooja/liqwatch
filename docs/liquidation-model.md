@@ -134,7 +134,16 @@ Target: all Binance USDT-M symbols (owner, 2026-11-10); other venues later. Orde
 
 ## Separate poller
 
-Open interest, index constituents and leverage brackets are polled by a separate process, not by the collector: the collector falls under the zero-gap handoff ([0009](decisions/0009-zero-gap-handoff.md)) and a missed poll is simply retried. The existing collector has no such polling; its REST calls (depth snapshots, aggTrade backfill) are tied to its streams and share one weight budget. The poller writes the same raw-log format so the archiver and Parquet chain are reused. Binance REST weight is per IP, so the poller needs its own fixed weight cap and must read the used-weight header (header name not yet verified; see [open-questions.md](open-questions.md)).
+Open interest, index constituents and leverage brackets are polled by a separate process, not by the collector: the collector falls under the zero-gap handoff ([0009](decisions/0009-zero-gap-handoff.md)) and a missed poll is simply retried. The existing collector has no such polling; its REST calls (depth snapshots, aggTrade backfill) are tied to its streams and share one weight budget. The poller writes the same raw-log format so the archiver and Parquet chain are reused. Binance REST weight is per IP, so the poller needs its own fixed weight cap and must read the used-weight header (`x-mbx-used-weight-1m`, verified; see [open-questions.md](open-questions.md)).
+
+Polled data and the minimum frequency (a stored snapshot is the only way to know the value in force at a past time):
+
+| Data | Changes | Minimum | Note |
+|---|---|---|---|
+| Leverage brackets, every symbol | Binance updates tiers and adds symbols at any time | Daily snapshot, each stored with its fetch time; a changed table is kept as a new version | Source under test (page JSON endpoint, otherwise a read-only key); until a source works, one-off copies are labelled with their date |
+| Open interest | Continuous | Every 5 minutes while recording; history of about 30 days can be back-filled once ([oihist](../research/wicker_research/oihist/__init__.py)) | Back-fill expires, start before it does |
+| Index constituents and weights | Over time | Daily | |
+| Symbol list and `exchangeInfo` | New listings | Daily | Needed for coverage and the depth symbol re-check |
 
 ## Language and porting
 
