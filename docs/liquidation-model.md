@@ -99,9 +99,30 @@ At each grid moment t the map is built from data up to t; `pred` is the map's no
 
 Defects found by independent review and fixed (see git log): liquidation price solved exactly (the additive formula was off by up to 94 bp on ESPORTS tier 1 at 5x, 0.2 to 4 bp on BTC), levels already beyond the start mark no longer counted, bucket and window boundary aligned, invalid liquidation records dropped. Known, not fixed: the maintenance tier is chosen from entry notional of a trade fragment; trade price (not mark) decides survival in `liqmap`; isolated margin only; leverage weights invented; positions older than the window missing.
 
-### Causal evaluation (required before any claim of usefulness; not done)
+### Causal evaluation (`research/wicker_research/liqcausal`; first run done, exploratory)
 
-Freeze the map at t. Features known at t only: map mass within fixed distances (for example 10, 25, 50 bp, and in units of past volatility) above and below the current mark, and the nearest cluster distance. Outcomes: whether recorded liquidation notional in the next 5 minutes exceeds a threshold, and the extra price movement after a cluster is touched. Baselines using the past only: recent volume, volatility, time of day, funding. Ablation: keep total map mass and the baselines, remove the price-localised shape. Uncertainty: block permutation or circular shifts by whole days or events, non-overlapping windows as sensitivity, leave-one-event-hour-out. Splits and metrics follow [labels-and-evaluation.md](labels-and-evaluation.md): time-ordered train / tuning / sealed test with purge and embargo, false alarms per hour, recall at a fixed budget, lead time. Three days are too few for a sealed split; more days must be recorded first.
+Models, nested: a = past-only baselines (volume 5 and 60 min, realised volatility, signed flow, recent liquidations by side, hour of day, funding time, open-interest change); b = a + total map mass; c = b + map mass within 10, 25, 50 bp and in volatility units and nearest-cluster distance. Ridge regression (alpha 10) on log features, fitted on one day, scored on the next (rolling pairs 11-04 to 11-05 and 11-05 to 11-06), outcome = recorded liquidation USD in the next 5 minutes, brackets and open-interest anchoring on. Block-bootstrap 95% intervals on the held-out day (60 min blocks, fixed training fit, so too narrow).
+
+Spearman of prediction and outcome on the held-out day; c−b with 95% interval:
+
+| Symbol, side | Test day | a | b | c | c − b |
+|---|---|---|---|---|---|
+| BTC down | 11-05 | 0.43 | 0.43 | 0.34 | −0.09 (−0.19, 0.01) |
+| BTC up | 11-05 | 0.42 | 0.41 | 0.40 | −0.01 (−0.07, 0.06) |
+| BTC down | 11-06 | 0.43 | 0.31 | 0.31 | 0.00 (−0.08, 0.11) |
+| BTC up | 11-06 | 0.35 | 0.33 | 0.25 | −0.07 (−0.16, 0.00) |
+| ETH down | 11-05 | 0.46 | 0.46 | 0.18 | −0.28 (−0.47, −0.09) |
+| ETH up | 11-05 | 0.40 | 0.40 | 0.36 | −0.04 (−0.08, 0.02) |
+| ETH down | 11-06 | 0.30 | 0.30 | 0.29 | 0.00 (−0.05, 0.05) |
+| ETH up | 11-06 | 0.30 | 0.30 | 0.32 | 0.02 (−0.03, 0.07) |
+| ZEC down | 11-05 | 0.38 | 0.36 | 0.40 | 0.04 (−0.02, 0.12) |
+| ZEC up | 11-05 | 0.32 | 0.33 | 0.38 | 0.05 (−0.01, 0.12) |
+| ZEC down | 11-06 | 0.27 | 0.06 | 0.15 | 0.09 (0.05, 0.14) |
+| ZEC up | 11-06 | 0.41 | −0.10 | −0.05 | 0.04 (−0.01, 0.10) |
+
+Reading: the past-only baseline alone reaches 0.3 to 0.46; total mass adds nothing stable (b − a near 0, ZEC 11-06 much worse); localised mass does not improve on b in 10 of 12 cells, is clearly worse in one (ETH down 11-05) and clearly better in one (ZEC down 11-06). In this test the map shows no information beyond simple past-only features. Variants without the largest event hour and on non-overlapping 5-minute windows give the same direction in every cell (c − b differs by at most 0.04 from the main value, intervals still contain 0 except ETH down 11-05 and ZEC down 11-06). Alert view (event = outcome above the training 90th percentile, base rate 4% to 17%): ROC-AUC of a is 0.67 to 0.89, of c 0.52 to 0.87; c is below a in 8 of 12 cells; recall at one alert per hour is 0.10 to 0.23 for a and 0.00 to 0.31 for c with no consistent order. A model that already knows recent liquidations and volatility ranks events well; the map adds nothing on top. Limits: two day pairs, 11-05 is the extreme day and a one-day fit is unstable (ZEC b collapses on 11-06); a linear model cannot find nonlinear structure, so this is "no gain found", not "no information"; recall at an alert budget and the without-largest-hour and non-overlap variants are in the CSV and were not examined here; no sealed test split.
+
+Original specification. Freeze the map at t. Features known at t only: map mass within fixed distances (for example 10, 25, 50 bp, and in units of past volatility) above and below the current mark, and the nearest cluster distance. Outcomes: whether recorded liquidation notional in the next 5 minutes exceeds a threshold, and the extra price movement after a cluster is touched. Baselines using the past only: recent volume, volatility, time of day, funding. Ablation: keep total map mass and the baselines, remove the price-localised shape. Uncertainty: block permutation or circular shifts by whole days or events, non-overlapping windows as sensitivity, leave-one-event-hour-out. Splits and metrics follow [labels-and-evaluation.md](labels-and-evaluation.md): time-ordered train / tuning / sealed test with purge and embargo, false alarms per hour, recall at a fixed budget, lead time. Three days are too few for a sealed split; more days must be recorded first.
 
 ### Economics (not measured)
 
