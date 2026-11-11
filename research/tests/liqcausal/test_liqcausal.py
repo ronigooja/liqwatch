@@ -295,3 +295,114 @@ def test_empty_symbol_filter_validation():
     train, test = world(n=200)
     with pytest.raises(ValueError):
         evaluate(test, train, 'down', n_boot=2)
+
+
+def test_gbm_localised_signal_and_determinism():
+    train, test = world()
+    first = evaluate(train, test, 'down', model='gbm', n_boot=25)
+    second = evaluate(train, test, 'down', model='gbm', n_boot=25)
+    assert_frame_equal(first, second, check_exact=True)
+    assert first['model'].to_list() == ['gbm'] * 3
+    row = first.row(0, named=True)
+    assert row['c_minus_b_spearman'] > .3
+    assert row['c_minus_b_spearman_lo'] > 0
+    assert row['c_pr_auc'] > row['b_pr_auc']
+
+
+def test_gbm_no_localised_signal_majority_of_seeds():
+    no_claim = []
+    for seed in range(7):
+        train, test = world(seed=seed, signal=False)
+        row = evaluate(train, test, 'down', model='gbm', n_boot=30, seed=seed).row(0, named=True)
+        no_claim.append(row['c_minus_b_spearman_lo'] <= 0)
+    assert sum(no_claim) > len(no_claim) // 2
+
+
+def test_gbm_nonlinear_baselines_beat_ridge():
+    rng = np.random.default_rng(10)
+    n = 4000
+    x, z = rng.uniform(-1, 1, (2, n))
+    frame = pl.DataFrame({
+        't': np.arange(n, dtype=np.int64) * 60 * NS, 'sym': ['A'] * n,
+        'realized_vol_5m': x + 1, 'realized_vol_60m': z + 1,
+        'total_down': rng.uniform(0, 100, n), 'total_up': rng.uniform(0, 100, n),
+        'mass_down_10': rng.uniform(0, 10, n),
+        'liq_down_usd': np.expm1(2 + 2 * x * z + rng.normal(0, .05, n)),
+        'liq_up_usd': rng.uniform(0, 10, n),
+    })
+    train, test = frame.head(n // 2), frame.tail(n // 2).with_columns(pl.col('t') + DAY)
+    ridge = evaluate(train, test, 'down', n_boot=2).row(0, named=True)
+    gbm = evaluate(train, test, 'down', model='gbm', n_boot=2).row(0, named=True)
+    assert ridge['model'] == 'ridge'
+    assert gbm['a_spearman'] > .8
+    assert gbm['a_spearman'] > ridge['a_spearman'] + .5
+
+
+def test_gbm_transforms_preserve_missing_and_train_only_fit(monkeypatch):
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    from wicker_research.liqcausal import GBM_PARAMS, gbm_predict
+
+    train, test = world()
+    train = train.with_columns(pl.when(pl.int_range(pl.len()) % 7 == 0).then(None)
+                               .otherwise(pl.col('volume_5m')).alias('volume_5m'))
+    test = test.with_columns(pl.lit(float('inf')).alias('total_up'))
+    columns = ['volume_5m', 'total_up', 'mass_down_10']
+    captured = {}
+    original_fit = HistGradientBoostingRegressor.fit
+
+    def fit(estimator, x, y, **kwargs):
+        captured['x'], captured['y'] = x.copy(), y.copy()
+        assert all(estimator.get_params()[key] == value for key, value in GBM_PARAMS.items())
+        return original_fit(estimator, x, y, **kwargs)
+
+    monkeypatch.setattr(HistGradientBoostingRegressor, 'fit', fit)
+    pred = gbm_predict(train, test, columns, 'liq_down_usd')
+    assert np.isfinite(pred).all()
+    np.testing.assert_allclose(captured['x'][:, 0], np.log1p(train['volume_5m'].to_numpy()))
+    np.testing.assert_allclose(captured['y'], np.log1p(train['liq_down_usd'].to_numpy()))
+    extended = pl.concat([test, test.tail(1).with_columns(pl.lit(1e20).alias('volume_5m'))])
+    np.testing.assert_array_equal(pred, gbm_predict(train, extended, columns, 'liq_down_usd')[:-1])
+
+
+def test_ridge_does_not_import_sklearn():
+    import subprocess
+    import sys
+
+    script = '''
+import sys
+import numpy as np
+import polars as pl
+from wicker_research.liqcausal import DAY, NS, evaluate
+assert not any(k == 'sklearn' or k.startswith('sklearn.') for k in sys.modules)
+n = 120
+frame = pl.DataFrame({'t': np.arange(n, dtype=np.int64) * 60 * NS,
+                      'sym': ['A'] * n, 'volume_5m': np.arange(n) + 1.,
+                      'total_down': np.ones(n), 'total_up': np.ones(n),
+                      'liq_down_usd': np.arange(n) + 1., 'liq_up_usd': np.ones(n)})
+evaluate(frame.head(60), frame.tail(60).with_columns(pl.col('t') + DAY), 'down', n_boot=2)
+assert not any(k == 'sklearn' or k.startswith('sklearn.') for k in sys.modules)
+'''
+    result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_gbm_cli_suffix_preserves_ridge(tmp_path, monkeypatch):
+    train, test = world(n=1200)
+    frame = pl.concat([train, test])
+    monkeypatch.setattr('wicker_research.liqcausal.load_day', lambda roots, sym: data())
+    monkeypatch.setattr('wicker_research.liqcausal.moments', lambda *args, **kwargs: frame)
+    args = ['--root=1970-01-01=unused', '--root=1970-01-02=unused',
+            '--train', '1970-01-01', '--test', '1970-01-02', '--syms', 'A',
+            '--out', str(tmp_path), '--bootstrap', '2']
+    main(args)
+    originals = {side: (tmp_path / f'A_{side}.csv').read_bytes() for side in ('down', 'up')}
+    main([*args, '--model', 'gbm'])
+    for side in ('down', 'up'):
+        assert (tmp_path / f'A_{side}.csv').read_bytes() == originals[side]
+        assert pl.read_csv(tmp_path / f'A_{side}_gbm.csv')['model'].to_list() == ['gbm'] * 3
+
+
+def test_unknown_model_rejected():
+    train, test = world(n=200)
+    with pytest.raises(ValueError, match='model must be ridge/gbm'):
+        evaluate(train, test, 'down', model='unknown', n_boot=2)

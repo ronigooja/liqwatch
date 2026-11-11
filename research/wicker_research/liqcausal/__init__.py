@@ -30,13 +30,18 @@ event_down/up is outcome >= its symbol/side training quantile q=0.9, including
 ties (a zero threshold therefore labels zero outcomes positive). Events and
 thresholds are computed in evaluate, never in the feature builder.
 
-Models a/b/c are ridge regressions of log1p(outcome USD): a uses baselines;
+Models a/b/c predict log1p(outcome USD): a uses baselines;
 b adds total_down/up; c adds both totals AND localised mass/nearest features.
 USD/volume/mass features use log1p, signed flow/OI use signed log1p(abs(x));
-other features are unchanged. Training medians impute missing values (zero
+other features are unchanged. For ridge (default), training medians impute missing values (zero
 for all-missing columns); training mean/std standardize, constant columns use
 unit std. An unpenalized intercept and fixed alpha=10 solve squared error
 plus alpha*sum(beta**2); no tuning or test fit. Scores need no inverse transform.
+For model='gbm', HistGradientBoostingRegressor uses the same transformed
+features with native NaN handling (no imputation or standardization), fixed
+max_depth=3, learning_rate=0.05, max_iter=200, min_samples_leaf=50,
+l2_regularization=1.0, early_stopping=False, random_state=0; no tuning.
+scikit-learn is imported only when GBM is selected.
 
 Held-out metrics: tie-averaged Spearman, rank ROC-AUC, grouped-tie average
 precision (PR-AUC), recall at false-positive budgets 1 and 3 per observed hour.
@@ -86,6 +91,9 @@ DAY = 86400 * NS
 BASELINES = ('volume_5m', 'volume_60m', 'realized_vol_5m', 'realized_vol_60m',
              'signed_flow_5m', 'liq_5m_down', 'liq_5m_up', 'hour_of_day',
              'time_to_next_funding', 'oi_change_60m')
+GBM_PARAMS = dict(max_depth=3, learning_rate=0.05, max_iter=200,
+                  min_samples_leaf=50, l2_regularization=1.0,
+                  early_stopping=False, random_state=0)
 
 
 def load_day(roots, sym):
@@ -331,6 +339,14 @@ def ridge_predict(train, test, columns, outcome, *, alpha=10.):
     return z @ beta + y.mean()
 
 
+def gbm_predict(train, test, columns, outcome):
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    x, z = _transform(train, columns), _transform(test, columns)
+    y = np.log1p(train[outcome].to_numpy().astype(float))
+    return HistGradientBoostingRegressor(**GBM_PARAMS).fit(x, y).predict(z)
+
+
 def bootstrap_differences(times, predictions, outcome, threshold, *, step_s=60,
                           block_minutes=60, n_boot=200, seed=0, budgets=(1., 3.)):
     if block_minutes <= 0 or n_boot <= 0:
@@ -361,7 +377,9 @@ def bootstrap_differences(times, predictions, outcome, threshold, *, step_s=60,
 
 
 def evaluate(train, test, side, *, q=.9, alpha=10., step_s=60, horizon_s=300,
-             block_minutes=60, n_boot=200, seed=0, budgets=(1., 3.)):
+             block_minutes=60, n_boot=200, seed=0, budgets=(1., 3.), model='ridge'):
+    if model not in ('ridge', 'gbm'):
+        raise ValueError('model must be ridge/gbm')
     if side not in ('down', 'up') or not 0 <= q <= 1:
         raise ValueError('side must be down/up and q in [0,1]')
     if train.is_empty() or test.is_empty():
@@ -376,7 +394,9 @@ def evaluate(train, test, side, *, q=.9, alpha=10., step_s=60, horizon_s=300,
     baseline = [c for c in BASELINES if c in train.columns and c in test.columns]
     totals = ['total_down', 'total_up']
     local = [c for c in train.columns if c.startswith(('mass_', 'nearest_')) and c in test.columns]
-    predictions = {name: ridge_predict(train, test, columns, target, alpha=alpha)
+    predict = ridge_predict if model == 'ridge' else gbm_predict
+    options = {'alpha': alpha} if model == 'ridge' else {}
+    predictions = {name: predict(train, test, columns, target, **options)
                    for name, columns in [('a', baseline), ('b', baseline + totals),
                                          ('c', baseline + totals + local)]}
     times, outcomes = test['t'].to_numpy(), test[target].to_numpy()
@@ -392,7 +412,7 @@ def evaluate(train, test, side, *, q=.9, alpha=10., step_s=60, horizon_s=300,
     for variant, mask, cadence in variants:
         p = {name: values[mask] for name, values in predictions.items()}
         y, t = outcomes[mask], times[mask]
-        row = {'sym': test['sym'][0], 'side': side, 'variant': variant,
+        row = {'sym': test['sym'][0], 'side': side, 'variant': variant, 'model': model,
                'threshold': threshold, 'n_train': train.height, 'n_test': len(y),
                'events': int((y >= threshold).sum()), 'alpha': alpha,
                'largest_event_hour_ns': largest * 3600 * NS,
@@ -457,7 +477,8 @@ def main(argv=None):
     parser.add_argument('--test', help='comma-separated ISO UTC dates')
     parser.add_argument('--rolling', action='store_true')
     parser.add_argument('--syms', required=True)
-    parser.add_argument('--out', required=True, help='directory for SYMBOL_SIDE.csv')
+    parser.add_argument('--out', required=True, help='directory for SYMBOL_SIDE[_gbm].csv')
+    parser.add_argument('--model', choices=['ridge', 'gbm'], default='ridge')
     parser.add_argument('--step', type=int, default=60)
     parser.add_argument('--horizon', type=int, default=300)
     parser.add_argument('--distances-bp', default='10,25,50')
@@ -521,7 +542,7 @@ def main(argv=None):
             train, test = split_moments(frame, train_dates, test_dates, horizon_s=args.horizon,
                                         embargo_minutes=args.embargo_minutes)
             for side in results:
-                scored = evaluate(train, test, side, q=args.quantile, alpha=args.alpha,
+                scored = evaluate(train, test, side, q=args.quantile, alpha=args.alpha, model=args.model,
                                   step_s=args.step, horizon_s=args.horizon, seed=args.seed,
                                   block_minutes=args.block_minutes, n_boot=args.bootstrap,
                                   budgets=budgets).with_columns(
@@ -537,4 +558,5 @@ def main(argv=None):
                       f"c-b={row['c_minus_b_spearman']:.4f} "
                       f"95%CI=[{row['c_minus_b_spearman_lo']:.4f},{row['c_minus_b_spearman_hi']:.4f}]")
         for side, frames in results.items():
-            pl.concat(frames).write_csv(out / f'{sym}_{side}.csv')
+            suffix = '_gbm' if args.model == 'gbm' else ''
+            pl.concat(frames).write_csv(out / f'{sym}_{side}{suffix}.csv')
