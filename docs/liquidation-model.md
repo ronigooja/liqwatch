@@ -41,7 +41,7 @@ Results from the placeholder inputs show only that the model is not rejected by 
 2. **Push cost** `C_d(P)`, independent of `N`: taker fees plus book-walk slippage to move the *contract* price to the level that moves *mark price* to P, plus the cost of unwinding. Mark price is the median of Price 1 (index with funding adjustment), Price 2 (index plus 1-minute average basis) and the contract price ([verified](open-questions.md)). Consequence: a contract-only push moves mark price only if it moves the median, so the push must move the contract price past both index-based prices; the index is a spot-venue average and the contract push does not move it. Where the index has no Binance venue (e.g. FLOCKUSDT), the actor would also have to move spot elsewhere. `C` is therefore model-dependent; the first step is to test on recorded data how far mark price follows contract price during spikes.
 3. **Forced flow** `F_d(P)` = `Q_d(P)` arriving as market orders into the book at P. Price after the flow `P_after` comes from walking the thinned book with `F`.
 4. **Gain** `G_d(P, N)` = inventory `N` marked from the entry price to `P_after`, minus unwind slippage, funding and failure cost. Grows with `N`.
-5. **Net, ratio and break-even**: `G - C` and `G / C`, reported with `N`. Break-even `N*` = the smallest `N` for which `G - C >= 0`; it is the number to alert on and to display.
+5. **Net, ratio and break-even**: `G - C` and `G / C`, reported with `N`. Break-even `N*` = the smallest `N` for which `G - C >= 0`; it is the number to display.
 
 Fill and walk code is reused from [fill-simulator.md](fill-simulator.md).
 
@@ -159,20 +159,19 @@ First form: a static HTML page opened locally, reading a JSON file written by th
 
 - Overview table, one row per symbol: mark price; distance to the nearest estimated cluster up and down; push cost; estimated forced flow; break-even `N*`; data status (book complete, gaps).
 - Per-symbol view: price axis with the estimated liquidation map, book thickness and the cumulative push cost curve (one curve, not per `N`); gain and ratio shown for N = 100, 1000, 10000 USD; break-even `N*`.
-- Alert when the ratio passes a threshold, sent by `wicker-alertd` later ([0006](decisions/0006-alert-interface.md)).
+- No alert ([0011](decisions/0011-no-alert-narrower-recording.md)).
 - The page states that liquidation levels are estimated, not real positions, and carries no accuracy claim.
 
 ## Compute and storage
 
 Which data is saved and why:
-- Saved order books serve backtest, calibration, replay of missed or false alerts, and book-reconstruction checks. Live computation reads the in-memory live book, not saved data.
-- Retention follows [0010](decisions/0010-liquidation-model-direction.md) item 6. A per-second summary of book thickness near the touch may be enough for a rough push cost; its accuracy is not measured.
+- Push cost is computed from the live in-memory book; it is an arithmetic walk of the book and needs no history. Saved books are not recorded now; the recorded 2026-11-04..10 books serve checks of the arithmetic. What is recorded and retention: [0011](decisions/0011-no-alert-narrower-recording.md).
 
 Two layers:
 
 | Layer | Content | Runs | Saved |
 |---|---|---|---|
-| Score | Per symbol, every few seconds: distance to nearest cluster up and down, push cost, forced flow, `N*`, data status | For all symbols continuously. Alerts need it, and the model state is rolling (recent trades, 1-minute basis), so it cannot be started on demand without a warm-up replay | Yes, with the model version. Size and interval are not measured |
+| Score | Per symbol, every few seconds: distance to nearest cluster up and down, push cost, forced flow, `N*`, data status | For all symbols continuously: the model state is rolling (recent trades, 1-minute basis), so it cannot be started on demand without a warm-up replay | Yes, with the model version. Size and interval are not measured |
 | Detail | Full liquidation map and curves for one symbol | On demand, from the score layer's in-memory state | No; recomputable from raw data within the retention window |
 
 First version: replay-driven batch on the 15 depth symbols; on-demand detail needs a server and comes with the live stage.
