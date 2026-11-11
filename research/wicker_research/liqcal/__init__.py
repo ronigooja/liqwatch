@@ -5,9 +5,14 @@ using only that symbol's data; fewer than min_trades window trades skips a momen
 At t, m0 is the last mark at or before t and Q = liquidation_map(trades, t,
 **params). The mark path in (t, t + H], H = horizon_s (default 300), supplies
 lo/min and hi/max. Only complete horizons with at least one future mark qualify.
-Predicted down is Q.q_down(lo) if lo < m0, otherwise zero; predicted up is
-Q.q_up(hi) if hi > m0, otherwise zero. Observed down/up sum avg_price*filled_qty
+Predicted down is Q.q_down(lo) - Q.q_down(m0) if lo < m0, otherwise zero;
+predicted up is Q.q_up(hi) - Q.q_up(m0) if hi > m0, otherwise zero.
+Down counts levels in [lo, m0); up counts levels in (m0, hi]. A level exactly
+at the starting mark is already triggered or not newly crossed, so is excluded.
+Observed down/up sum avg_price*filled_qty
 for SELL/BUY liquidation records in (t, t + H]: SELL closes longs, BUY shorts.
+Records with null, nonfinite or nonpositive avg_price or filled_qty are absent;
+their dropped count is logged as a warning for the selected symbol.
 Moment columns are t, sym, m0, lo, hi, pred_down, pred_up, obs_down, obs_up,
 move_down, move_up. Moves are nonnegative fractions of m0.
 
@@ -24,8 +29,10 @@ Maps are rebuilt only on grid moments, never in a Python trade loop. Sorting
 costs O(N log N); vectorized searchsorted bounds cost O(G log N). For W trades
 per window and L leverage weights, map rebuilding costs O(G L W log W);
 mark extrema scan O(G M_H) future mark samples and liquidation sums use prefix
-sums. No incremental map or parameter search is performed.
+sums in float64. Subtracting large nearby cumulative totals can lose small
+window sums through cancellation. No incremental map or parameter search is performed.
 """
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -85,6 +92,15 @@ def moments(trades: pl.DataFrame, mark: pl.DataFrame, liquidations: pl.DataFrame
     trades, mark, liquidations = [
         (df.filter(pl.col('sym') == sym) if 'sym' in df.columns else df)
         .sort('rw', maintain_order=True) for df in (trades, mark, liquidations)]
+    valid = pl.all_horizontal([
+        pl.col(name).is_finite() & (pl.col(name) > 0)
+        for name in ('avg_price', 'filled_qty')]).fill_null(False)
+    filtered = liquidations.filter(valid)
+    dropped = liquidations.height - filtered.height
+    if dropped:
+        logging.getLogger(__name__).warning('Dropped %d liquidation records for %s with invalid price or quantity',
+                                            dropped, sym)
+    liquidations = filtered
     if trades.is_empty() or mark.is_empty():
         return pl.DataFrame(schema=MOMENT_SCHEMA)
     prices = mark['mark'].to_numpy().astype(float)
@@ -101,10 +117,12 @@ def moments(trades: pl.DataFrame, mark: pl.DataFrame, liquidations: pl.DataFrame
     lrw = liquidations['rw'].to_numpy()
     ll = np.searchsorted(lrw, grid, side='right')
     lh = np.searchsorted(lrw, grid + horizon, side='right')
-    usd = (liquidations['avg_price'] * liquidations['filled_qty']).to_numpy()
+    usd = (liquidations['avg_price'].to_numpy().astype(np.float64)
+           * liquidations['filled_qty'].to_numpy().astype(np.float64))
     observed = {}
     for side, order in [('down', 'SELL'), ('up', 'BUY')]:
-        cumulative = np.r_[0., np.cumsum(np.where(liquidations['side'].to_numpy() == order, usd, 0.))]
+        cumulative = np.r_[0., np.cumsum(np.where(liquidations['side'].to_numpy() == order, usd, 0.),
+                                       dtype=np.float64)]
         observed[side] = cumulative[lh] - cumulative[ll]
     rows = []
     for i in np.flatnonzero((right - left >= min_trades) & (mh > ml)):
@@ -114,8 +132,8 @@ def moments(trades: pl.DataFrame, mark: pl.DataFrame, liquidations: pl.DataFrame
         lo, hi = float(path.min()), float(path.max())
         q = liquidation_map(trades.slice(int(left[i]), int(right[i] - left[i])), t, **params)
         rows.append((t, sym, m0, lo, hi,
-                     float(q.q_down(lo)) if lo < m0 else 0.,
-                     float(q.q_up(hi)) if hi > m0 else 0.,
+                     float(q.q_down(lo) - q.q_down(m0)) if lo < m0 else 0.,
+                     float(q.q_up(hi) - q.q_up(m0)) if hi > m0 else 0.,
                      float(observed['down'][i]), float(observed['up'][i]),
                      max((m0 - lo) / m0, 0.), max((hi - m0) / m0, 0.)))
     return pl.DataFrame(rows, schema=MOMENT_SCHEMA, orient='row')

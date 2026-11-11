@@ -9,6 +9,11 @@ Trade notional is allocated across normalized leverage weights without leverage
 multiplication. Scale must later be calibrated. Optional OI anchoring counts only
 positive net changes, not gross openings. Only the supplied symbol and venue are
 represented; positions opened before the window (including long-held ones) are missing.
+
+Isolated-margin equity equals maintenance P*qty*r - A at liquidation:
+long P = (p*(1-1/L) - A/qty)/(1-r), short P = (p*(1+1/L) + A/qty)/(1+r).
+The tier is approximated from entry notional p*qty, not liquidation notional;
+without brackets r=mmr and A=0.
 """
 from dataclasses import dataclass, field
 
@@ -72,6 +77,7 @@ def load_brackets(path) -> dict[str, Brackets]:
 
 
 def _oi_quantities(frame, qty, t_ns, window_ns, open_interest):
+    """Allocate only buckets with start > t_ns-window_ns and end <= t_ns."""
     if not isinstance(open_interest, (tuple, list)) or len(open_interest) != 2:
         raise ValueError('open_interest must be (timestamps_ms, sum_oi)')
     times, values = [np.asarray(a) for a in open_interest]
@@ -88,7 +94,7 @@ def _oi_quantities(frame, qty, t_ns, window_ns, open_interest):
     left = np.searchsorted(times, unique // 1_000_000)
     right = np.searchsorted(times, ends // 1_000_000)
     delta = np.zeros(len(unique))
-    valid = ((unique >= t_ns - window_ns) & (ends <= t_ns)
+    valid = ((unique > t_ns - window_ns) & (ends <= t_ns)
              & (left < len(times)) & (right < len(times)))
     idx = np.flatnonzero(valid)
     idx = idx[(times[left[idx]] == unique[idx] // 1_000_000)
@@ -161,15 +167,21 @@ def liquidation_map(trades: pl.DataFrame, t_ns: int, *,
     reallocating their weights. Crossing uses subsequent trades only, excluding
     the opening trade itself. All parameters are assumptions, not calibrated.
 
+    Exact isolated-margin prices are (p*(1-1/L) - A/qty)/(1-r) for longs
+    and (p*(1+1/L) + A/qty)/(1+r) for shorts, with maintenance P*qty*r - A.
+    Without brackets r=mmr and A=0; rates must be in [0, 1).
+
     Brackets use each raw trade's entry price * qty, not leverage multiplied
-    notional: a trade is a fragment, not a full position. Tiers and maintenance
+    notional: this entry-tier approximation does not retier at liquidation.
+    A trade is a fragment, not a full position. Tiers and maintenance
     deductions use that entry quantity even when allocation is OI-scaled. Allowed
     leverage weights renormalize per trade; no allowed weight drops the trade.
     Today's brackets (2026-11-11) approximate 2026-11-04..06 rules.
 
     open_interest (alias oi) is (integer timestamps_ms, sum_oi in base units).
     oi_mode='bucket' uses only complete epoch-aligned five-minute buckets wholly
-    within the window, with exact OI samples at both boundaries and end <= t_ns.
+    within the window: start >= t_ns-window_ns+1 ns and end <= t_ns, matching
+    the strict trade-window lower bound, with exact OI samples at both boundaries.
     Missing samples and incomplete buckets open nothing. Positive net OI change d
     is allocated proportional to base aggressor volume: long share is buy/total,
     short share sell/total (equivalently (1 +/- signed_volume/total)/2). Thus
@@ -188,8 +200,8 @@ def liquidation_map(trades: pl.DataFrame, t_ns: int, *,
     tier_arrays = _validate_brackets(brackets) if brackets is not None else None
     if not isinstance(window_ns, (int, np.integer)) or window_ns <= 0:
         raise ValueError('window_ns must be a positive integer')
-    if not np.isfinite(mmr) or mmr < 0 or not np.isfinite(scale) or scale < 0:
-        raise ValueError('mmr and scale must be finite and nonnegative')
+    if not np.isfinite(mmr) or not 0 <= mmr < 1 or not np.isfinite(scale) or scale < 0:
+        raise ValueError('mmr must be in [0, 1); scale must be finite and nonnegative')
     if not np.isfinite(bin_bp) or bin_bp <= 0:
         raise ValueError('bin_bp must be finite and positive')
     distribution = DEFAULT_LEVERAGE_WEIGHTS if leverage_weights is None else leverage_weights
@@ -227,12 +239,12 @@ def liquidation_map(trades: pl.DataFrame, t_ns: int, *,
     for j, (leverage, weight) in enumerate(zip(leverages, weights)):
         if weight == 0:
             continue
-        down = prices * (1 - 1 / leverage + mmr)
-        up = prices * (1 + 1 / leverage - mmr)
+        down = prices * (1 - 1 / leverage) / (1 - mmr)
+        up = prices * (1 + 1 / leverage) / (1 + mmr)
         if tier_arrays is not None:
             weight = allowed_weights[j]
-            down = prices * (1 - 1 / leverage + rates) - deduction
-            up = prices * (1 + 1 / leverage - rates) + deduction
+            down = (prices * (1 - 1 / leverage) - deduction) / (1 - rates)
+            up = (prices * (1 + 1 / leverage) + deduction) / (1 + rates)
         down_valid = is_long & (down > 0) & (later_min >= down) & (notional > 0)
         up_valid = ~is_long & (up > 0) & (later_max <= up) & (notional > 0)
         if tier_arrays is not None:

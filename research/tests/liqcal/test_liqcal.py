@@ -42,6 +42,42 @@ def test_crossing_and_flat():
     assert fit_scale(result) == .45
 
 
+@pytest.mark.parametrize('side,level,m0,future,expected', [
+    ('down', 99., 90., 89., 0.), ('down', 85., 90., 80., 100.),
+    ('down', 90., 90., 80., 0.), ('down', 80., 90., 80., 100.),
+    ('up', 81., 90., 91., 0.), ('up', 95., 90., 100., 100.),
+    ('up', 90., 90., 100., 0.), ('up', 100., 90., 100., 100.),
+])
+def test_predictions_count_only_future_crossed_levels(monkeypatch, side, level, m0, future, expected):
+    from wicker_research.liqmap import LiqMap
+
+    empty = np.array([], dtype=float)
+    levels, notionals = np.array([level]), np.array([100.])
+    q = (LiqMap(levels, notionals, empty, empty) if side == 'down'
+         else LiqMap(empty, empty, levels, notionals))
+    monkeypatch.setattr('wicker_research.liqcal.liquidation_map', lambda *args, **kwargs: q)
+    tr, _, liq = day()
+    mark = pl.DataFrame({'rw': [0, NS], 'mark': [m0, future]})
+    result = moments(tr, mark, liq, 'BTCUSDT', step_s=1, horizon_s=1)
+    assert result[f'pred_{side}'].item() == expected
+
+
+@pytest.mark.parametrize('price,qty', [
+    (np.nan, 1.), (None, 1.), (np.inf, 1.), (0., 1.), (-1., 1.),
+    (100., np.nan), (100., None), (100., np.inf), (100., 0.), (100., -1.),
+])
+def test_invalid_liquidations_are_dropped_before_prefix_sums(caplog, price, qty):
+    tr, _, _ = day()
+    mark = pl.DataFrame({'rw': np.arange(5, dtype=np.int64) * NS, 'mark': [100.] * 5})
+    liq = pl.DataFrame({'rw': [NS, 3 * NS], 'side': ['SELL', 'SELL'],
+                        'avg_price': [price, 100.], 'filled_qty': [qty, 2.]},
+                       schema=INPUT_SCHEMA['liquidations'])
+    result = moments(tr, mark, liq, 'BTCUSDT', step_s=1, horizon_s=1)
+    np.testing.assert_array_equal(result['obs_down'], [0., 0., 200., 0.])
+    assert np.isfinite(result.select('obs_down', 'obs_up').to_numpy()).all()
+    assert 'Dropped 1 liquidation records' in caplog.text
+
+
 def test_causal_append():
     original = day()
     extra = [pl.concat([df, df.tail(1).with_columns(pl.lit(600 * NS).alias('rw'))]) for df in original]
