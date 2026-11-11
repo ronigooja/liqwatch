@@ -25,6 +25,16 @@ Output: cost curve per (S, t, d); gain and ratio per (S, t, d, N); break-even `N
 | Index price | `/fapi/v1/premiumIndex` | Verified usable, not recorded |
 | Leverage brackets and maintenance margin | `/fapi/v1/leverageBracket` | Needs a signed key (401 unsigned). Until then assume a bracket table as a parameter |
 
+## Known input gaps (each weakens every result below)
+
+| Gap | Current stand-in | Effect | How to close |
+|---|---|---|---|
+| Open interest not recorded | Every trade in the window counts as a new position | Long-held positions are missing; closing, hedging and market-making trades count as openings; the scale is unanchored | Pull `openInterestHist` for 2026-11-04 onward now (history reaches about 30 days, see [open-questions.md](open-questions.md)); record via the poller. It is aggregate, so opening and closing are still not separated |
+| Leverage distribution of traders | Assumed weights {5, 10, 20, 50, 100} | Liquidation prices are assumptions | Not public on Binance; only assumption, back-fit from recorded liquidations, or a public DEX as a reference (unchecked) |
+| Maintenance margin and tiers | `mmr = 0.005`, a placeholder, not an estimate | Every liquidation price is off by an unquantified amount | `leverageBracket` needs a key and signature; no public table found |
+
+Results from the placeholder inputs show only that the model is not rejected by baselines; they carry no scale.
+
 ## Quantities (each defined once)
 
 1. **Liquidation map** `Q_d(P) = Σ_v Q_{v,d}(P)` summed over venues v; a venue not modeled contributes nothing, so the result is a lower bound and is shown with the list of venues covered (an uncovered venue is never displayed as zero). Per-venue `Q_{v,d}(P)`: estimated notional that is liquidated when mark price crosses P in direction d. Built from recent trade flow (where positions were likely opened, volume-weighted), an assumed leverage distribution, and maintenance margin. Total scale comes from open interest when available, otherwise from calibration. Every parameter is an assumption until calibrated against recorded liquidations.
