@@ -153,6 +153,9 @@ class Replay:
                         if start is not None:
                             pending.setdefault(stream, []).append((start, r['conn']))
                 continue
+            if ch in ('brackets', 'exchangeInfo', 'constituents', 'openInterest', 'brackets_error'):
+                yield Event(rw, ch, r['sym'], dict(payload=payload, meta=r.get('meta', {})))
+                continue
             stream = payload.get('stream')
             if stream:
                 last_stream[stream] = rw

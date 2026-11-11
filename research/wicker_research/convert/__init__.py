@@ -1,5 +1,6 @@
 """Replay output to partitioned Parquet. Layout: docs/p1-data-pipeline.md (Columnar layout)."""
 
+import json
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +32,9 @@ DATASETS = {
     'drop': ('quality', False, [('stream', pa.string()), ('sym', pa.string()), ('start_rw', pa.int64()),
                                 ('end_rw', pa.int64()), ('kind', pa.string())]),
 }
+for _channel in ('brackets', 'exchangeInfo', 'constituents', 'openInterest', 'brackets_error'):
+    DATASETS[_channel] = ('poll_' + _channel, True,
+                          [('payload_json', pa.string()), ('meta_json', pa.string())])
 
 
 def _schema(kind):
@@ -40,6 +44,8 @@ def _schema(kind):
 
 def _row(kind, ev):
     f = ev.fields
+    if kind in ('brackets', 'exchangeInfo', 'constituents', 'openInterest', 'brackets_error'):
+        return [ev.rw, json.dumps(f['payload'], sort_keys=True), json.dumps(f['meta'], sort_keys=True)]
     if kind in ('gap', 'drop'):
         return [ev.rw, f['stream'], ev.sym, f['start_rw'], f['end_rw'], kind]
     if kind == 'forceOrder':
