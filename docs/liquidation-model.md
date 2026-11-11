@@ -46,6 +46,15 @@ Script: `research/scripts/mark_vs_contract.py`. Sample: 1 h, 2026-11-06 17:00 UT
 
 Reading: on small coins in this hour, mark price moved with the contract-index gap for most of the gap (pass99 mostly above 0.7). On BTC and ETH it followed less. This is a calm hour, one sample, and a gap that lasts for minutes also moves the 1-minute basis in Price 2, so it does not show that a short contract-only push moves mark price. BULLAUSDT is unexplained (mark far from index while the contract is near it). Open question 1 stays open until spike periods are measured.
 
+Spike measurement: `research/scripts/mark_spikes.py`, 2026-11-05 full day, all 522 symbols that have trades and at least 3,600 s of data (of 980 mark symbols), 1 s steps. gap and dev as above but minus their own trailing 300 s median, so the persistent basis is removed. A spike second is |gap| ≥ threshold. pass = dev / gap on spike seconds, median per symbol.
+
+| Threshold | Spike seconds | Symbols with ≥ 30 spike s | pass, symbol quantiles 10 / 25 / 50 / 75 / 90 % | Symbols with pass > 0.5 / < 0.2 |
+|---|---|---|---|---|
+| 20 bp | 2,278,162 | 502 | 0.39 / 0.54 / 0.68 / 0.78 / 0.83 | 79% / 4% |
+| 50 bp | 87,679 | 227 | 0.22 / 0.45 / 0.64 / 0.77 / 0.87 | 69% / 8% |
+
+Reading: in short deviations mark price moved about two thirds of the contract-index gap in the median symbol; mark equals the last trade price in only 6% to 14% of spike seconds. Median spike run is 2 s. Not separated: the 1-minute basis in Price 2 and the contract term in the median both move with the contract, so this still does not show which input carries the move. One day, one market state; low-liquidity symbols such as JCTUSDT (0.23) pass little. Trades cover 522 symbols, not all 980.
+
 Earlier run of a different script (`mark_follow.py`, removed; same sample, recorded here for its findings): contract price stays away from the index for long stretches (median gap 10 to 60 bp on most small symbols, 99th percentile up to 127 bp on 1000CATUSDT; BTC and ETH within about 8 bp); mark price equals the last trade price in 22% to 53% of seconds; ZECUSDT responds weakly (0.02) and BULLAUSDT 0.37. The response includes the lag of the 1-minute basis (Price 2), so it does not separate "contract price enters the median directly" from "Price 2 follows the contract with a delay". The "Contract Price" input of the median is not defined in the docs read so far.
 
 ## Venue adapter
