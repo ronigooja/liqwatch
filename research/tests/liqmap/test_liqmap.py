@@ -249,3 +249,97 @@ def test_default_options_leave_original_map_unchanged():
                                open_interest=(np.array([0]), np.array([1.])))
     for name in ('down_prices', 'down_notional', 'up_prices', 'up_notional'):
         np.testing.assert_array_equal(getattr(original, name), getattr(optional, name))
+
+
+def test_oi_bucket_both_hand_computed_allocation_and_survival():
+    from wicker_research.liqmap import _oi_quantities
+
+    df = trades([100, 200], [False, True], times=[1, 2], quantities=[1, 3])
+    oi = (np.array([0, 300_000]), np.array([10., 14.]))
+    allocated = _oi_quantities(df, df['qty'].to_numpy(), 300_000_000_000,
+                               8 * 3600 * 1_000_000_000, oi)
+    np.testing.assert_array_equal(allocated, [1., 3.])
+    result = liquidation_map(df, 300_000_000_000, oi=oi, oi_mode='bucket_both',
+                             leverage_weights={10: 1}, mmr=0)
+    np.testing.assert_allclose(result.down_prices, [90, 180])
+    np.testing.assert_allclose(result.down_notional, [100, 600])
+    # The short opened at 100 is crossed by the later trade at 200.
+    np.testing.assert_allclose(result.up_prices, [220])
+    np.testing.assert_allclose(result.up_notional, [600])
+
+
+@pytest.mark.parametrize('makers', [[False, False], [True, True], [False, True]])
+def test_oi_bucket_both_is_independent_of_aggressor_side(makers):
+    df = trades([100, 101], makers, times=[1, 2], quantities=[1, 3])
+    result = liquidation_map(df, 300_000_000_000,
+                             oi=(np.array([0, 300_000]), np.array([10., 14.])),
+                             oi_mode='bucket_both', leverage_weights={10: 1}, mmr=0)
+    np.testing.assert_allclose(result.down_prices, [90, 90.9])
+    np.testing.assert_allclose(result.up_prices, [110, 111.1])
+    for notional in (result.down_notional, result.up_notional):
+        np.testing.assert_allclose(notional, [100, 303])
+        assert (notional / [100, 101]).sum() == 4
+
+
+@pytest.mark.parametrize('delta', [0., -4.])
+def test_oi_bucket_both_nonpositive_delta(delta):
+    result = liquidation_map(trades([100], times=[1]), 300_000_000_000,
+                             oi=(np.array([0, 300_000]), np.array([10., 10. + delta])),
+                             oi_mode='bucket_both')
+    assert result.q_down(0) == result.q_up(1000) == 0
+
+
+def test_oi_bucket_both_causal_complete_and_window_rules():
+    bucket = 300_000_000_000
+    df = trades([100, 101], times=[1, 2], quantities=[1, 3])
+    oi = (np.array([0, 300_000]), np.array([10., 14.]))
+    kwargs = {'oi_mode': 'bucket_both', 'leverage_weights': {10: 1}}
+    before = liquidation_map(df, bucket, oi=oi, **kwargs)
+    extra = pl.concat([df, trades([1, 1000], times=[bucket + 1, bucket + 2])])
+    later_oi = (np.r_[oi[0], 600_000], np.r_[oi[1], 1e9])
+    for frame, samples in ((extra, oi), (df, later_oi), (extra, later_oi)):
+        after = liquidation_map(frame, bucket, oi=samples, **kwargs)
+        for name in ('down_prices', 'down_notional', 'up_prices', 'up_notional'):
+            np.testing.assert_array_equal(getattr(before, name), getattr(after, name))
+    for t, options in ((bucket - 1, {'oi': oi}),
+                       (bucket, {'oi': oi, 'window_ns': bucket}),
+                       (bucket, {'oi': (oi[0][:1], oi[1][:1])})):
+        excluded = liquidation_map(df, t, **options, **kwargs)
+        assert excluded.q_down(0) == excluded.q_up(1000) == 0
+    included = liquidation_map(df, bucket, window_ns=bucket + 1, oi=oi, **kwargs)
+    np.testing.assert_allclose(included.down_notional, [100, 303])
+    np.testing.assert_allclose(included.up_notional, [100, 303])
+
+
+def test_oi_bucket_both_brackets_use_raw_notional_quantity_and_caps():
+    result = liquidation_map(trades([100], times=[1], quantities=[4]), 300_000_000_000,
+                             oi=(np.array([0, 300_000]), np.array([100., 101.])),
+                             oi_mode='bucket_both', brackets=bracket_rules(),
+                             leverage_weights={10: 1, 50: 1})
+    np.testing.assert_allclose(result.down_prices, [89.5 / .98])
+    np.testing.assert_allclose(result.up_prices, [110.5 / 1.02])
+    np.testing.assert_allclose(result.down_notional, [100])
+    np.testing.assert_allclose(result.up_notional, [100])
+
+
+def test_oi_bucket_both_leaves_bucket_aggressor_split_unchanged():
+    df = trades([100, 101], [False, True], times=[1, 2], quantities=[1, 3])
+    kwargs = {'oi': (np.array([0, 300_000]), np.array([10., 14.])),
+              'leverage_weights': {10: 1}, 'mmr': 0}
+    original = liquidation_map(df, 300_000_000_000, oi_mode='bucket', **kwargs)
+    liquidation_map(df, 300_000_000_000, oi_mode='bucket_both', **kwargs)
+    after = liquidation_map(df, 300_000_000_000, oi_mode='bucket', **kwargs)
+    np.testing.assert_allclose(original.down_prices, [90])
+    np.testing.assert_allclose(original.up_prices, [111.1])
+    np.testing.assert_allclose(original.down_notional, [100])
+    np.testing.assert_allclose(original.up_notional, [303])
+    for name in ('down_prices', 'down_notional', 'up_prices', 'up_notional'):
+        np.testing.assert_array_equal(getattr(original, name), getattr(after, name))
+
+
+def test_oi_bucket_both_requires_oi_and_handles_empty_trades():
+    with pytest.raises(ValueError, match='requires open_interest'):
+        liquidation_map(trades([100]), 0, oi_mode='bucket_both')
+    result = liquidation_map(trades([]), 300_000_000_000, oi_mode='bucket_both',
+                             oi=(np.array([0, 300_000]), np.array([10., 14.])))
+    assert result.q_down(0) == result.q_up(1000) == 0

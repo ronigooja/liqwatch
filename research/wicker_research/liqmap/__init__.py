@@ -9,6 +9,8 @@ Trade notional is allocated across normalized leverage weights without leverage
 multiplication. Scale must later be calibrated. Optional OI anchoring counts only
 positive net changes, not gross openings. Only the supplied symbol and venue are
 represented; positions opened before the window (including long-held ones) are missing.
+Optional bucket_both treats positive net OI changes as openings on both sides;
+see liquidation_map for allocation and bucket rules.
 
 Isolated-margin equity equals maintenance P*qty*r - A at liquidation:
 long P = (p*(1-1/L) - A/qty)/(1-r), short P = (p*(1+1/L) + A/qty)/(1+r).
@@ -189,14 +191,19 @@ def liquidation_map(trades: pl.DataFrame, t_ns: int, *,
     scale remains an explicit multiplier. Zero/negative changes open nothing.
     This conservative proxy misses offsetting openings/closings and pre-window
     long-held positions; it is not observed gross opening flow. None keeps all trades.
+
+    oi_mode='bucket_both' uses the same bucket rules but assumes each new contract
+    opens both a long and a short: each trade of quantity q in bucket volume Q
+    receives d*q/Q base units on each side, regardless of aggressor side. Each
+    side totals d before scale, bracket and survival filtering; d <= 0 opens nothing.
     """
-    if oi_mode not in (None, 'bucket'):
-        raise ValueError("oi_mode must be None or 'bucket'")
+    if oi_mode not in (None, 'bucket', 'bucket_both'):
+        raise ValueError("oi_mode must be None, 'bucket' or 'bucket_both'")
     if oi is not None and open_interest is not None:
         raise ValueError('supply only one of oi and open_interest')
     open_interest = oi if oi is not None else open_interest
-    if oi_mode == 'bucket' and open_interest is None:
-        raise ValueError("oi_mode='bucket' requires open_interest")
+    if oi_mode is not None and open_interest is None:
+        raise ValueError(f"oi_mode='{oi_mode}' requires open_interest")
     tier_arrays = _validate_brackets(brackets) if brackets is not None else None
     if not isinstance(window_ns, (int, np.integer)) or window_ns <= 0:
         raise ValueError('window_ns must be a positive integer')
@@ -222,7 +229,13 @@ def liquidation_map(trades: pl.DataFrame, t_ns: int, *,
         raise ValueError('prices must be positive and quantities nonnegative, both finite')
     is_long = ~frame['buyer_is_maker'].to_numpy()
     opened_qty = (_oi_quantities(frame, qty, t_ns, window_ns, open_interest)
-                  if oi_mode == 'bucket' else qty)
+                  if oi_mode is not None else qty)
+    later_min = np.r_[np.minimum.accumulate(prices[:0:-1])[::-1], np.inf][:len(prices)]
+    later_max = np.r_[np.maximum.accumulate(prices[:0:-1])[::-1], -np.inf][:len(prices)]
+    if oi_mode == 'bucket_both':
+        is_long = np.repeat([True, False], len(prices))
+        prices, qty, opened_qty, later_min, later_max = (
+            np.tile(a, 2) for a in (prices, qty, opened_qty, later_min, later_max))
     notional = prices * opened_qty * scale
     if tier_arrays is not None:
         lower, rates, amounts, caps = tier_arrays
@@ -233,8 +246,6 @@ def liquidation_map(trades: pl.DataFrame, t_ns: int, *,
         allowed_weights = np.divide(allowed_weights, totals, out=np.zeros_like(allowed_weights),
                                     where=totals > 0)
         deduction = np.divide(amounts, qty, out=np.zeros_like(qty), where=qty > 0)
-    later_min = np.r_[np.minimum.accumulate(prices[:0:-1])[::-1], np.inf][:len(prices)]
-    later_max = np.r_[np.maximum.accumulate(prices[:0:-1])[::-1], -np.inf][:len(prices)]
     down_prices, down_notional, up_prices, up_notional = [], [], [], []
     for j, (leverage, weight) in enumerate(zip(leverages, weights)):
         if weight == 0:

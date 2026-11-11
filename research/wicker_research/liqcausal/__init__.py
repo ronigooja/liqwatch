@@ -513,7 +513,7 @@ def main(argv=None):
     parser.add_argument('--budgets', default='1,3')
     parser.add_argument('--brackets')
     parser.add_argument('--oi', help='directory containing oi_<SYMBOL>.parquet')
-    parser.add_argument('--oi-mode', choices=['bucket'])
+    parser.add_argument('--oi-mode', choices=['bucket', 'bucket_both'])
     args = parser.parse_args(argv)
     if args.oi_mode and not args.oi:
         parser.error('--oi-mode requires --oi')

@@ -286,3 +286,17 @@ def test_brackets_oi_moments_and_cli(tmp_path, monkeypatch):
               '--brackets', str(bracket_path)])
     with pytest.raises(SystemExit):
         main([str(tmp_path), '--syms', 'BTCUSDT', '--out', str(out), '--oi-mode', 'bucket'])
+
+
+def test_bucket_both_cli_accepted(tmp_path, monkeypatch):
+    oi = pl.DataFrame({'symbol': ['BTCUSDT'] * 2, 'timestamp': [0, 300_000],
+                       'sum_oi': [100., 103.]})
+    oi.write_parquet(tmp_path / 'oi_BTCUSDT.parquet')
+    tr, _, liq = day()
+    tr = tr.with_columns(pl.lit(NS).alias('rw'))
+    mark = pl.DataFrame({'rw': [0, 300 * NS, 360 * NS], 'mark': [100., 100., 80.]})
+    monkeypatch.setattr('wicker_research.liqcal.load_day', lambda roots, sym: (tr, mark, liq))
+    out = tmp_path / 'score.csv'
+    main([str(tmp_path), '--syms', 'BTCUSDT', '--out', str(out), '--horizon', '60',
+          '--oi', str(tmp_path), '--oi-mode', 'bucket_both'])
+    assert pl.read_csv(out)['down_sum_pred'].item() == pytest.approx(300.)

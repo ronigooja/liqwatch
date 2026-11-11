@@ -323,7 +323,7 @@ def main(argv=None):
     parser.add_argument('--horizon', type=int, default=300)
     parser.add_argument('--brackets', help='CSV entry-notional bracket rules')
     parser.add_argument('--oi', help='Directory containing oi_<SYMBOL>.parquet')
-    parser.add_argument('--oi-mode', choices=['bucket'])
+    parser.add_argument('--oi-mode', choices=['bucket', 'bucket_both'])
     args = parser.parse_args(argv)
     if args.oi_mode and not args.oi:
         parser.error('--oi-mode requires --oi')

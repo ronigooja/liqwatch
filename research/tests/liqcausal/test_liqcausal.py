@@ -469,3 +469,26 @@ def test_unknown_model_rejected():
     train, test = world(n=200)
     with pytest.raises(ValueError, match='model must be ridge/gbm'):
         evaluate(train, test, 'down', model='unknown', n_boot=2)
+
+
+def test_bucket_both_cli_accepted_and_forwarded(tmp_path, monkeypatch):
+    oi = pl.DataFrame({'symbol': ['A'] * 2, 'timestamp': [0, 300_000],
+                       'sum_oi': [100., 103.]})
+    oi.write_parquet(tmp_path / 'oi_A.parquet')
+    train, test = world(n=200)
+    captured = {}
+
+    def fake_moments(*args, **kwargs):
+        captured.update(kwargs['params'])
+        return pl.concat([train, test])
+
+    monkeypatch.setattr('wicker_research.liqcausal.load_day', lambda roots, sym: data())
+    monkeypatch.setattr('wicker_research.liqcausal.moments', fake_moments)
+    main(['--root=1970-01-01=unused', '--root=1970-01-02=unused',
+          '--train', '1970-01-01', '--test', '1970-01-02', '--syms', 'A',
+          '--out', str(tmp_path), '--bootstrap', '2', '--embargo-minutes', '0',
+          '--oi', str(tmp_path), '--oi-mode', 'bucket_both'])
+    assert captured['oi_mode'] == 'bucket_both'
+    np.testing.assert_array_equal(captured['open_interest'][1], [100., 103.])
+    assert (tmp_path / 'A_down.csv').is_file()
+    assert (tmp_path / 'A_up.csv').is_file()
