@@ -1,6 +1,7 @@
 """Past-only liquidation-map ablation, not an economic or intervention model.
 
 For one symbol, epoch-aligned t (step_s=60) freezes liquidation_map(trades, t).
+The map and trade slice use params['window_ns'] (CLI --window-hours, default 8 h).
 m0 is the last mark at or before t. mass_down_d sums long levels in
 [m0*(1-d/10000), m0); mass_up_d sums short levels in (m0, m0*(1+d/10000)]
 for distances_bp=(10,25,50). total_down/up include every level on that side.
@@ -502,6 +503,7 @@ def main(argv=None):
     parser.add_argument('--model', choices=['ridge', 'gbm'], default='ridge')
     parser.add_argument('--step', type=int, default=60)
     parser.add_argument('--horizon', type=int, default=300)
+    parser.add_argument('--window-hours', type=float, default=8, help='map trade window in hours (default: 8)')
     parser.add_argument('--distances-bp', default='10,25,50')
     parser.add_argument('--min-cluster', type=float)
     parser.add_argument('--quantile', type=float, default=.9)
@@ -515,6 +517,10 @@ def main(argv=None):
     parser.add_argument('--oi', help='directory containing oi_<SYMBOL>.parquet')
     parser.add_argument('--oi-mode', choices=['bucket', 'bucket_both'])
     args = parser.parse_args(argv)
+    window_ns = args.window_hours * 3600 * NS
+    if not np.isfinite(window_ns) or window_ns <= 0 or round(window_ns) <= 0:
+        parser.error('--window-hours must be finite and positive, rounding to at least 1 nanosecond')
+    window_ns = round(window_ns)
     if args.oi_mode and not args.oi:
         parser.error('--oi-mode requires --oi')
     roots = {}
@@ -539,7 +545,7 @@ def main(argv=None):
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     for sym in args.syms.split(','):
-        params = {'oi_mode': args.oi_mode}
+        params = {'oi_mode': args.oi_mode, 'window_ns': window_ns}
         if tables is not None:
             if sym not in tables:
                 parser.error(f'bracket table has no symbol {sym}')

@@ -2,6 +2,7 @@
 
 Evaluation moments lie on an epoch-aligned step_s-second grid (default 60),
 using only that symbol's data; fewer than min_trades window trades skips a moment.
+The map and trade slice use params['window_ns'] (CLI --window-hours, default 8 h).
 At t, m0 is the last mark at or before t and Q = liquidation_map(trades, t,
 **params). The mark path in (t, t + H], H = horizon_s (default 300), supplies
 lo/min and hi/max. Only complete horizons with at least one future mark qualify.
@@ -321,16 +322,21 @@ def main(argv=None):
     parser.add_argument('--bins')
     parser.add_argument('--step', type=int, default=60)
     parser.add_argument('--horizon', type=int, default=300)
+    parser.add_argument('--window-hours', type=float, default=8, help='map trade window in hours (default: 8)')
     parser.add_argument('--brackets', help='CSV entry-notional bracket rules')
     parser.add_argument('--oi', help='Directory containing oi_<SYMBOL>.parquet')
     parser.add_argument('--oi-mode', choices=['bucket', 'bucket_both'])
     args = parser.parse_args(argv)
+    window_ns = args.window_hours * 3600 * NS
+    if not np.isfinite(window_ns) or window_ns <= 0 or round(window_ns) <= 0:
+        parser.error('--window-hours must be finite and positive, rounding to at least 1 nanosecond')
+    window_ns = round(window_ns)
     if args.oi_mode and not args.oi:
         parser.error('--oi-mode requires --oi')
     tables = load_brackets(args.brackets) if args.brackets else None
     scores, evaluated, conditional = [], [], []
     for sym in args.syms.split(','):
-        params = {'oi_mode': args.oi_mode}
+        params = {'oi_mode': args.oi_mode, 'window_ns': window_ns}
         if tables is not None:
             if sym not in tables:
                 parser.error(f'bracket table has no symbol {sym}')
