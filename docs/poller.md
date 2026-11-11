@@ -15,6 +15,9 @@ Use a supervisor to alert on nonzero exit and restart; deployment is not include
 
 Daily tasks run at UTC 00:05; startup immediately fills missing current-day snapshots.
 `exchangeInfo` selects TRADING USDT PERPETUAL symbols for both per-symbol tasks.
+Use `--syms BTCUSDT,ETHUSDT` to restrict OI and constituents to eligible symbols; default: all.
+For `--syms`, empty items, lowercase and malformed symbols are rejected at startup; full brackets/exchangeInfo storage is unchanged.
+Missing requested symbols are skipped, saved in state as `missing_symbols`, and warned once per UTC day.
 Constituents use independent per-symbol daily completion checkpoints, so a slow or
 failed sweep rolls forward without discarding unfinished symbols or blocking OI.
 OI is due on five-minute UTC boundaries, immediately on startup; each timestamp

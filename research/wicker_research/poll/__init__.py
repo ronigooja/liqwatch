@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -20,6 +21,13 @@ BASE = 'https://fapi.binance.com'
 BRACKETS = 'https://www.binance.com/bapi/futures/v1/friendly/future/common/brackets'
 CHANNELS = ('brackets', 'exchangeInfo', 'constituents', 'openInterest', 'brackets_error')
 logger = logging.getLogger(__name__)
+
+
+def parse_symbols(value):
+    symbols = tuple(value.split(','))
+    if not symbols or any(not re.fullmatch(r'[A-Z0-9_]+', sym) for sym in symbols):
+        raise ValueError('symbols must be comma-separated uppercase symbols without empty items')
+    return symbols
 
 
 class Clock:
@@ -115,8 +123,14 @@ class Config:
     brackets_weight: int = 1
     oi_rps: float = 2
     constituents_rps: float = 1
+    symbols: tuple[str, ...] | None = None
 
     def __post_init__(self):
+        if self.symbols is not None:
+            if not isinstance(self.symbols, tuple) or not self.symbols or any(
+                    not isinstance(sym, str) or not re.fullmatch(r'[A-Z0-9_]+', sym)
+                    for sym in self.symbols):
+                raise ValueError('symbols must be a nonempty tuple of uppercase symbols')
         weights = (self.oi_weight, self.constituents_weight,
                    self.exchange_info_weight, self.brackets_weight)
         if self.weight_cap <= 0 or any(w <= 0 or w > self.weight_cap for w in weights):
@@ -180,6 +194,25 @@ class Poller:
         self.minute, self.weight, self.observed = None, 0, 0
         self._schedule()
 
+    def _selected_symbols(self):
+        symbols = self.state.get('symbols', [])
+        if self.config.symbols is None:
+            return symbols
+        selected = set(self.config.symbols)
+        if 'exchangeInfo' in self.state:
+            missing = sorted(selected.difference(symbols))
+            changed = self.state.get('missing_symbols') != missing
+            self.state['missing_symbols'] = missing
+            day = math.floor(self.clock.time() / 86400)
+            if missing and self.state.get('missing_symbols_warned_day') != day:
+                logger.warning('requested symbols absent from TRADING USDT PERPETUAL list: %s',
+                               ','.join(missing))
+                self.state['missing_symbols_warned_day'] = day
+                changed = True
+            if changed:
+                _save(self.state_path, self.state)
+        return [sym for sym in symbols if sym in selected]
+
     def _schedule(self):
         now = self.clock.time()
         day = math.floor(now / 86400) * 86400
@@ -188,7 +221,7 @@ class Poller:
             if key not in self.jobs:
                 fetched = self.state.get(ch, -1)
                 self.jobs[key] = day + 86400 + 300 if fetched >= day else now
-        for sym in self.state.get('symbols', []):
+        for sym in self._selected_symbols():
             self.jobs.setdefault(('openInterest', sym), now)
             fetched = self.state.get('constituents', {}).get(sym, -1)
             self.jobs.setdefault(('constituents', sym),
@@ -290,11 +323,13 @@ class Poller:
         now = rw / 1e9
         if ch == 'exchangeInfo':
             self.state['symbols'] = symbols
-            self.jobs = {k: v for k, v in self.jobs.items() if not k[1] or k[1] in symbols}
         if ch == 'constituents':
             self.state.setdefault(ch, {})[sym] = now
         elif ch != 'openInterest':
             self.state[ch] = now
+        if ch == 'exchangeInfo':
+            selected = self._selected_symbols()
+            self.jobs = {k: v for k, v in self.jobs.items() if not k[1] or k[1] in selected}
         if ch != 'openInterest':
             _save(self.state_path, self.state)
         self.jobs[key] = ((math.floor(now / 300) + 1) * 300 if ch == 'openInterest'

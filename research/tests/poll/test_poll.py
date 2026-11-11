@@ -161,6 +161,92 @@ def test_daily_and_five_minute_schedule_restart(tmp_path):
     assert restarted.jobs['brackets', ''] == clock.time()  # missing today's snapshot
 
 
+@pytest.mark.parametrize('symbols, expected', [(None, ['BTCUSDT', 'ETHUSDT']),
+                                              (('ETHUSDT',), ['ETHUSDT'])])
+def test_symbol_filter_jobs_and_full_snapshots(tmp_path, symbols, expected):
+    body = exchange()
+    body['symbols'].append(dict(body['symbols'][0], symbol='ETHUSDT'))
+    bracket_body = brackets()
+    bracket_body['data']['brackets'].append(
+        dict(bracket_body['data']['brackets'][0], symbol='ETHUSDT'))
+    p = poller(tmp_path, Response(body), Response(bracket_body), config=Config(symbols=symbols))
+    p.step()
+    p.step()
+    p._schedule()
+    assert p.state['symbols'] == ['BTCUSDT', 'ETHUSDT']
+    for channel in ('openInterest', 'constituents'):
+        assert sorted(sym for ch, sym in p.jobs if ch == channel) == expected
+    assert p.writer.records[0][2] == body
+    assert [r[1] for r in p.writer.records if r[0] == 'brackets'] == ['BTCUSDT', 'ETHUSDT']
+    restarted = Poller(Session(), Writer(), p.state_path, config=Config(symbols=symbols), clock=p.clock)
+    for channel in ('openInterest', 'constituents'):
+        assert sorted(sym for ch, sym in restarted.jobs if ch == channel) == expected
+
+
+def test_missing_symbols_warn_once_per_day_and_persist(tmp_path, caplog):
+    config = Config(symbols=('BTCUSDT', 'MISSINGUSDT', 'CLOSEDUSDT', 'BTCUSDC', 'QUARTERUSDT'))
+    p = poller(tmp_path, Response(exchange()), config=config)
+    p.step()
+    expected = ['BTCUSDC', 'CLOSEDUSDT', 'MISSINGUSDT', 'QUARTERUSDT']
+    assert p.state['missing_symbols'] == expected
+    assert json.loads(p.state_path.read_text())['missing_symbols'] == expected
+    assert len(caplog.records) == 1 and caplog.records[0].levelname == 'WARNING'
+    assert all(sym in caplog.text for sym in expected)
+    p._schedule()
+    restarted = Poller(Session(), Writer(), p.state_path, config=config, clock=p.clock)
+    assert len(caplog.records) == 1
+    assert {sym for _, sym in restarted.jobs if sym} == {'BTCUSDT'}
+    p.clock.sleep(86400)
+    restarted._schedule()
+    restarted._schedule()
+    assert len(caplog.records) == 2
+    restarted.session.responses.append(Response(exchange()))
+    restarted.jobs = {('exchangeInfo', ''): p.clock.time()}
+    restarted.step()
+    assert len(caplog.records) == 2
+
+
+@pytest.mark.parametrize('value', ['', ',', 'BTCUSDT,', ',BTCUSDT', 'BTCUSDT,,ETHUSDT',
+                                  'btcusdt', 'BTCUSDT,ethusdt', 'BTC USDT', 'BTCUSDT;ETHUSDT'])
+def test_cli_invalid_symbols_rejected(tmp_path, monkeypatch, capsys, value):
+    from wicker_research.poll.__main__ import main
+
+    raw = tmp_path / 'raw'
+    monkeypatch.setattr('sys.argv', ['wickerpoll', '--raw', str(raw), '--syms', value])
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 2
+    assert 'comma-separated uppercase symbols without empty items' in capsys.readouterr().err
+    assert not raw.exists()
+
+
+def test_cli_parses_symbols(tmp_path, monkeypatch):
+    from wicker_research.poll import __main__ as cli
+
+    configs = []
+
+    class StoppedPoller:
+        def __init__(self, session, writer, state_path, config):
+            configs.append(config)
+
+        def run(self):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, 'Poller', StoppedPoller)
+    monkeypatch.setattr('sys.argv', ['wickerpoll', '--raw', str(tmp_path), '--syms',
+                                    'BTCUSDT,ETHUSDT', '--weight-cap', '120'])
+    assert cli.main() == 0
+    assert configs[0].symbols == ('BTCUSDT', 'ETHUSDT')
+    assert configs[0].weight_cap == 120
+
+
+@pytest.mark.parametrize('symbols', [(), ('',), ('btcusdt',), ('BTCUSDT,ETHUSDT',),
+                                    ('BTC USDT',), (None,), 'BTCUSDT'])
+def test_invalid_symbol_config(symbols):
+    with pytest.raises(ValueError, match='uppercase symbols'):
+        Config(symbols=symbols)
+
+
 def test_weight_cap_and_header_backoff(tmp_path):
     p = poller(tmp_path, Response({}, headers={'x-mbx-used-weight-1m': '241'}), Response({}))
     p._request('openInterest', 'BTCUSDT')
