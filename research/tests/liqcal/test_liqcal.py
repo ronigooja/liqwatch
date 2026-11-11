@@ -216,3 +216,37 @@ def test_move_validation():
         conditional_by_move(df, 'down', bins=0)
     with pytest.raises(ValueError):
         partial_spearman(df, 'invalid')
+
+
+def test_brackets_oi_moments_and_cli(tmp_path, monkeypatch):
+    from wicker_research.liqmap import load_brackets
+
+    bracket_path = tmp_path / 'brackets.csv'
+    bracket_path.write_text('symbol,tier,lower,upper,max_leverage,mmr,maint_amount\n'
+                            'BTCUSDT,1,0,10000,10,0.01,0\n')
+    oi = pl.DataFrame({'symbol': ['BTCUSDT'] * 2, 'timestamp': [0, 300_000],
+                       'sum_oi': [100., 103.]})
+    oi.write_parquet(tmp_path / 'oi_BTCUSDT.parquet')
+    tr, _, liq = day()
+    tr = tr.with_columns(pl.lit(NS).alias('rw'))
+    mark = pl.DataFrame({'rw': [0, 300 * NS, 360 * NS], 'mark': [100., 100., 80.]})
+    data = (tr, mark, liq)
+    params = {'brackets': load_brackets(bracket_path)['BTCUSDT'],
+              'open_interest': (oi['timestamp'].to_numpy(), oi['sum_oi'].to_numpy()),
+              'oi_mode': 'bucket'}
+    result = moments(*data, 'BTCUSDT', horizon_s=60, params=params)
+    assert result.filter(pl.col('t') == 300 * NS)['pred_down'].item() == 300.
+    assert result.filter(pl.col('t') < 300 * NS)['pred_down'].sum() == 0
+    monkeypatch.setattr('wicker_research.liqcal.load_day', lambda roots, sym: data)
+    out, dump = tmp_path / 'score.csv', tmp_path / 'moments.csv'
+    args = [str(tmp_path), '--syms', 'BTCUSDT', '--out', str(out), '--moments', str(dump),
+            '--horizon', '60', '--brackets', str(bracket_path), '--oi', str(tmp_path),
+            '--oi-mode', 'bucket']
+    main(args)
+    assert pl.read_csv(out)['down_sum_pred'].item() == 300.
+    assert_frame_equal(pl.read_csv(dump), result)
+    with pytest.raises(SystemExit):
+        main([str(tmp_path), '--syms', 'OTHER', '--out', str(out),
+              '--brackets', str(bracket_path)])
+    with pytest.raises(SystemExit):
+        main([str(tmp_path), '--syms', 'BTCUSDT', '--out', str(out), '--oi-mode', 'bucket'])

@@ -32,7 +32,7 @@ import numpy as np
 import polars as pl
 import pyarrow.dataset as ds
 
-from wicker_research.liqmap import liquidation_map
+from wicker_research.liqmap import liquidation_map, load_brackets
 
 NS = 1_000_000_000
 MOMENT_SCHEMA = {'t': pl.Int64, 'sym': pl.String, **{
@@ -70,7 +70,11 @@ def load_day(root, sym: str) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
 def moments(trades: pl.DataFrame, mark: pl.DataFrame, liquidations: pl.DataFrame,
             sym: str, *, step_s: int = 60, horizon_s: int = 300,
             min_trades: int = 1, params: dict | None = None) -> pl.DataFrame:
-    """Evaluate one symbol; optional sym columns are filtered before evaluation."""
+    """Evaluate one symbol; optional sym columns are filtered before evaluation.
+
+    params forwards liquidation_map options, including symbol-specific brackets,
+    open_interest=(timestamps_ms, base-unit sum_oi), and oi_mode='bucket'.
+    """
     for value in (step_s, horizon_s, min_trades):
         if not isinstance(value, (int, np.integer)) or value <= 0:
             raise ValueError('step_s, horizon_s and min_trades must be positive integers')
@@ -299,10 +303,32 @@ def main(argv=None):
     parser.add_argument('--bins')
     parser.add_argument('--step', type=int, default=60)
     parser.add_argument('--horizon', type=int, default=300)
+    parser.add_argument('--brackets', help='CSV entry-notional bracket rules')
+    parser.add_argument('--oi', help='Directory containing oi_<SYMBOL>.parquet')
+    parser.add_argument('--oi-mode', choices=['bucket'])
     args = parser.parse_args(argv)
+    if args.oi_mode and not args.oi:
+        parser.error('--oi-mode requires --oi')
+    tables = load_brackets(args.brackets) if args.brackets else None
     scores, evaluated, conditional = [], [], []
     for sym in args.syms.split(','):
-        frame = moments(*load_day(args.roots, sym), sym, step_s=args.step, horizon_s=args.horizon)
+        params = {'oi_mode': args.oi_mode}
+        if tables is not None:
+            if sym not in tables:
+                parser.error(f'bracket table has no symbol {sym}')
+            params['brackets'] = tables[sym]
+        if args.oi:
+            path = Path(args.oi) / f'oi_{sym}.parquet'
+            if not path.is_file():
+                parser.error(f'OI file not found: {path}')
+            oi = pl.read_parquet(path)
+            if not {'symbol', 'timestamp', 'sum_oi'} <= set(oi.columns):
+                parser.error(f'OI file requires symbol, timestamp, sum_oi: {path}')
+            if oi['symbol'].null_count() or oi.filter(pl.col('symbol') != sym).height:
+                parser.error(f'OI file contains another symbol: {path}')
+            params['open_interest'] = (oi['timestamp'].to_numpy(), oi['sum_oi'].to_numpy())
+        frame = moments(*load_day(args.roots, sym), sym, step_s=args.step,
+                        horizon_s=args.horizon, params=params)
         scores.append(score(frame).with_columns(pl.lit(sym).alias('sym')))
         if args.moments:
             evaluated.append(frame)

@@ -3,7 +3,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from wicker_research.liqmap import VERSION, liquidation_map
+from wicker_research.liqmap import Brackets, VERSION, liquidation_map, load_brackets
 
 
 def trades(prices, makers=None, times=None, quantities=None):
@@ -117,3 +117,96 @@ def test_invalid_inputs_and_level_requests():
         result.levels('long', 1)
     with pytest.raises(ValueError):
         result.levels('down', -1)
+
+
+def bracket_rules():
+    return Brackets(np.array([0., 200.]), np.array([.01, .02]),
+                    np.array([0., 2.]), np.array([50., 10.]))
+
+
+@pytest.mark.parametrize('maker,expected', [(False, [91., 91., 91.5]),
+                                            (True, [108.5, 109., 109.])])
+def test_bracket_lookup_and_deduction(maker, expected):
+    result = liquidation_map(trades([100.] * 3, [maker] * 3, quantities=[1, 2, 4]),
+                             2, brackets=bracket_rules(), leverage_weights={10: 1})
+    np.testing.assert_allclose(result.up_prices if maker else result.down_prices, expected)
+    assert result.q_up(1000) + result.q_down(0) == 700
+
+
+def test_leverage_caps_renormalize_per_trade():
+    result = liquidation_map(trades([100, 100], quantities=[1, 2]), 1,
+                             brackets=bracket_rules(), leverage_weights={10: 1, 50: 1, 100: 2})
+    np.testing.assert_allclose(result.down_prices, [91, 91, 99])
+    np.testing.assert_allclose(result.down_notional, [50, 200, 50])
+    dropped = liquidation_map(trades([100]), 0, brackets=bracket_rules(),
+                              leverage_weights={100: 1})
+    assert dropped.q_down(0) == 0
+
+
+def test_load_brackets(tmp_path):
+    path = tmp_path / 'brackets.csv'
+    path.write_text('symbol,tier,lower,upper,max_leverage,mmr,maint_amount\n'
+                    'A,2,200,1000,10,0.02,2\nA,1,0,200,50,0.01,0\n'
+                    'B,1,0,1000,20,0.03,0\n')
+    tables = load_brackets(path)
+    assert set(tables) == {'A', 'B'}
+    np.testing.assert_array_equal(tables['A'].lower, [0, 200])
+    np.testing.assert_array_equal(tables['A'].amount, [0, 2])
+    path.write_text('symbol,tier,lower,upper,max_leverage,mmr,maint_amount\n'
+                    'A,1,0,100,50,0.01,0\nA,2,200,1000,10,0.02,2\n')
+    with pytest.raises(ValueError, match='contiguous'):
+        load_brackets(path)
+
+
+def test_oi_bucket_allocation_and_causality():
+    ns = 1_000_000_000
+    df = trades([100, 100, 100, 100, 100], [False, False, True, False, True],
+                times=np.array([1, 100, 200, 301, 601]) * ns, quantities=[1, 2, 1, 4, 9])
+    oi = (np.array([0, 300_000, 600_000]), np.array([100., 102., 101.]))
+    kwargs = {'leverage_weights': {10: 1}, 'oi_mode': 'bucket'}
+    result = liquidation_map(df, 600 * ns, open_interest=oi, **kwargs)
+    np.testing.assert_allclose(result.down_notional, [50, 100])
+    np.testing.assert_allclose(result.up_notional, [50])
+    later = (np.r_[oi[0], 900_000], np.r_[oi[1], 10000.])
+    after = liquidation_map(df, 600 * ns, open_interest=later, **kwargs)
+    for name in ('down_prices', 'down_notional', 'up_prices', 'up_notional'):
+        np.testing.assert_array_equal(getattr(result, name), getattr(after, name))
+    assert liquidation_map(df, 299 * ns, oi=oi, **kwargs).q_down(0) == 0
+    assert liquidation_map(df, 600 * ns, window_ns=599 * ns, oi=oi, **kwargs).q_down(0) == 0
+    missing = (np.array([0, 600_000]), np.array([100., 102.]))
+    assert liquidation_map(df, 600 * ns, oi=missing, **kwargs).q_down(0) == 0
+
+
+def test_oi_brackets_use_raw_entry_notional_and_quantity():
+    ns = 1_000_000_000
+    df = trades([100], times=[ns], quantities=[4])
+    oi = (np.array([0, 300_000]), np.array([100., 101.]))
+    result = liquidation_map(df, 300 * ns, oi=oi, oi_mode='bucket',
+                             brackets=bracket_rules(), leverage_weights={10: 1, 50: 1})
+    np.testing.assert_allclose(result.down_prices, [91.5])
+    np.testing.assert_allclose(result.down_notional, [100.])
+
+
+@pytest.mark.parametrize('kwargs', [
+    {'oi_mode': 'other'}, {'oi_mode': 'bucket'},
+    {'oi_mode': 'bucket', 'oi': ([0, 0], [1., 2.])},
+    {'oi_mode': 'bucket', 'oi': ([0, 300_000], [1., -2.])},
+    {'oi_mode': 'bucket', 'oi': ([0, 300_000], [1., np.nan])},
+    {'oi_mode': 'bucket', 'oi': ([0., 300_000.], [1., 2.])},
+    {'oi_mode': 'bucket', 'oi': ([0], [1., 2.])},
+    {'oi': ([0], [1.]), 'open_interest': ([0], [1.])},
+    {'brackets': Brackets(np.array([1.]), np.array([.01]), np.array([0.]), np.array([50.]))},
+    {'brackets': Brackets(np.array([0.]), np.array([.01]), np.array([0.]), np.array([0.]))},
+])
+def test_invalid_brackets_and_oi(kwargs):
+    with pytest.raises(ValueError):
+        liquidation_map(trades([100]), 0, **kwargs)
+
+
+def test_default_options_leave_original_map_unchanged():
+    df = trades([100, 101], [False, True])
+    original = liquidation_map(df, 1)
+    optional = liquidation_map(df, 1, brackets=None, oi_mode=None,
+                               open_interest=(np.array([0]), np.array([1.])))
+    for name in ('down_prices', 'down_notional', 'up_prices', 'up_notional'):
+        np.testing.assert_array_equal(getattr(original, name), getattr(optional, name))

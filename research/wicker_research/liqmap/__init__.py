@@ -6,8 +6,9 @@ Trade prices proxy the liquidation-trigger path, not recorded mark prices. A
 position is removed only if a later trade strictly crosses its liquidation
 price within (t - window_ns, t]. Stable input order breaks receive-time ties.
 Trade notional is allocated across normalized leverage weights without leverage
-multiplication. Scale must later be calibrated; no open-interest adjustment is
-performed here. Only the supplied symbol and venue are represented.
+multiplication. Scale must later be calibrated. Optional OI anchoring counts only
+positive net changes, not gross openings. Only the supplied symbol and venue are
+represented; positions opened before the window (including long-held ones) are missing.
 """
 from dataclasses import dataclass, field
 
@@ -16,6 +17,86 @@ import polars as pl
 
 VERSION = '1'
 DEFAULT_LEVERAGE_WEIGHTS = {5: .3, 10: .3, 20: .2, 50: .15, 100: .05}
+
+
+@dataclass
+class Brackets:
+    """Entry-notional tier lower bounds, rates, USDT deductions and leverage caps."""
+
+    lower: np.ndarray
+    mmr: np.ndarray
+    amount: np.ndarray
+    max_leverage: np.ndarray
+
+
+def _validate_brackets(brackets):
+    arrays = [np.asarray(getattr(brackets, name), dtype=float)
+              for name in ('lower', 'mmr', 'amount', 'max_leverage')]
+    if (any(a.ndim != 1 for a in arrays) or not len(arrays[0])
+            or any(len(a) != len(arrays[0]) for a in arrays)
+            or any(not np.isfinite(a).all() for a in arrays)):
+        raise ValueError('bracket arrays must be finite, nonempty and equally sized')
+    lower, rate, amount, cap = arrays
+    if (lower[0] != 0 or np.any(np.diff(lower) <= 0) or np.any(rate < 0)
+            or np.any(rate >= 1) or np.any(amount < 0) or np.any(cap <= 0)
+            or np.any(amount > lower * rate)):
+        raise ValueError('invalid bracket bounds, rates, amounts or leverage caps')
+    return arrays
+
+
+def load_brackets(path) -> dict[str, Brackets]:
+    """Load symbol tiers from CSV; rule limits do not identify trader leverage.
+
+    The 2026-11-11 table is an approximation for 2026-11-04..06, not a
+    reconstruction of the historical rules. The last tier extends upward.
+    """
+    frame = pl.read_csv(path)
+    required = {'symbol', 'tier', 'lower', 'upper', 'max_leverage', 'mmr', 'maint_amount'}
+    if not required <= set(frame.columns) or frame.is_empty():
+        raise ValueError('bracket CSV requires symbol, tier, lower, upper, max_leverage, mmr, maint_amount')
+    if frame.select(*sorted(required)).null_count().to_numpy().any():
+        raise ValueError('bracket CSV must not contain nulls')
+    result = {}
+    for key, group in frame.partition_by('symbol', as_dict=True).items():
+        group = group.sort('lower')
+        bracket = Brackets(*(group[name].to_numpy().astype(float)
+                             for name in ('lower', 'mmr', 'maint_amount', 'max_leverage')))
+        _validate_brackets(bracket)
+        upper = group['upper'].to_numpy().astype(float)
+        if (not np.isfinite(upper).all() or np.any(upper <= bracket.lower)
+                or not np.array_equal(upper[:-1], bracket.lower[1:])
+                or group['tier'].n_unique() != group.height or not key[0]):
+            raise ValueError('bracket tiers must have unique IDs and contiguous bounds')
+        result[key[0]] = bracket
+    return result
+
+
+def _oi_quantities(frame, qty, t_ns, window_ns, open_interest):
+    if not isinstance(open_interest, (tuple, list)) or len(open_interest) != 2:
+        raise ValueError('open_interest must be (timestamps_ms, sum_oi)')
+    times, values = [np.asarray(a) for a in open_interest]
+    if (times.ndim != 1 or values.ndim != 1 or len(times) != len(values)
+            or not np.issubdtype(times.dtype, np.integer)):
+        raise ValueError('OI timestamps must be integer milliseconds and arrays equally sized')
+    values = values.astype(float)
+    if (np.any(np.diff(times) <= 0) or not np.isfinite(values).all() or np.any(values < 0)):
+        raise ValueError('OI timestamps must increase strictly and values be finite and nonnegative')
+    bucket_ns = 300_000_000_000
+    starts = frame['rw'].to_numpy().astype(np.int64) // bucket_ns * bucket_ns
+    unique, inverse = np.unique(starts, return_inverse=True)
+    ends = unique + bucket_ns
+    left = np.searchsorted(times, unique // 1_000_000)
+    right = np.searchsorted(times, ends // 1_000_000)
+    delta = np.zeros(len(unique))
+    valid = ((unique >= t_ns - window_ns) & (ends <= t_ns)
+             & (left < len(times)) & (right < len(times)))
+    idx = np.flatnonzero(valid)
+    idx = idx[(times[left[idx]] == unique[idx] // 1_000_000)
+              & (times[right[idx]] == ends[idx] // 1_000_000)]
+    delta[idx] = np.maximum(values[right[idx]] - values[left[idx]], 0.)
+    totals = np.bincount(inverse, weights=qty, minlength=len(unique))
+    factor = np.divide(delta, totals, out=np.zeros_like(delta), where=totals > 0)
+    return qty * factor[inverse]
 
 
 @dataclass
@@ -69,7 +150,8 @@ def liquidation_map(trades: pl.DataFrame, t_ns: int, *,
                     window_ns: int = 8 * 60 * 60 * 1_000_000_000,
                     leverage_weights: dict[float, float] | None = None,
                     mmr: float = .005, scale: float = 1.0,
-                    bin_bp: float = 10.0) -> LiqMap:
+                    bin_bp: float = 10.0, brackets: Brackets | None = None,
+                    open_interest=None, oi=None, oi_mode: str | None = None) -> LiqMap:
     """Allocate trade notionals to surviving liquidation levels at t_ns.
 
     Input columns are rw (receive nanoseconds), price, qty, buyer_is_maker.
@@ -78,7 +160,32 @@ def liquidation_map(trades: pl.DataFrame, t_ns: int, *,
     positive total. Nonpositive liquidation prices are discarded without
     reallocating their weights. Crossing uses subsequent trades only, excluding
     the opening trade itself. All parameters are assumptions, not calibrated.
+
+    Brackets use each raw trade's entry price * qty, not leverage multiplied
+    notional: a trade is a fragment, not a full position. Tiers and maintenance
+    deductions use that entry quantity even when allocation is OI-scaled. Allowed
+    leverage weights renormalize per trade; no allowed weight drops the trade.
+    Today's brackets (2026-11-11) approximate 2026-11-04..06 rules.
+
+    open_interest (alias oi) is (integer timestamps_ms, sum_oi in base units).
+    oi_mode='bucket' uses only complete epoch-aligned five-minute buckets wholly
+    within the window, with exact OI samples at both boundaries and end <= t_ns.
+    Missing samples and incomplete buckets open nothing. Positive net OI change d
+    is allocated proportional to base aggressor volume: long share is buy/total,
+    short share sell/total (equivalently (1 +/- signed_volume/total)/2). Thus
+    allocated base quantity totals d before scale and bracket/survival filtering;
+    scale remains an explicit multiplier. Zero/negative changes open nothing.
+    This conservative proxy misses offsetting openings/closings and pre-window
+    long-held positions; it is not observed gross opening flow. None keeps all trades.
     """
+    if oi_mode not in (None, 'bucket'):
+        raise ValueError("oi_mode must be None or 'bucket'")
+    if oi is not None and open_interest is not None:
+        raise ValueError('supply only one of oi and open_interest')
+    open_interest = oi if oi is not None else open_interest
+    if oi_mode == 'bucket' and open_interest is None:
+        raise ValueError("oi_mode='bucket' requires open_interest")
+    tier_arrays = _validate_brackets(brackets) if brackets is not None else None
     if not isinstance(window_ns, (int, np.integer)) or window_ns <= 0:
         raise ValueError('window_ns must be a positive integer')
     if not np.isfinite(mmr) or mmr < 0 or not np.isfinite(scale) or scale < 0:
@@ -102,21 +209,39 @@ def liquidation_map(trades: pl.DataFrame, t_ns: int, *,
     if not np.all(np.isfinite(prices) & (prices > 0) & np.isfinite(qty) & (qty >= 0)):
         raise ValueError('prices must be positive and quantities nonnegative, both finite')
     is_long = ~frame['buyer_is_maker'].to_numpy()
-    notional = prices * qty * scale
+    opened_qty = (_oi_quantities(frame, qty, t_ns, window_ns, open_interest)
+                  if oi_mode == 'bucket' else qty)
+    notional = prices * opened_qty * scale
+    if tier_arrays is not None:
+        lower, rates, amounts, caps = tier_arrays
+        tier = np.searchsorted(lower, prices * qty, side='right') - 1
+        rates, amounts, caps = rates[tier], amounts[tier], caps[tier]
+        allowed_weights = (leverages[:, None] <= caps) * weights[:, None]
+        totals = allowed_weights.sum(axis=0)
+        allowed_weights = np.divide(allowed_weights, totals, out=np.zeros_like(allowed_weights),
+                                    where=totals > 0)
+        deduction = np.divide(amounts, qty, out=np.zeros_like(qty), where=qty > 0)
     later_min = np.r_[np.minimum.accumulate(prices[:0:-1])[::-1], np.inf][:len(prices)]
     later_max = np.r_[np.maximum.accumulate(prices[:0:-1])[::-1], -np.inf][:len(prices)]
     down_prices, down_notional, up_prices, up_notional = [], [], [], []
-    for leverage, weight in zip(leverages, weights):
+    for j, (leverage, weight) in enumerate(zip(leverages, weights)):
         if weight == 0:
             continue
         down = prices * (1 - 1 / leverage + mmr)
         up = prices * (1 + 1 / leverage - mmr)
+        if tier_arrays is not None:
+            weight = allowed_weights[j]
+            down = prices * (1 - 1 / leverage + rates) - deduction
+            up = prices * (1 + 1 / leverage - rates) + deduction
         down_valid = is_long & (down > 0) & (later_min >= down) & (notional > 0)
         up_valid = ~is_long & (up > 0) & (later_max <= up) & (notional > 0)
+        if tier_arrays is not None:
+            down_valid &= weight > 0
+            up_valid &= weight > 0
         down_prices.append(down[down_valid])
-        down_notional.append(notional[down_valid] * weight)
+        down_notional.append(notional[down_valid] * (weight[down_valid] if tier_arrays is not None else weight))
         up_prices.append(up[up_valid])
-        up_notional.append(notional[up_valid] * weight)
+        up_notional.append(notional[up_valid] * (weight[up_valid] if tier_arrays is not None else weight))
 
     def sorted_arrays(levels, amounts):
         p, q = np.concatenate(levels), np.concatenate(amounts)
