@@ -89,9 +89,27 @@ Per venue, to verify before any adapter or recording (list in [open-questions.md
 
 ## Calibration and backtest
 
-- Calibrate `Q` so that the predicted liquidated notional matches the recorded liquidation flow after crossings of the mark price. Because the stream is a lower bound, report the match as a ratio with that caveat.
-- Backtest: at high-score moments, did a liquidation cluster follow within a stated window, versus a random-moment baseline? Use the label rules and sealed test split in [labels-and-evaluation.md](labels-and-evaluation.md).
-- No score is called good without the baseline comparison and a position size.
+### Consistency check (done, `research/wicker_research/liqcal`)
+
+At each grid moment t the map is built from data up to t; `pred` is the map's notional between the start mark and the lowest (or highest) mark of the NEXT 5 minutes; `obs` is the recorded liquidation USD in that period. This uses the realised future path, so it is an **after-the-fact consistency check, not a forecast**: it says nothing about what was knowable at t. Results, BTC/ETH/ZEC/HOT/ESPORTS, 2026-11-04..06, 60 s grid, 5 min horizon (numbers from before the fixes below):
+
+- Partial Spearman of pred and obs, controlling for the rank of the move, 0.09 to 0.78 (BTC/ETH mostly 0.4 to 0.7, HOT 0.2 to 0.5, ESPORTS 0.1 to 0.8 on 50 to 150 crossings), above the within-symbol permutation range of about ±0.1 in 11 of 12 HOT/ESPORTS cells. Moments overlap and are serially dependent, so that range is too narrow and the evidence is weaker than it looks. 2026-11-05 14:00 to 15:00 UTC holds most liquidation volume.
+- Observed/predicted: 0.01 to 0.12 with bracket tiers, 0.3 to 3 with open-interest anchoring (net increase per 5 minutes only). A ratio above 1 with a lower-bound observation does not identify which assumption fails. Not usable as a calibrated scale.
+- Bracket tiers changed scale and ranks little; open-interest anchoring fixed the order of magnitude and did not raise the partial correlation.
+
+Defects found by independent review and fixed (see git log): liquidation price solved exactly (the additive formula was off by up to 94 bp on ESPORTS tier 1 at 5x, 0.2 to 4 bp on BTC), levels already beyond the start mark no longer counted, bucket and window boundary aligned, invalid liquidation records dropped. Known, not fixed: the maintenance tier is chosen from entry notional of a trade fragment; trade price (not mark) decides survival in `liqmap`; isolated margin only; leverage weights invented; positions older than the window missing.
+
+### Causal evaluation (required before any claim of usefulness; not done)
+
+Freeze the map at t. Features known at t only: map mass within fixed distances (for example 10, 25, 50 bp, and in units of past volatility) above and below the current mark, and the nearest cluster distance. Outcomes: whether recorded liquidation notional in the next 5 minutes exceeds a threshold, and the extra price movement after a cluster is touched. Baselines using the past only: recent volume, volatility, time of day, funding. Ablation: keep total map mass and the baselines, remove the price-localised shape. Uncertainty: block permutation or circular shifts by whole days or events, non-overlapping windows as sensitivity, leave-one-event-hour-out. Splits and metrics follow [labels-and-evaluation.md](labels-and-evaluation.md): time-ordered train / tuning / sealed test with purge and embargo, false alarms per hour, recall at a fixed budget, lead time. Three days are too few for a sealed split; more days must be recorded first.
+
+### Economics (not measured)
+
+Push cost, forced-flow price impact and gain are unmeasured. The mark-price pass-through above is a same-time ratio, not the response to an actor's order.
+
+### Rules
+
+No score is called good without the baseline comparison, a position size and the causal evaluation above.
 
 ## Open questions (to verify before use)
 
