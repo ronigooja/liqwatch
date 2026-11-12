@@ -10,9 +10,11 @@ Two different things are called a position here; keep them apart:
 - **Liquidated positions**: other traders' positions that get force-closed. Modeled by the liquidation map `Q`.
 - **Actor inventory `N`** (USD): what the hypothetical actor holds before the push. Only the gain and the ratio depend on `N`; the push cost does not.
 
-Output: cost curve per (S, t, d); gain and ratio per (S, t, d, N); break-even `N`. It estimates incentive, not intent, and promises no outcome.
+Output: the book-walk part of the cost curve proceeds separately; full cost is unfinished. Forced flow, gain, ratio and break-even `N` are conditional on a map meeting [0012](decisions/0012-map-not-used-for-gain.md). It estimates incentive, not intent, and promises no outcome.
 
 ## Inputs
+
+Recorded inputs below describe historical data, not current recording; see the [outage](p0-rollout.md#recorder-outage) and the intended narrower scope in [0011](decisions/0011-no-alert-narrower-recording.md).
 
 | Input | Source | State |
 |---|---|---|
@@ -20,18 +22,18 @@ Output: cost curve per (S, t, d); gain and ratio per (S, t, d, N); break-even `N
 | Mark price, funding | `mark` dataset | Recorded |
 | Trades | `trades` dataset | Recorded, all symbols |
 | Liquidations | `liquidations` dataset | Recorded; lower bound only, per symbol the stream shows the latest order within 1000 ms |
-| Open interest | `/fapi/v1/openInterest` (public, current) and `openInterestHist` (public, 5 m periods) | Verified usable, not yet recorded. Needs a periodic pull added to the recorder or a separate poller |
+| Open interest | `/fapi/v1/openInterest` (public, current) and `openInterestHist` (public, 5 m periods) | Historical data and poller status: [infrastructure](infrastructure.md#hosts); design: [poller](poller.md) |
 | Index composition and weights | `/fapi/v1/constituents` (public) | Verified usable, not recorded. Weights change, so sample periodically |
 | Index price | `/fapi/v1/premiumIndex` | Verified usable, not recorded |
-| Leverage brackets and maintenance margin | `/fapi/v1/leverageBracket` | Needs a signed key (401 unsigned). Until then assume a bracket table as a parameter |
+| Leverage brackets and maintenance margin | Keyless website endpoint | Tested internal endpoint, subject to change; see [verified source](open-questions.md#verified) |
 
 ## Known input gaps (each weakens every result below)
 
 | Gap | Current stand-in | Effect | How to close |
 |---|---|---|---|
-| Open interest not recorded | Every trade in the window counts as a new position | Long-held positions are missing; closing, hedging and market-making trades count as openings; the scale is unanchored | Pull `openInterestHist` for 2026-11-04 onward now (history reaches about 30 days, see [open-questions.md](open-questions.md)); record via the poller. It is aggregate, so opening and closing are still not separated |
+| Open interest unavailable for a given window | Every trade in the window counts as a new position | Long-held positions are missing; closing, hedging and market-making trades count as openings; the scale is unanchored | Use available history ([open questions](open-questions.md#verified)); poller status: [infrastructure](infrastructure.md#hosts). It is aggregate, so opening and closing are still not separated |
 | Leverage distribution of traders | Assumed weights {5, 10, 20, 50, 100} | Liquidation prices are assumptions | Not public on Binance; only assumption, back-fit from recorded liquidations, or a public DEX as a reference (unchecked) |
-| Maintenance margin and tiers | `mmr = 0.005`, a placeholder, not an estimate | Every liquidation price is off by an unquantified amount | `leverageBracket` needs a key and signature; no public table found |
+| Maintenance margin and tiers | `mmr = 0.005`, a placeholder, not an estimate | Every liquidation price is off by an unquantified amount | Use the tested internal website endpoint, which may change ([open questions](open-questions.md#verified)) |
 
 Results from the placeholder inputs show only that the model is not rejected by baselines; they carry no scale.
 
@@ -178,13 +180,13 @@ Settled (see Verified in [open-questions.md](open-questions.md)): mark price for
 Still open:
 1. How far mark price follows the contract price during spikes: measure on recorded `mark` and `trades` (decides whether `C` is defined by the contract book).
 2. The definition of "Contract Price" in the median.
-3. Maintenance margin tiers and leverage brackets (signed endpoint, or a parameter table).
+3. Historical maintenance margin tiers and leverage brackets; the tested internal website endpoint may change ([open questions](open-questions.md#verified)).
 4. Liquidation clearance fee rate and ADL ranking details.
 5. Request weights of the open-interest and index endpoints, and the polling interval.
 
 ## Output and display
 
-First form: a static HTML page opened locally, reading a JSON file written by the Python run.
+Proposed first form: a static HTML page opened locally, reading a JSON file written by the Python run. Map-derived forced flow, gain and `N*` are conditional on a map meeting [0012](decisions/0012-map-not-used-for-gain.md); the book-walk part of `C` continues separately.
 
 - Overview table, one row per symbol: mark price; distance to the nearest estimated cluster up and down; push cost; estimated forced flow; break-even `N*`; data status (book complete, gaps).
 - Per-symbol view: price axis with the estimated liquidation map, book thickness and the cumulative push cost curve (one curve, not per `N`); gain and ratio shown for N = 100, 1000, 10000 USD; break-even `N*`.
@@ -194,7 +196,7 @@ First form: a static HTML page opened locally, reading a JSON file written by th
 ## Compute and storage
 
 Which data is saved and why:
-- Push cost is computed from the live in-memory book; it is an arithmetic walk of the book and needs no history. Saved books are not recorded now; the recorded 2026-11-04..10 books serve checks of the arithmetic. What is recorded and retention: [0011](decisions/0011-no-alert-narrower-recording.md).
+- Push cost is computed from the live in-memory book; it is an arithmetic walk of the book and needs no history. Historical 2026-11-04..10 books serve checks of the arithmetic; present recording is interrupted ([outage](p0-rollout.md#recorder-outage)). Intended recording and retention: [0011](decisions/0011-no-alert-narrower-recording.md).
 
 Two layers:
 
@@ -203,21 +205,21 @@ Two layers:
 | Score | Per symbol, every few seconds: distance to nearest cluster up and down, push cost, forced flow, `N*`, data status | For all symbols continuously: the model state is rolling (recent trades, 1-minute basis), so it cannot be started on demand without a warm-up replay | Yes, with the model version. Size and interval are not measured |
 | Detail | Full liquidation map and curves for one symbol | On demand, from the score layer's in-memory state | No; recomputable from raw data within the retention window |
 
-First version: replay-driven batch on the 15 depth symbols; on-demand detail needs a server and comes with the live stage.
+Proposed first version: replay-driven batch on the 15 historical depth symbols; on-demand detail needs a server and comes with the live stage.
 
 ## Market coverage
 
-Target: all Binance USDT-M symbols (owner, 2026-11-10); other venues later. Order books are recorded for 15 symbols now. Whether to record all symbols' books as full diffs (about 35 times the current symbols; size not measured), as periodic snapshots, or only in memory in live runs is decided after the model works on the 15, by measuring how much accuracy a snapshot-level book loses. That decision gets its own record.
+Target: all Binance USDT-M symbols (owner, 2026-11-10); other venues later. Historical order books cover 15 symbols; present recording is interrupted ([outage](p0-rollout.md#recorder-outage)) and the intended scope is in [0011](decisions/0011-no-alert-narrower-recording.md). Whether to record all symbols' books as full diffs (about 35 times the current symbols; size not measured), as periodic snapshots, or only in memory in live runs is decided after the model works on the 15, by measuring how much accuracy a snapshot-level book loses. That decision gets its own record.
 
 ## Separate poller
 
-Open interest, index constituents and leverage brackets are polled by a separate process, not by the collector: the collector falls under the zero-gap handoff ([0009](decisions/0009-zero-gap-handoff.md)) and a missed poll is simply retried. The existing collector has no such polling; its REST calls (depth snapshots, aggTrade backfill) are tied to its streams and share one weight budget. The poller writes the same raw-log format so the archiver and Parquet chain are reused. Binance REST weight is per IP, so the poller needs its own fixed weight cap and must read the used-weight header (`x-mbx-used-weight-1m`, verified; see [open-questions.md](open-questions.md)).
+Open interest, index constituents and leverage brackets are designed to be polled by a separate process, not by the collector ([poller](poller.md); current status: [infrastructure](infrastructure.md#hosts)): the collector falls under the zero-gap handoff ([0009](decisions/0009-zero-gap-handoff.md)) and a missed poll is simply retried. The existing collector has no such polling; its REST calls (depth snapshots, aggTrade backfill) are tied to its streams and share one weight budget. The poller writes the same raw-log format so the archiver and Parquet chain are reused. Binance REST weight is per IP, so the poller needs its own fixed weight cap and must read the used-weight header (`x-mbx-used-weight-1m`, verified; see [open-questions.md](open-questions.md)).
 
 Polled data and the minimum frequency (a stored snapshot is the only way to know the value in force at a past time):
 
 | Data | Changes | Minimum | Note |
 |---|---|---|---|
-| Leverage brackets, every symbol | Binance updates tiers and adds symbols at any time | Daily snapshot, each stored with its fetch time; a changed table is kept as a new version | Source under test (page JSON endpoint, otherwise a read-only key); until a source works, one-off copies are labelled with their date |
+| Leverage brackets, every symbol | Binance updates tiers and adds symbols at any time | Daily snapshot, each stored with its fetch time; a changed table is kept as a new version | Tested internal website endpoint may change ([open questions](open-questions.md#verified)); label snapshots with their date |
 | Open interest | Continuous | Every 5 minutes while recording; history of about 30 days can be back-filled once ([oihist](../research/wicker_research/oihist/__init__.py)) | Back-fill expires, start before it does |
 | Index constituents and weights | Over time | Daily | |
 | Symbol list and `exchangeInfo` | New listings | Daily | Needed for coverage and the depth symbol re-check |
@@ -229,7 +231,7 @@ Python under `research/` first; Go after the formats are frozen and results are 
 ## Build order
 
 1. Measure mark-price versus contract-price behavior on recorded data (open question 1); settle the remaining open questions.
-2. Liquidation map from trades and liquidations; calibration on available days.
-3. Push cost and forced-flow walk on `book_at`.
-4. Backtest against the baseline, report with N.
-5. JSON output and the static page, driven by replay.
+2. Research a liquidation map from trades and liquidations; calibration on available days.
+3. Continue the book-walk part of push cost on `book_at` separately; full `C` remains unfinished. Forced-flow walk is conditional on a map meeting [0012](decisions/0012-map-not-used-for-gain.md).
+4. Backtest against the baseline; reporting gain with N is conditional on that standard.
+5. JSON output and the static page, driven by replay; map-derived forced flow, gain and `N*` remain conditional on that standard.

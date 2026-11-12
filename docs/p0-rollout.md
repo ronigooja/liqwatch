@@ -13,7 +13,7 @@ How the production collector goes live and when it counts as stable. Component d
 
 Why the archiver is in stage 1: expected raw growth is ~18 GB/day compressed ([trial-plan.md](trial-plan.md)) against ~21 GB free, so unattended recording without upload and cleanup fills the disk in about a day. It runs hourly so local use stays near 5–8 GB ([decision 0008](decisions/0008-hourly-archive-and-retention.md)).
 
-Subscriptions: `@aggTrade` all 522 symbols, `!markPrice@arr@1s`, `!forceOrder@arr`, `@bookTicker` top 50 by volume, `@depth@100ms` for the tier B list (10 trial symbols to start; final list is an owner input in [open-questions.md](open-questions.md)). Top 50 is fixed at startup and refreshed daily with the symbol list; every change is logged.
+Historical first-release configuration; the narrower scope in [decision 0011](decisions/0011-no-alert-narrower-recording.md) needs a collector upgrade. Subscriptions: `@aggTrade` all 522 symbols, `!markPrice@arr@1s`, `!forceOrder@arr`, `@bookTicker` top 50 by volume, `@depth@100ms` for the tier B list (10 trial symbols to start; final list is an owner input in [open-questions.md](open-questions.md)). Top 50 is fixed at startup and refreshed daily with the symbol list; every change is logged.
 
 ## Release and service setup
 
@@ -32,6 +32,10 @@ Subscriptions: `@aggTrade` all 522 symbols, `!markPrice@arr@1s`, `!forceOrder@ar
 | `p0-4` | Zero-gap handoff ([0009](decisions/0009-zero-gap-handoff.md)): collector slots, depth snapshot after reconnect, aggTrade backfill, multi-endpoint checks. First handoff from the unnumbered unit to slot `b` with no gap (no trade-id gap across 514 symbols). Observation period kept running | 2026-11-03 21:41 |
 
 Observation period restarted from scratch 2026-11-03 00:32:08 UTC: local data and manifest cleared, WebDAV cleared by the owner, `chunk_mb` raised from 64 to 128.
+
+## Recorder outage
+
+The recorder at 136.0.11.159 has been down since about 2026-11-10 11:00 UTC after its traffic quota was used up. The provider quota, reset date and host that will resume recording remain open. This external outage broke the zero-gap guarantee of [decision 0009](decisions/0009-zero-gap-handoff.md).
 
 ## Releases and handoff
 

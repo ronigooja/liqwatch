@@ -1,6 +1,7 @@
 # Separate REST poller (`wickerpoll`)
 
 Applies to `research/wicker_research/poll/`; collector behavior is unchanged.
+The repository has no deployment assets; the service was removed ([infrastructure](infrastructure.md#hosts)).
 Purpose and minimum input frequencies: [liquidation model](liquidation-model.md#separate-poller).
 Endpoint shapes, source caveats and verified exchange facts: [open questions](open-questions.md#verified).
 
