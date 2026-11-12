@@ -100,7 +100,10 @@ No venue documents historical risk-tier snapshots, so tiers must be recorded as 
 | Missing | no public liquidation feed and no long/short ratio found | unverified |
 | Limits | futures REST 20 requests per 2 s; spot REST weight 5, 500 weight per 10 s per IP-endpoint; spot WS protobuf, 30 streams per connection, 24 h life; futures ping every 10 to 20 s; connections per IP not found | doc |
 | Open interest | current snapshot only; `holdVol` semantics unconfirmed | measured, doc |
-| Live access | `/api/v1/contract/detail/country` returned HTTP 403; stopped; cause unverified | measured |
+| Live access | `/api/v1/contract/detail/country` returned HTTP 403; stopped; cause unverified. Later checks: `contract.mexc.com` and `api.mexc.com` both served keyless tickers; the only 403 seen was on a website analytics asset | measured |
+| Liquidation (rechecked) | No public market-wide feed in either official reference or the changelog; `risk_reverse` insurance fund balance keyless, history only 4-hourly snapshots (42 from 2026-11-05 to 11-12), no events; website inspection partial (45 of 108 scripts); Tardis lists no liquidation channel | measured, doc |
+| Deal fields | `T` 1 buy, 2 sell; `M` 1 self-trade, 2 not; `O` 1 new position, 2 reduce, 3 unchanged. REST doc: `O` = combined maker and taker action (1 both open, 2 both not open, 3 other); WS doc does not say whose position. `O=3` does not say which side opened. Parsed by Tardis (`NewPosition`, `ReducePosition`, `Unchanged`), not by CCXT | doc |
+| `O` check | 22,566 records, 23 contracts, about 15.7 min of stream time over two captures (first connection dropped after about 7.4 min; TON gave no records). BTC, 166 intervals of about 5 s: sum of `v` with `O=1` minus `v` with `O=2` vs change in `holdVol`: correlation 0.9976 and same sign in 162 of 166 when aligned by exchange timestamp; 0.52 and 118 of 166 when aligned by local receipt time. Share of `O=3`: BTC about 52%, ETH about 39%; share of `O=1`: SOL 36%, BTC 22%. Consequence: record the exchange timestamp (`t`, `cts`) with `T`, `O`, `M`. Not established: completeness of the public stream, effect of reversals, special executions and self-trades | measured |
 | Universe | 1,104 enabled USDT contracts (perpetual type not filtered); spot 1,790 symbols, 1,412 USDT-quoted; `PEPE_USDT` contract size 10,000,000 | measured |
 
 ### KuCoin
