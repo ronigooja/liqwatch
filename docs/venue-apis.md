@@ -122,6 +122,67 @@ No venue documents historical risk-tier snapshots, so tiers must be recorded as 
 | Symbols | spot `BTC-USD`; derivatives `{BASE}_USDC-PERPETUAL`; USD, USDT, USDC are distinct quotes, and most `-USDC` public ids alias `-USD` data | doc |
 | Live access | one Exchange product call succeeded, the next returned HTTP 403; stopped; spot count and overlap not computed. Global derivatives instrument list: 219 instruments, 148 `PERPETUAL`, includes equity and commodity products | measured |
 
+## Perpetual DEXes (partial survey, 2026-11-12)
+
+Keyless market-list calls succeeded for Hyperliquid (default perp DEX), dYdX, Aster and Lighter. Variational returned HTTP 429 on the first call and was not called again. No WebSocket was connected; liquidation completeness, most retention periods and account enumeration were not tested. Volume is DefiLlama's reported volume (not normalized); Binance's comparable total was not obtained, so no percentage of Binance is given.
+
+| Venue | 24h volume | Open interest | Perp markets | Binance base matches |
+|---|---:|---:|---:|---:|
+| Hyperliquid | $9.84bn | $6.62bn | 179 (default DEX, excludes builder-deployed DEXes) | 174 |
+| Aster | $1.75bn | $1.32bn | 594 contracts, all quote assets | 405 distinct bases |
+| Variational | $2.32bn | $812m | unknown (429) | unknown |
+| Lighter | $2.69bn | $693m | 209 | 105 |
+| GRVT | $515m | $381m | not measured | not measured |
+| Antarctic | $723m | $330m | not measured | not measured |
+| GMX | $1.42bn | $221m | not measured | not measured |
+| edgeX | $389m | $153m | not measured | not measured |
+| Jupiter | $207m | $44.5m | not measured | not measured |
+| dYdX | $15.7m | $38.3m | 57 ACTIVE | 57 |
+| Paradex | $9.6m | $13.0m | not measured | not measured |
+| Drift | $0.12m | $0.20m | not measured | not measured |
+
+Matching is exact normalized ticker equality after stripping `1000`, `1000000`, `1M` prefixes (Hyperliquid also `k`); token identity and multipliers are not verified. Non-identical matches (measured): Hyperliquid `kPEPE`, `kSHIB`, `kBONK`, `kLUNC`, `kFLOKI` to the `1000*` symbols and `kNEIRO` to `NEIROUSDT`; dYdX `PEPE`, `BONK` to `1000PEPEUSDT`, `1000BONKUSDT`; Lighter `1000NOT` to `NOTUSDT`.
+
+| Venue | Feed facts | Status |
+|---|---|---|
+| Hyperliquid | WS `trades`, `activeAssetCtx`, `allDexsAssetCtxs` (mark, oracle, OI, funding); POST `/info` `metaAndAssetCtxs`; limits 1,200 REST weight per min per IP, 10 WS connections and 1,000 subscriptions per IP. Liquidations only through `userEvents` or `userFills` for a given address; no market-wide feed established | doc; metadata measured |
+| dYdX v4 | `/v4/trades/perpetualMarket/{ticker}`, WS `v4_trades`, `/v4/perpetualMarkets`, `/v4/historicalFunding/{ticker}`; mark, margin tiers and long/short not identified; limits unknown | doc; market list measured |
+| Aster | Binance-style `/fapi/v1/exchangeInfo`, mark stream advertised as `@markPrice@1s`, example limit 2,400 weight per min; liquidations, tiers, long/short not established | doc; exchange info measured |
+| Lighter | WS `trade/{market_index}` with `liquidation_trades`, `market_stats/all`, REST `recentTrades`, `orderBookDetails`, `fundings`; REST 60 requests per min, WS 255 connections, 500 subscriptions per connection, 5,000 per IP; liquidation completeness unverified | doc; market list measured |
+| Variational | `GET /metadata/v2/stats` (mark, OI by side, funding, volume), 10 requests per 10 s per IP; current snapshot only | doc; live 429 |
+| GRVT | WS `v1.trade`, ticker (mark, index, OI, funding), POST `/full/v1/trade`; public trade history retained three months; limits, liquidation feed and tiers not established | doc |
+| Antarctic, GMX | no verified public developer API found or not investigated | unverified |
+
+### Account-level positions (the Binance input gap)
+
+Binance does not publish per-account leverage or liquidation prices ([liquidation-model.md](liquidation-model.md) Known input gaps). Per-address reads exist on some DEXes, but no venue was shown to allow keyless enumeration of all accounts.
+
+| Venue | Known address | Enumerate all accounts |
+|---|---|---|
+| Hyperliquid | `clearinghouseState` public; WS state includes positions and margin | not established; trade messages carry buyer and seller addresses, deriving the full account set from them is unverified |
+| dYdX v4 | `/v4/perpetualPositions?address=&subaccountNumber=` public | not established |
+| Lighter | `/api/v1/account?by=index&value=` public, snapshot includes positions and liquidation price | not established; integer account indices and ids in trades may help discovery, completeness unverified |
+| Aster, GRVT | account endpoints signed | not established |
+| Variational, Antarctic, GMX | not established | not established |
+
+## AMM DEXes in the index (2026-11-12)
+
+Binance's index methodology names PancakeSwap on BNB Chain and Uniswap on Ethereum as sources ([FAQ 360033525071](https://www.binance.com/en-IA/support/faq/detail/360033525071), doc). Base and Arbitrum use was not established. The constituent response carries no pool address or V3 fee tier, so which pool Binance uses is unverified. Live RPC calls and pool-address matching were not done; no swap counts or data volumes were measured.
+
+| Item | Fact | Status |
+|---|---|---|
+| Measured constituents | `BANANAS31USDT` `pancakeswapV3` `BANANAS31-WBNB*uindex(BNBUSDT)`; `SIRENUSDT` `pancakeswapV3` `SIREN-WBNB*uindex(BNBUSDT)`; `MYXUSDT` `pancakeswapV3` `uindex(BNBUSDT)/WBNB-MYX`. No example found for Uniswap or PancakeSwap V2 | measured |
+| `uindex()` | Precise definition, timing, pool choice, smoothing and spot vs trade vs TWAP not found; Binance documents protective caps or smoothing | unverified |
+| BNB Chain RPC | `https://bsc-dataseed.bnbchain.org`, 10,000 requests per 5 min, about 0.45 s blocks, `eth_getLogs` disabled on listed public endpoints, so log backfill needs another provider | doc |
+| Ethereum RPC | provider-dependent; no free endpoint or quota verified; about 12 s slots | doc, unverified provider |
+| V3 price | `slot0().sqrtPriceX96`, price token1/token0 = `(sqrtPriceX96 / 2^96)^2 × 10^(decimals0 − decimals1)`; `Swap` logs per swap; pool identity is token pair plus fee | doc |
+| V2 price | `getReserves()` decimal-adjusted ratio is a mid price, not an execution price; record `Sync` as well as `Swap` | doc |
+| Oracles | V2 cumulative price gives arithmetic TWAP; V3 mean tick gives geometric mean, observations at most once per block | doc |
+| Subgraphs | The Graph gateway needs an API key, 100,000 free queries per month; suitable PancakeSwap deployments and history not verified | doc |
+| Official DEX APIs | none established for these pools | unverified |
+
+Recording design if needed (inferred): pool metadata and initial state (chain, contract, token addresses, decimals, ordering, V3 fee), then ordered swaps with block number and hash, transaction hash and index, log index, block timestamp and local receipt time; backfill disconnects and handle reorgs. Per-block state gives a block-time-weighted price but not intra-block trades. Also record Binance's constituent `price`, `weight`, response timestamp and the conversion index alongside chain data, to compare against on-chain reconstruction. Distinct pool count for the roughly 40 affected symbols is unverified (sets overlap, V3 fee tiers create several candidates).
+
 ## Open points
 
 | Point | Note |
@@ -130,4 +191,6 @@ No venue documents historical risk-tier snapshots, so tiers must be recorded as 
 | Binance overlap counts | Not computed for any venue. |
 | 403 responses | OKX, MEXC (`/country`) and Coinbase Exchange returned HTTP 403 to keyless calls; cause (regional block, rate rule or client filter) unknown. Recording from the recorder host needs a test from that host. |
 | Liquidation feeds | Complete: Bybit (doc). Sampled or incomplete: Bitget, OKX. Batched, not sampled per doc: Gate. None found: MEXC, KuCoin. |
-| DEX | Not surveyed. Index constituents include `pancakeswapV3` (32 symbols), `pancakeswapV2` (3), `uniswapV2` (3), `uniswapV3` (2) and `aster` (1) in the measured table above; overlap between these sets not computed. |
+| AMM DEX prices | Index constituents include `pancakeswapV3` (32 symbols), `pancakeswapV2` (3), `uniswapV2` (3), `uniswapV3` (2). Pool addresses, fee tiers, `uindex()` rule, a BNB Chain log provider, swap volume per pool: all unverified. |
+| Perp DEX gaps | Variational, GRVT, Antarctic, GMX market counts; all liquidation-feed completeness; Hyperliquid builder-deployed DEXes; Binance total volume and open interest for scale. |
+| Account enumeration | No venue shown to allow keyless enumeration of all accounts; Hyperliquid, dYdX and Lighter serve a known address only. |
