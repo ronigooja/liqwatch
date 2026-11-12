@@ -1,5 +1,7 @@
 # 0007 Trial outcome: tier A quotes and soak test
 
+The quote decision was narrowed by [0011](0011-no-alert-narrower-recording.md).
+
 Date: 2026-11-03. Evidence: Results in [trial-plan.md](../trial-plan.md).
 
 ## Decision

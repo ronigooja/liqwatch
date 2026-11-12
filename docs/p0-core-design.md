@@ -12,7 +12,8 @@ Three processes on one host, communicating through the raw log, not through memo
 |---|---|---|---|
 | collector (components 2, 3, 4) | WebSocket, REST | raw log, metrics | Recording stops; must stay minimal |
 | validator (5) | raw log (tailing) | validation events log, metrics | Recording unaffected |
-| replay / archiver (6, 8) | raw log, validation log | Parquet, reads for research | Recording unaffected |
+| archiver (6) | raw log | Verified uploads ([design](p0-support-design.md)) | Recording unaffected |
+| research replay / conversion (8) | raw log, validation log | Replay and Parquet ([pipeline](p1-data-pipeline.md)) | Recording unaffected |
 
 The validator reads the written log, not the live queue, so it can lag or crash without losing data.
 

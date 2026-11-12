@@ -45,9 +45,11 @@ Per simulated trade: signal time, side, requested size, fill price, filled size,
 
 ## What may change the recording
 
+Historical book and quote guidance below is conditional on future data availability; current scope is [decision 0011](decisions/0011-no-alert-narrower-recording.md).
+
 | Question | Needed data | Status |
 |---|---|---|
-| Are 15 depth symbols enough to judge fills for the traded tier? | Book for every symbol the strategy would trade | Open. Fills on symbols without a recorded book can only be approximated from `bookTicker` (best bid and ask) |
+| Are 15 depth symbols enough to judge fills for the traded tier? | Book for every symbol the strategy would trade | Open. Fills on symbols without a recorded book could be approximated from `bookTicker` (best bid and ask), if available |
 | Is the 100 ms depth resolution enough for queue modeling? | 100 ms is the fastest diff-depth speed listed for futures (250 ms default, 500 ms, 100 ms; [open-questions.md](open-questions.md)) | No finer data exists to record |
 | Are 1000 snapshot levels enough for majors? | Level cover in bp above | Limit sizes on majors, no recording change needed |
 | Is cancel behavior needed? | Order-level data is not available from Binance | Not recorded; use the two queue bounds |

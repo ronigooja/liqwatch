@@ -13,11 +13,7 @@
 
 Design, measured inputs and parameter grid: [fill-simulator.md](fill-simulator.md).
 
-- Walk the replayed book for market orders.
-- Add order latency; start with 200 ms to 1 s and run sensitivity analysis.
-- Limit orders: simulate queue position and partial fills; never assume a resting order fills at the touch price.
-- Include maker/taker fees at the actual account tier (see [open-questions.md](open-questions.md)).
-- Report sensitivity of results to each assumption. Backtests that fill at the trigger price are invalid.
+Use the simulator mechanics and sensitivity grid in [fill-simulator.md](fill-simulator.md); the actual account fee tier remains an [open question](open-questions.md). Backtests that fill at the trigger price are invalid.
 
 ## Latency
 

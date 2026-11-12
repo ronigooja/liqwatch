@@ -4,16 +4,18 @@ Goal: a complete, auditable, replayable raw market record. No models or features
 
 ## Why self-record
 
-Binance provides no full historical incremental L2. Public archives at data.binance.vision give klines and trades; depth there is reported as aggregated only (unverified, see [open-questions.md](open-questions.md)). Purchasable alternatives exist (e.g. Tardis.dev) and may be added later to extend history.
+Binance provides no full historical incremental L2. Verified public-history availability: [open-questions.md](open-questions.md). Purchasable alternatives exist (e.g. Tardis.dev) and may be added later to extend history.
 
 ## Recording tiers
 
 | Tier | Symbols | Channels |
 |---|---|---|
-| A light | All USDT-M perpetuals (refresh list daily) | aggregate trades, mark price; best bid/ask per [p0-support-design.md](p0-support-design.md) (all-market book ticker is only 5 s) |
-| B depth | 10–20 symbols per [universe.md](universe.md) (expand only after cost-adjusted profit is shown) | incremental depth (update speed 100 ms; 250 ms and 500 ms are the alternatives) plus periodic REST snapshots |
+| A light | All USDT-M perpetuals (refresh list daily) | aggregate trades, mark price |
+| B depth | Historical selected set; see [decision 0011](decisions/0011-no-alert-narrower-recording.md) | Historical incremental depth and snapshots |
 | C events | All | liquidation orders |
-| D spot | Spot pairs of tier B | aggregate trades, best bid/ask; depth optional |
+| D spot | Historical optional reference | Scope subject to [decision 0011](decisions/0011-no-alert-narrower-recording.md) |
+
+Historical quote and saved-book requirements were narrowed by [decision 0011](decisions/0011-no-alert-narrower-recording.md); current recorder status: [p0-rollout.md](p0-rollout.md).
 
 Tier A exists so that any spike can be reviewed afterwards, including on symbols not preselected. Channel names and parameters must be checked against current official docs before implementation.
 
@@ -44,7 +46,7 @@ venue, symbol, channel, connection id, local sequence, `recv_wall_time`, `recv_m
 ## Storage
 
 - Hot: hourly append-only files by channel/date/symbol, zstd.
-- Archive: the recorder uploads the closed hourly `jsonl.zst` files in chunks and verifies them; Parquet conversion happens on the research side, not on the recorder ([p0-support-design.md](p0-support-design.md)). Keep raw files locally until verified, and at least 3 days.
+- Archive: the recorder uploads the closed hourly `jsonl.zst` files in chunks and verifies them; Parquet conversion happens on the research side, not on the recorder ([p0-support-design.md](p0-support-design.md)). Local retention: [decision 0008](decisions/0008-hourly-archive-and-retention.md).
 - Manifest table (DuckDB or SQLite): per file start/end time, message count, checksum, reconnect count.
 - Size capacity from a 1–2 day trial; do not extrapolate from symbol count.
 

@@ -1,5 +1,7 @@
 # Models
 
+This page describes retained legacy risk-state and in-spike model work; the main direction is the [liquidation model](liquidation-model.md) ([0010](decisions/0010-liquidation-model-direction.md)). The ablation rule below remains applicable.
+
 Targets are defined in [labels-and-evaluation.md](labels-and-evaluation.md).
 
 ## Order of work

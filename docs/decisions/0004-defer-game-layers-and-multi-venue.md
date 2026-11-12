@@ -1,5 +1,7 @@
 # 0004: Defer game-state layers, deep models, and other exchanges
 
+Multi-venue design is permitted by [0010](0010-liquidation-model-direction.md); collection remains deferred.
+
 Status: accepted
 
 Context: public L2 lacks order-level lifecycle, so latent game states are weakly supervised and likely to overfit. Multi-exchange data adds clock and alignment cost before any baseline signal is known.

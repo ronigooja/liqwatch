@@ -1,5 +1,7 @@
 # 0001: Self-record market data, starting in phase P0
 
+Scope later narrowed by [0011](0011-no-alert-narrower-recording.md).
+
 Status: accepted
 
 Context: no free full historical incremental L2 for Binance perpetuals. Spikes last 1–60 s and are rare, so history length matters and must start accumulating immediately.

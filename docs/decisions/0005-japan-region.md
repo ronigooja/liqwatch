@@ -1,5 +1,7 @@
 # 0005: Deploy in Japan (Tokyo)
 
+The recorder host was later chosen; see [infrastructure.md](../infrastructure.md).
+
 Status: accepted
 
 Context: the owner investigated and found the exchange servers are in Japan. v1 listed Tokyo, Singapore, and Hong Kong as candidates to be compared.

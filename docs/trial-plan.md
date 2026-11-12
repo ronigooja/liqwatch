@@ -1,5 +1,7 @@
 # Trial Recording Plan
 
+Historical trial and results: quote tests do not establish a current recording requirement; see [decision 0011](decisions/0011-no-alert-narrower-recording.md). Recorder status: [p0-rollout.md](p0-rollout.md).
+
 Purpose: measure load and data quality on the recorder host before fixing tier sizes, compression, and queue settings. Host: [infrastructure.md](infrastructure.md). Design under test: [p0-core-design.md](p0-core-design.md), [p0-support-design.md](p0-support-design.md). Not the production collector.
 
 ## Questions the trial answers
