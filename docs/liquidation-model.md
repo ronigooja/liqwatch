@@ -103,6 +103,23 @@ Window length, `bucket_both`, BTC/ETH/ZEC/HOT, 24 cells, max/min of obs/pred (tr
 
 HOT is not a small-sample case (459 to 544 crossings per side-day). Its spread is mostly between sides: 11-06 predicted up mass is 2.4x the down mass while recorded up liquidations are about a quarter of the down ones (ratios 0.05 up, 0.44 down); the same sign on 11-05 (0.20 up, 0.73 down). Cause not established. Trend hypothesis tested and not supported: per moment, past-hour mark return (and, separately, net taker flow share) splits each side into with-trend and against-trend (|return| < 5 bp dropped); pooled over 3 days, against/with ratio of obs/pred is BTC 0.54 [0.30, 1.33], ETH 0.72 [0.44, 1.39], ZEC 0.73 [0.49, 1.06], HOT 0.85 [0.58, 1.22] (return split; 1 h block bootstrap, 95%); the flow split gives BTC 0.42 [0.26, 0.92], ETH 0.80, ZEC 0.55 [0.39, 0.80], HOT 0.96. Signs flip between symbol-days, and HOT 11-06 up is 0.046 with-trend and 0.039 against. No trend correction is added.
 
+Seven days (2026-11-04..10; 11-07..10 downloaded from the archive after the recorder stopped; 11-10 covers 00:00 to about 11:00 UTC only; open interest for all seven days, brackets still the 2026-11-11 table). Obs/pred per day, `bucket_both`, 8 h:
+
+| Symbol side | 11-04 | 11-05 | 11-06 | 11-07 | 11-08 | 11-09 | 11-10 |
+|---|---|---|---|---|---|---|---|
+| BTC down | 1.18 | 0.82 | 0.50 | 0.30 (15 crossings) | 4.79 (65) | 0.64 | 1.05 |
+| BTC up | 1.13 | 0.35 | 0.31 | 5.95 (5) | 0.15 (20) | 0.31 | 0.69 (19) |
+| ETH down | 1.44 | 0.83 | 0.89 | 1.76 (22) | 8.37 (82) | 0.97 | 0.80 |
+| ETH up | 0.64 | 0.80 | 0.19 | 2.74 (10) | 1.75 (48) | 0.31 | 0.20 |
+| ZEC down | 0.20 | 0.24 | 0.15 | 0.34 | 0.62 | 0.19 | 0.27 |
+| ZEC up | 0.23 | 0.16 | 0.28 | 0.09 | 0.11 | 0.09 | 0.02 |
+| HOT down | 0.55 | 0.73 | 0.44 | 0.44 | 0.21 | 0.19 | 0.21 |
+| HOT up | 0.40 | 0.20 | 0.05 | 0.09 | 0.23 | 0.16 | 0.11 |
+
+Per-symbol and per-side coefficient fitted on 11-04 and 11-05 (pooled obs/pred), applied to 11-06..10 (40 cells): only 17 of 40 cells land within 0.5 to 2 times the coefficient; min 0.12, max 9.2 (80x); cells with at least 100 crossings: 13 of 28, 24x (uncorrected 40x). ZEC's earlier stability was three days of luck (0.12 to 2.8 after correction). The big deviations of BTC and ETH sit in cells with 5 to 82 crossings. The coefficient changes between days and sides, so the spread is not a fixed property of the symbol. ESPORTS is dropped (predicted mass 0 on 11-08 up and 11-10). The owner-set standard (within 2x) is **not met**.
+
+Causal evaluation on seven days (rolling day pairs, ridge, 6 test days per symbol and side, c over b in Spearman, 95% block-bootstrap interval above 0 / below 0 / contains 0): BTC down 1/0/5, BTC up 0/0/6, ZEC down 3/0/3, ZEC up 3/0/3, HOT down 2/2/2, HOT up 1/0/5; total 10/2/24; mean c-b between -0.011 and +0.034. Mean Spearman a/b/c: BTC down 0.29/0.30/0.29, ZEC down 0.29/0.24/0.26, ZEC up 0.21/0.12/0.16, HOT down 0.09/0.14/0.16. The map adds at most a small amount over past-only features; test days overlap across pairs, so the intervals are too narrow. ETH was still running when this was written.
+
 Defects found by independent review and fixed (see git log): liquidation price solved exactly (the additive formula was off by up to 94 bp on ESPORTS tier 1 at 5x, 0.2 to 4 bp on BTC), levels already beyond the start mark no longer counted, bucket and window boundary aligned, invalid liquidation records dropped. Known, not fixed: the maintenance tier is chosen from entry notional of a trade fragment; trade price (not mark) decides survival in `liqmap`; isolated margin only; leverage weights invented; positions older than the window missing.
 
 ### Causal evaluation (`research/wicker_research/liqcausal`; first run done, exploratory)
