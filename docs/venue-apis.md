@@ -153,6 +153,22 @@ Matching is exact normalized ticker equality after stripping `1000`, `1000000`, 
 | GRVT | WS `v1.trade`, ticker (mark, index, OI, funding), POST `/full/v1/trade`; public trade history retained three months; limits, liquidation feed and tiers not established | doc |
 | Antarctic, GMX | no verified public developer API found or not investigated | unverified |
 
+### Perp DEX liquidation records (live capture, 2026-11-12)
+
+Replaces the earlier "no market-wide feed established" wording for these four venues. Two of the four captures were cut short by the subagent's own stop-on-403 rule, which was too strict; those parts are marked not captured. Completeness of every source below is unverified.
+
+| Venue | Public market-wide liquidation record | Sample | History | Status |
+|---|---|---|---|---|
+| dYdX v4 | Yes. `GET https://indexer.dydx.trade/v4/trades/perpetualMarket/{ticker}`, trade `type` is `LIQUIDATED` or `DELEVERAGED`; WS `wss://indexer.dydx.trade/v4/ws` channel `v4_trades` per ticker | latest 100 trades for each of the 20 highest-volume markets: 2,000 trades, 3 `LIQUIDATED` (ZEC 1, BNB 2), 0 `DELEVERAGED` | `limit=1000` max, cursor `createdBeforeOrAtHeight` (inclusive, deduplicate); BTC reached 2024-03-04; a July 2025 page held one liquidation; earliest not established | measured; WS not captured |
+| Lighter | Yes by REST. `GET /api/v1/trades?sort_by=timestamp&limit=100&type=liquidation` (and `type=deleverage`); WS `wss://mainnet.zklighter.elliot.ai/stream` `trade/{market_id}` per market, no market-wide liquidation channel | 400 liquidation records from 2026-11-12 10:24 to 2026-11-11 20:55 UTC; WS 10 minutes, 10 largest markets: 4,553 trade updates, 0 liquidations; the global REST query returned 7 liquidations in the same window, none in those 10 markets | deleverage records back to 2026-10-15 on the first page; public S3 `aws-public-blockchain/v1.1/lighter/core/mainnet/trades/date=YYYY-MM-DD/trades.parquet` exists for 2026-11-11 (anonymous), docs claim daily data from 2025-01-17; fields not inspected | measured |
+| Hyperliquid | Only per user. `POST /info` `userFills` and `userFillsByTime` carry `liquidation: {liquidatedUser, markPx, method}`, also on the counterparty's fill. No hosted market-wide liquidation feed found; WS `trades` carries buyer and seller addresses | 13 marked fills in 2,000 returned for one address; 48 fills for a 2-second query around the liquidated account | `userFills` 2,000 most recent, `userFillsByTime` 10,000 most recent; S3 `hl-mainnet-node-data` (`node_fills_by_block`) anonymous listing returned HTTP 403 (requester-pays); docs describe a self-run non-validator node with `--write-fills` as the route to all fills | measured; WS 24-coin capture not completed |
+| Aster | Documented only. `!forceOrder@arr` and `<symbol>@forceOrder` on `wss://fstream.asterdex.com/stream`, latest liquidation per symbol per 1,000 ms (sampled by design) | subscription acknowledged; 26.5 minutes, 0 liquidation messages; control streams delivered: `!markPrice@arr@1s` 1,429 messages, aggTrade 177, 481 and 142 for three symbols; the capture ended in an abnormal disconnect | `allForceOrders` v1 HTTP 400 ("out of maintenance"), v3 HTTP 404; no stream replay found | measured subscription; payload never observed |
+
+Lighter: the three REST examples were GRAM liquidations (a small market), all with ask account 713043; the record alone was not verified to say which account was liquidated. Lighter trade records carry both account indices, and `GET /api/v1/account?by=index&value=` returns positions with `liquidation_price` (current state only). `/api/v1/liquidations` requires authorization.
+dYdX: a public full node `block_results` (e.g. `https://dydx-rpc.publicnode.com/block_results?height=113505171`) showed a `match` event with `is_liquidation=true`, both subaccounts and quantities, matching the sampled BNB trade. `/v4/fills` for the liquidated account returned HTTP 403 (cause unknown), so its positions were not read. Indexer rate-limit header `ratelimit-limit: 100`.
+
+Aster facts from the same capture: quote assets USDT, USD1, USDC, U (644 symbols, 594 TRADING: 562 USDT, 27 USD1, 3 USDC, 2 U); `exchangeInfo.rateLimits` 2,400 weight per minute; 24 h connection life, 200 streams per connection per docs; REST keyless and working: `exchangeInfo`, `premiumIndex` (799 entries), `openInterest` (snapshot), `fundingRate` (from 2021-08-27), `aggTrades` (V3 from 2026-01-01), `historicalTrades` (from 2021-08-29), `klines`; `leverageBracket` signed (V1 401, V3 400); long/short ratio path 404.
+
 ### Account-level positions (the Binance input gap)
 
 Binance does not publish per-account leverage or liquidation prices ([liquidation-model.md](liquidation-model.md) Known input gaps). Per-address reads exist on some DEXes, but no venue was shown to allow keyless enumeration of all accounts.
@@ -160,8 +176,8 @@ Binance does not publish per-account leverage or liquidation prices ([liquidatio
 | Venue | Known address | Enumerate all accounts |
 |---|---|---|
 | Hyperliquid | `clearinghouseState` public; WS state includes positions and margin | not established; trade messages carry buyer and seller addresses, deriving the full account set from them is unverified |
-| dYdX v4 | `/v4/perpetualPositions?address=&subaccountNumber=` public | not established |
-| Lighter | `/api/v1/account?by=index&value=` public, snapshot includes positions and liquidation price | not established; integer account indices and ids in trades may help discovery, completeness unverified |
+| dYdX v4 | `/v4/perpetualPositions?address=&subaccountNumber=` public (example account returned 200 with zero positions) | not established; liquidation trades and chain `match` events expose subaccounts that were liquidated |
+| Lighter | `/api/v1/account?by=index&value=` public (measured: account 713043 returned 16 positions, 12 nonzero, each with `liquidation_price`) | not established; trade records carry both account indices, so accounts seen in trades can be read, completeness unverified |
 | Aster, GRVT | account endpoints signed | not established |
 | Variational, Antarctic, GMX | not established | not established |
 
@@ -193,4 +209,5 @@ Recording design if needed (inferred): pool metadata and initial state (chain, c
 | Liquidation feeds | Complete: Bybit (doc). Sampled or incomplete: Bitget, OKX. Batched, not sampled per doc: Gate. None found: MEXC, KuCoin. |
 | AMM DEX prices | Index constituents include `pancakeswapV3` (32 symbols), `pancakeswapV2` (3), `uniswapV2` (3), `uniswapV3` (2). Pool addresses, fee tiers, `uindex()` rule, a BNB Chain log provider, swap volume per pool: all unverified. |
 | Perp DEX gaps | Variational, GRVT, Antarctic, GMX market counts; all liquidation-feed completeness; Hyperliquid builder-deployed DEXes; Binance total volume and open interest for scale. |
-| Account enumeration | No venue shown to allow keyless enumeration of all accounts; Hyperliquid, dYdX and Lighter serve a known address only. |
+| Account enumeration | No venue shown to allow keyless enumeration of all accounts; Hyperliquid, dYdX and Lighter serve a known address only, but accounts seen in public trades can be read. |
+| Perp DEX liquidation completeness | Unverified for all four. Not captured: dYdX and Hyperliquid WebSocket streams (cut short by the stop-on-403 rule), any Aster liquidation payload. |
