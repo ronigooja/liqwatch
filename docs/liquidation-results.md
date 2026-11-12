@@ -5,7 +5,7 @@ The owner-set deployment criterion is scale within 2x across symbols, days and s
 Common run, commit dfe4045: `python -m wicker_research.liqcal <day roots> --syms <SYM> --brackets <table> --oi <5-minute history> --oi-mode bucket_both --window-hours 8`.
 
 - Inputs: Parquet from recorded raw files (2026-11-04..10); brackets are the 2026-11-11 table for all days; open-interest history is public.
-- "Backup only" scripts and all outputs are in `~/Agents/wicker-results/liqproc/root_results.tgz`, outside the repository.
+- Outputs of the original runs are in `~/Agents/wicker-results/liqproc/root_results.tgz`, outside the repository. The ZEC fit rows were re-run from the saved decompositions with the repository script and match.
 
 ## Mark versus contract
 
@@ -50,8 +50,8 @@ Method: realised-path obs/pred comparison; the ZEC fit uses disjoint training an
 | Does window length narrow spread? | Train / test / all, four symbols | 4h 12x/19x/33x, 8h 9x/19x/32x, 24h 9x/25x/44x; medians 0.44/0.42/0.37 | 2026-11-04..06 | common run with `--window-hours 4` and `24` |
 | Does open-interest mode affect ranks? | `bucket_both` versus `bucket` | Scale x0.46–0.50; ranks unchanged | 2026-11-04..06 | common run with `--oi-mode bucket` against `bucket_both`; commit ddd298d |
 | Do brackets change the result? | Compare tiers | Little change to scale or ranks | 2026-11-04..06 | common run with and without `--brackets`; commit bdd7a3a |
-| Does trend explain spread? | Return split, against/with; block-bootstrap intervals | BTC 0.54 [0.30, 1.33]; ETH 0.72 [0.44, 1.39]; ZEC 0.73 [0.49, 1.06]; HOT 0.85 [0.58, 1.22] | 2026-11-04..06 | `diag_trend/analyze.py` over `--moments` output (backup only) |
-| Can ZEC weights generalise? | 14 leverage weights | 4 of 8, 28.6x, rho 0.554 | 2026-11-04..10 | `fit_zec/dec.py`, `fit2.py` (backup only) |
+| Does trend explain spread? | Return split, against/with; block-bootstrap intervals | BTC 0.54 [0.30, 1.33]; ETH 0.72 [0.44, 1.39]; ZEC 0.73 [0.49, 1.06]; HOT 0.85 [0.58, 1.22] | 2026-11-04..06 | `research/scripts/liq_trend_split.py`; not re-run (raw Parquet deleted) |
+| Can ZEC weights generalise? | 14 leverage weights | 4 of 8, 28.6x, rho 0.554 | 2026-11-04..10 | `research/scripts/liq_decompose.py` then `liq_fit_weights.py --train 20261104,20261105,20261106 --test 20261107..20261110`; reproduced from the saved decompositions |
 | Does long/short split help? | Add top-trader ratio | 5 of 8, 21.5x, 0.554 | 2026-11-04..10 | same |
 | Does survival help? | Add mark-price survival | 5 of 8, 21.1x, 0.562 | 2026-11-04..10 | same |
 | Which ZEC cells miss? | Training and held-out cells | Training 0.83–1.47; failing 11-08 down 2.8, 11-10 down 3.8, 11-10 up 0.18 | 2026-11-04..10 | same |
@@ -74,7 +74,7 @@ Method: after-the-fact ZEC realised-path event inspection.
 
 | Question | Method | Numbers | Date | Source |
 |---|---|---|---|---|
-| What drove the large miss? | Inspect event and fitted prediction | 11-08 21:50–21:55 UTC; 58% of day's observed in 8 moments; fit 3.5x low, 10.9x first minute | 2026-11-08 | `diag_hot2/a.py` (backup only) |
+| What drove the large miss? | Inspect event and fitted prediction | 11-08 21:50–21:55 UTC; 58% of day's observed in 8 moments; fit 3.5x low, 10.9x first minute | 2026-11-08 | `research/scripts/liq_event_inspect.py`; not re-run (raw Parquet deleted) |
 | Was mass present? | Compare observations to one leverage level crossed | Observed 64–75% of crossed mass | 2026-11-08 | same |
 | Does liquidation share vary? | Compare same crossed mass | 72% on 11-08 21:51 vs 9% on 11-04 18:33 | 2026-11-04..08 | same |
 | Is missed mass decisive? | Moments with zero prediction | 2–15% of observed | 2026-11-04..10 | same |
