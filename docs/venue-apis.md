@@ -122,6 +122,43 @@ No venue documents historical risk-tier snapshots, so tiers must be recorded as 
 | Symbols | spot `BTC-USD`; derivatives `{BASE}_USDC-PERPETUAL`; USD, USDT, USDC are distinct quotes, and most `-USDC` public ids alias `-USD` data | doc |
 | Live access | one Exchange product call succeeded, the next returned HTTP 403; stopped; spot count and overlap not computed. Global derivatives instrument list: 219 instruments, 148 `PERPETUAL`, includes equity and commodity products | measured |
 
+## Binance share of open interest (measured, 2026-11-12)
+
+Question: how much of a coin's open interest across seven centralized venues sits on Binance. Answers the "Binance's share of each symbol's total open interest" gap in [liquidation-model.md](liquidation-model.md) Multiple venues.
+Method: one REST snapshot per venue at about 13:52 UTC (see per-venue endpoints above), open interest converted to USD with the venue's mark price (USDT treated as USD), summed by underlying base asset (scale prefix `1000`, `10000`, `100000`, `1000000`, `1M` stripped, `XBT` mapped to `BTC`), restricted to the 522 Binance USDT perpetual bases. One snapshot, so no time spread; token identity by name only; Binance's own TradFi contracts are not removed. Raw per-venue files were kept outside the repository and are not reproducible from the repository alone.
+
+| Venue | Open interest on Binance bases ($bn) | Binance bases covered |
+|---|---:|---:|
+| Binance | 18.41 | 522 |
+| Bybit | 10.15 | 462 |
+| MEXC | 8.79 | 501 |
+| Bitget | 6.53 | 450 |
+| OKX | 5.53 | 267 |
+| Gate | 5.15 | 498 |
+| KuCoin | 2.41 | 477 |
+| All seven | 57.0 | |
+
+| Result | Value |
+|---|---|
+| Binance share, open-interest weighted | 32.3% |
+| Binance share per coin, median | 43.2% |
+| Coins on one venue only / on all seven | 5 / 242 (six venues: 170) |
+| Top 10, 50, 100 coins by Binance open interest: Binance share | 31.9%, 31.6%, 31.9% |
+| Top 10, 50, 100 coins: share of Binance's own open interest | 80.0%, 90.2%, 93.7% |
+
+| Binance share per coin | Coins | Binance open interest ($bn) |
+|---|---:|---:|
+| below 20% | 20 | 0.1 |
+| 20% to 35% | 129 | 10.77 |
+| 35% to 50% | 194 | 6.10 |
+| 50% to 70% | 121 | 0.93 |
+| 70% to 90% | 45 | 0.40 |
+| 90% and above | 13 | 0.11 |
+
+Largest coins, Binance share: BTC 28%, ETH 39%, SOL 28%, ZEC 37%, HYPE 31%, BNB 52%, XRP 25%, NEAR 33%, WLFI 75%, DOGE 28%. For BTC the other venues hold: Bybit 20%, MEXC 18%, Bitget 11%, OKX 10%, Gate 9%, KuCoin 3%.
+
+Unit convention is not settled. Bybit's documentation calls its open interest both-sides; Gate's `total_size` ticker field was exactly twice `position_size` for BTC; MEXC's `holdVol` side convention is undocumented (BTC $4.56bn here vs a third-party $4.66bn and $2.41bn at unspecified times). Binance defines open interest per contract once. BTC converted to coin units is the same order on all venues (Binance 100,450; Bybit 71,057; MEXC 62,939; Bitget 39,674; OKX 36,121; Gate 32,089; KuCoin 10,884), so no venue is off by a clear factor of two. Sensitivity of the Binance share: Bybit halved 35.5%; Gate doubled 29.6%; Bybit halved, Gate doubled, MEXC halved 35.0%. Gate (490 contracts) and others include non-crypto contracts; those fall outside the 522 Binance bases unless Binance lists the same TradFi base.
+
 ## Perpetual DEXes (partial survey, 2026-11-12)
 
 Keyless market-list calls succeeded for Hyperliquid (default perp DEX), dYdX, Aster and Lighter. Variational returned HTTP 429 on the first call and was not called again. This first pass connected no WebSocket; the later liquidation captures are in the next subsection. Volume is DefiLlama's reported volume (not normalized). Binance on 2026-11-12 (measured): USDT perpetual 24 h volume about $53.3bn (`/fapi/v1/ticker/24hr`, 758 USDT symbols), open interest about $18.4bn (`/fapi/v1/openInterest` times price for 516 of 522 trading perpetuals; 6 failed, so slightly low). Lighter (both DefiLlama entries summed, about $0.69bn) is about 5.0% of volume and 3.8% of open interest, including non-crypto markets; dYdX v4 about 0.03% and 0.2%. DEXes are not recorded: [decision 0013](decisions/0013-no-dex-recording.md).
