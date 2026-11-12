@@ -1,6 +1,6 @@
 # Venue APIs (non-Binance)
 
-Archive of keyless public API facts for venues other than Binance, surveyed on 2026-11-12 by subagents. Governing context: [liquidation-model.md](liquidation-model.md) Multiple venues, [0010](decisions/0010-liquidation-model-direction.md) item 7, [0004](decisions/0004-defer-game-layers-and-multi-venue.md). Recording another venue needs a new decision record.
+Archive of keyless public API facts for venues other than Binance, surveyed on 2026-11-12 by subagents. Governing context: [liquidation-model.md](liquidation-model.md) Multiple venues, [0010](decisions/0010-liquidation-model-direction.md) item 7, [0004](decisions/0004-defer-game-layers-and-multi-venue.md). Recording another venue needs a new decision record; DEXes are excluded by [0013](decisions/0013-no-dex-recording.md).
 
 Status labels: **measured** = a live keyless call succeeded on 2026-11-12; **doc** = stated in the official documentation, not tested live; **unverified** = not found or not tested. WebSocket behavior was not tested live for any venue. Counts are response-filter counts, not tradable-volume counts. Binance intersection counts were not computed for any venue.
 
@@ -124,7 +124,7 @@ No venue documents historical risk-tier snapshots, so tiers must be recorded as 
 
 ## Perpetual DEXes (partial survey, 2026-11-12)
 
-Keyless market-list calls succeeded for Hyperliquid (default perp DEX), dYdX, Aster and Lighter. Variational returned HTTP 429 on the first call and was not called again. No WebSocket was connected; liquidation completeness, most retention periods and account enumeration were not tested. Volume is DefiLlama's reported volume (not normalized); Binance's comparable total was not obtained, so no percentage of Binance is given.
+Keyless market-list calls succeeded for Hyperliquid (default perp DEX), dYdX, Aster and Lighter. Variational returned HTTP 429 on the first call and was not called again. This first pass connected no WebSocket; the later liquidation captures are in the next subsection. Volume is DefiLlama's reported volume (not normalized). Binance on 2026-11-12 (measured): USDT perpetual 24 h volume about $53.3bn (`/fapi/v1/ticker/24hr`, 758 USDT symbols), open interest about $18.4bn (`/fapi/v1/openInterest` times price for 516 of 522 trading perpetuals; 6 failed, so slightly low). Lighter (both DefiLlama entries summed, about $0.69bn) is about 5.0% of volume and 3.8% of open interest, including non-crypto markets; dYdX v4 about 0.03% and 0.2%. DEXes are not recorded: [decision 0013](decisions/0013-no-dex-recording.md).
 
 | Venue | 24h volume | Open interest | Perp markets | Binance base matches |
 |---|---:|---:|---:|---:|
