@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Support semi-automated or automated trading on Binance USDT-M perpetuals around short price spikes (about 1–60 seconds).
+The main direction is the [liquidation model](liquidation-model.md), with Binance implemented first and a multi-venue design ([decision 0010](decisions/0010-liquidation-model-direction.md)). Recording and model scope were narrowed by [0011](decisions/0011-no-alert-narrower-recording.md); the trade-flow map does not compute G or N* ([0012](decisions/0012-map-not-used-for-gain.md)). Recorder status: [p0-rollout.md](p0-rollout.md).
 
-## Products
+## Retained prior work: risk-state and in-spike products
 
 | Product | Question answered | Use |
 |---|---|---|
@@ -21,10 +21,10 @@ Expected return per trade after fees, spread, slippage, and latency, with accept
 
 - No promised win rate or accuracy.
 - No manipulation or intent attribution to specific accounts.
-- No multi-exchange linkage, game-theory state models, TCN/Hawkes, or model fusion until justified by the ablation rule in [models.md](models.md).
+- Game-theory state models, TCN/Hawkes, and model fusion require the ablation rule in [models.md](models.md).
 
 ## Scope
 
-- Venue: Binance USDT-M perpetuals; Binance spot as optional reference.
+- Current implementation: Binance USDT-M perpetuals; the model design covers multiple venues ([0010](decisions/0010-liquidation-model-direction.md)).
 - Instruments and roles: [universe.md](universe.md).
 - Phases and gates: [roadmap.md](roadmap.md).

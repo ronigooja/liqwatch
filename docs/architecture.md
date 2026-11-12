@@ -1,12 +1,14 @@
 # Architecture
 
+The [liquidation model](liquidation-model.md) is the main direction ([0010](decisions/0010-liquidation-model-direction.md)); risk-state and in-spike products below are retained prior work. Current scope and trade-flow-map constraints: [0011](decisions/0011-no-alert-narrower-recording.md), [0012](decisions/0012-map-not-used-for-gain.md). The implementation is Binance-only; the model design is multi-venue ([0010](decisions/0010-liquidation-model-direction.md)). Recorder status: [p0-rollout.md](p0-rollout.md).
+
 ## Layers
 
 ```
 Data:       recording -> raw log -> replayable data lake          (data-recording.md)
 Features:   price / order flow / book / impact / spot basis /
             liquidations / data quality                           (models.md)
-Models:     risk-state model + in-spike models                    (models.md)
+Models:     liquidation model; prior risk-state + in-spike work   (liquidation-model.md)
 Trading:    fill simulator -> strategy rules -> risk layer -> execution   (trading-and-risk.md)
 Governance: prediction logging, shadow run, monitoring,
             degrade and halt                                      (roadmap.md)

@@ -1,5 +1,7 @@
 # Labels and Evaluation
 
+This is retained legacy risk-state and in-spike evaluation work; the main direction is the [liquidation model](liquidation-model.md) ([0010](decisions/0010-liquidation-model-direction.md)). Alert metrics here belong to the risk-state model; the liquidation model has no alert ([0011](decisions/0011-no-alert-narrower-recording.md)).
+
 ## Event definition
 
 Thresholds are volatility-normalized: `a = k·σ_t`, where σ_t is a short-horizon volatility estimated from past data only. Absolute thresholds (1/2/3%) are not used as the primary definition because they give near-zero positives for majors and mostly positives for small coins.

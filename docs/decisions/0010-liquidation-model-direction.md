@@ -1,5 +1,7 @@
 # 0010 Liquidation model as the main direction
 
+The alert-service scope was later narrowed by [0011](0011-no-alert-narrower-recording.md).
+
 Date: 2026-11-10. Changes the priority set in [0002](0002-risk-state-and-in-spike-focus.md) and [0003](0003-trading-expectancy-as-criterion.md); neither is superseded.
 
 ## Decision

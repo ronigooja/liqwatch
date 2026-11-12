@@ -4,7 +4,9 @@ Components 1, 6, 7, 9, 10, 11 from [components.md](components.md). Core componen
 
 Markers as in [p0-core-design.md](p0-core-design.md): **[V]** verified in [open-questions.md](open-questions.md); **[U]** unverified.
 
-## Tier A channel choice (decided: option 2, top 50; see [decision 0007](decisions/0007-trial-outcome.md), measurements in [trial-plan.md](trial-plan.md))
+## Historical tier A quote options
+
+The trial decision was narrowed by [0011](decisions/0011-no-alert-narrower-recording.md); measurements remain in [trial-plan.md](trial-plan.md).
 
 - The all-market `!bookTicker` stream updates every 5 s [V, official]. That is too coarse for 1–60 s spikes, so it is not a substitute for per-symbol `@bookTicker` (real time).
 - Per-symbol `@bookTicker` for every perpetual may be too heavy for 2 vCPU / 4 GB. Candidates, to be compared in the trial:
@@ -15,7 +17,7 @@ Markers as in [p0-core-design.md](p0-core-design.md): **[V]** verified in [open-
 
 ## Component 1: Symbol Manager
 
-- Source: `GET /fapi/v1/exchangeInfo` [V that it exists and carries `rateLimits`]. `symbols[]` fields [V, official]: `symbol`, `pair`, `status` (`TRADING`), `contractType`, `baseAsset`, `quoteAsset`, `marginAsset`, `onboardDate`, `deliveryDate` (ms timestamps), `underlyingType`. Target set: `contractType == PERPETUAL`, `status == TRADING`, `quoteAsset == USDT`. A `TRADIFI_PERPETUAL` contract type appears in the continuous-kline enum, so it is excluded by the `PERPETUAL` match; whether exchangeInfo uses the same value is [U], so log any contractType value not seen before.
+- Source: `GET /fapi/v1/exchangeInfo` [V that it exists and carries `rateLimits`]. `symbols[]` fields [V, official]: `symbol`, `pair`, `status` (`TRADING`), `contractType`, `baseAsset`, `quoteAsset`, `marginAsset`, `onboardDate`, `deliveryDate` (ms timestamps), `underlyingType`. Target set: `contractType == PERPETUAL`, `status == TRADING`, `quoteAsset == USDT`. For verified contract types see [open-questions.md](open-questions.md); log any contractType value not seen before.
 - Refresh: at startup, daily at a fixed UTC time, and when the `!contractInfo` stream (on `/market`) reports a change [V that the stream exists].
 - Each refresh writes `state/symbols/<UTC timestamp>.json` plus a content hash. If the hash changed, append events to `state/symbol-events.jsonl`: `listed`, `delisted`, `status_change`, `tier_change`.
 - Tier B list: from a config file edited by the owner (10–20 symbols, [universe.md](universe.md)). A small number of reserved slots may be filled automatically from a trailing-return ranking; each automatic change records its time and the ranking used, so backtests respect it.
@@ -110,7 +112,7 @@ Contents: per channel message counts and rates; coverage (valid seconds over tot
 ## Component 11: Deployment and Ops
 
 - **Binaries:** built off the recorder (cross-compiled) and copied. No compilers on the host. Layout `/opt/wicker/releases/<version>/` with a `current` symlink; rollback by switching the link.
-- **User and paths:** dedicated unprivileged user `wicker`; `/var/lib/wicker/{raw,state,manifest}`; config in `/etc/wicker/config.toml`; secrets in `/etc/wicker/secrets.env` mode 0600. Config templates will live in this repo under `config/` when code starts.
+- **User and paths:** dedicated unprivileged user `wicker`; `/var/lib/wicker/{raw,state,manifest}`; config in `/etc/wicker/config.toml`; secrets in `/etc/wicker/secrets.env` mode 0600. Example templates: `config/config.toml.example` and `config/secrets.env.example`.
 - **Services (systemd):** `wicker-collector`, `wicker-validator`, `wicker-archiver` (timer), `wicker-checks` (timer), `wicker-alertd` (alert interface). The collector has the highest priority; the validator and archiver are lower (CPU weight, IO weight, memory max). Open-file limit raised (`LimitNOFILE`). `Restart=always` with a backoff.
 - **Host:** SSH keys only; firewall allows inbound SSH only; metrics bound to localhost; journald size capped; chrony running.
 - **Health:** a restart of any service writes an event. A restart of the collector is a gap and must appear in `gaps`.
@@ -120,7 +122,5 @@ Contents: per channel message counts and rates; coverage (valid seconds over tot
 
 | Item | Where |
 |---|---|
-| Tier A quote channel: option 1, 2, or 3 | Trial result |
-| Whether exchangeInfo returns `TRADIFI_PERPETUAL` and how `underlyingType` marks non-crypto contracts | Check a live response in the trial |
 | First consumer: none yet, generic interface first | Owner |
 | Local retention: decided, 6 h after verification | [decision 0008](decisions/0008-hourly-archive-and-retention.md) |

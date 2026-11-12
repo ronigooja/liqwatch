@@ -1,6 +1,6 @@
 # wicker
 
-Design repository for a crypto perpetual-futures price-spike risk and in-spike tracking system, aimed at semi-automated or automated trading. Status: design only, no code.
+Research and recording repository; main direction is the [liquidation model](docs/liquidation-model.md), see also [roadmap](docs/roadmap.md).
 
 ## Document map
 
@@ -9,6 +9,12 @@ Read only what the task needs.
 | File | Contents | Read when |
 |---|---|---|
 | [AGENTS.md](AGENTS.md) | Rules for AI agents working in this repo | Always first |
+| [docs/liquidation-model.md](docs/liquidation-model.md) | Main model direction | Working on liquidation research |
+| [docs/poller.md](docs/poller.md) | REST poller design and status | Working on polling |
+| [docs/p0-rollout.md](docs/p0-rollout.md) | Recorder rollout and status | Checking recording operations |
+| [docs/p1-data-pipeline.md](docs/p1-data-pipeline.md) | Research data pipeline | Replaying or converting data |
+| [docs/fill-simulator.md](docs/fill-simulator.md) | Fill simulator design and results | Evaluating simulated fills |
+| [docs/trial-plan.md](docs/trial-plan.md) | Historical recording trial and measurements | Reviewing trial evidence |
 | [docs/overview.md](docs/overview.md) | Goals, products, non-goals, success criteria | Need scope or intent |
 | [docs/architecture.md](docs/architecture.md) | Layers and data flow | Designing any component |
 | [docs/components.md](docs/components.md) | Component list per phase and design order | Deciding what to design or build |

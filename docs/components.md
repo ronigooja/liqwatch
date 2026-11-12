@@ -2,7 +2,7 @@
 
 Per-phase component list. Phase definitions: [roadmap.md](roadmap.md). Recording behavior: [data-recording.md](data-recording.md). Hosts: [infrastructure.md](infrastructure.md).
 
-## P0 Data recording (design now)
+## P0 Data recording
 
 | # | Component | Responsibility | Design points to settle |
 |---|---|---|---|
@@ -11,7 +11,7 @@ Per-phase component list. Phase definitions: [roadmap.md](roadmap.md). Recording
 | 3 | Snapshot Scheduler | REST snapshots for depth tier: startup sync, resync after gap, periodic verification points | Frequency, rate-limit budget |
 | 4 | Raw Log Writer | Bounded queue, append-only hourly files, compression | Record format, file naming, drop priority when full |
 | 5 | Book Validator | Side-path book rebuild, gap detection, mismatch vs verification snapshot, unavailable intervals | Rebuild algorithm, mismatch definition, interval format |
-| 6 | Archiver | Daily Parquet conversion, upload, verify, then clean raw logs | Partitioning, retention, checksums |
+| 6 | Archiver | Hourly raw-file upload and verification; Parquet conversion happens on the research side ([archiver](p0-support-design.md), [pipeline](p1-data-pipeline.md)) | Partitioning, retention, checksums |
 | 7 | Manifest | Per-file start/end, message count, checksum, reconnect count | Table schema |
 | 8 | Replay Engine | Replay by receive time; "data received up to t" interface | Interface shape (basis of leakage control) |
 | 9 | Monitoring and Alerting | Latency, disconnects, rates, disk, mismatch rate, clock offset; alert events through an interface (webhook push and HTTP pull) | Metric list, thresholds, alert schema |
@@ -20,7 +20,7 @@ Per-phase component list. Phase definitions: [roadmap.md](roadmap.md). Recording
 
 Flow: 1→2→4, 3→4, 4→5, 4→6→7, 6→8, {2,3,4,5}→9→10.
 
-## P1 Event library and baseline (design in parallel with P0)
+## P1 Event library and baseline
 
 | # | Component | Responsibility |
 |---|---|---|

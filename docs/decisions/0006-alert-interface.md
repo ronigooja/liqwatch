@@ -1,5 +1,7 @@
 # 0006: Alerts through an interface, not a fixed channel
 
+Applies to data-health alerts only; see [0011](0011-no-alert-narrower-recording.md).
+
 Status: accepted
 
 Context: the owner may later connect other websites or apps. A hard-wired chat integration would need rework.

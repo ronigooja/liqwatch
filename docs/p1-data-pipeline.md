@@ -14,7 +14,7 @@ One page for the whole chain after recording. Recording itself: [p0-core-design.
 | 6 | Label | Trades | Four label tasks per time step; `python -m wicker_research.labels`. Reads raw trades, not yet the Parquet files | 12, 13 | first version |
 | 7 | Train and evaluate | Features, labels | Metrics and calibration | 15, P2 | todo |
 
-Rule that every stage keeps: a value at time t may use only messages with receive time at or before t ([architecture.md](architecture.md) Invariants). Replay enforces it; later stages must not bypass replay.
+Every stage follows the [receive-time visibility invariant](architecture.md#invariants); later stages must not bypass replay.
 
 ## Raw record format
 

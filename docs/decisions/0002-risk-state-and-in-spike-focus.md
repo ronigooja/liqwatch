@@ -1,5 +1,7 @@
 # 0002: Focus on risk state and in-spike tracking; drop pre-spike direction
 
+Priority changed by [0010](0010-liquidation-model-direction.md).
+
 Status: accepted (supersedes the v1 goal of pre-spike direction probability)
 
 Context: pre-spike triggers are mostly exogenous; direction signal before the event is expected to be near random. After a spike starts, order flow, impact, and depth recovery carry real signal.
