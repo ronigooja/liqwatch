@@ -4,7 +4,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from wicker_research.bookat import BookView, SymbolBooks
+from liqwatch_research.bookat import BookView, SymbolBooks
 
 L = pa.list_(pa.list_(pa.float64()))
 
@@ -117,7 +117,7 @@ def test_walk_market_order():
 def test_real_book_equals_snapshot_at_its_update_id():
     """Verification as in docs/p0-core-design.md Component 5: at the snapshot's own update id the rebuilt book
     equals the snapshot on the top 20 levels. Snapshots whose id falls inside a diff are not testable exactly."""
-    root = '/tmp/wicker-pq4'
+    root = '/tmp/liqwatch-pq4'
     if not os.path.exists(root + '/depth'):
         pytest.skip('converted sample absent')
     import pyarrow.dataset as ds
@@ -139,7 +139,7 @@ def test_real_book_equals_snapshot_at_its_update_id():
 
 @pytest.mark.real
 def test_real_book_available_through_the_hour():
-    root = '/tmp/wicker-pq4'
+    root = '/tmp/liqwatch-pq4'
     if not os.path.exists(root + '/depth'):
         pytest.skip('converted sample absent')
     import numpy as np

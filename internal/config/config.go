@@ -1,5 +1,5 @@
-// Package config holds the shared configuration structure, loaded from /etc/wicker/config.toml.
-// Secrets are not in this file; they come from the environment (/etc/wicker/secrets.env).
+// Package config holds the shared configuration structure, loaded from /etc/liqwatch/config.toml.
+// Secrets are not in this file; they come from the environment (/etc/liqwatch/secrets.env).
 package config
 
 import (
@@ -10,7 +10,7 @@ import (
 )
 
 type Config struct {
-	DataDir  string   `toml:"data_dir"` // default /var/lib/wicker
+	DataDir  string   `toml:"data_dir"` // default /var/lib/liqwatch
 	Collect  Collect  `toml:"collect"`
 	Snapshot Snapshot `toml:"snapshot"`
 	Archive  Archive  `toml:"archive"`
@@ -35,7 +35,7 @@ type Snapshot struct {
 }
 
 type Archive struct {
-	RemoteRoot     string `toml:"remote_root"`      // https://.../dav/ronigooja_onedrive/wicker/
+	RemoteRoot     string `toml:"remote_root"`      // https://.../dav/ronigooja_onedrive/liqwatch/
 	ChunkMB        int    `toml:"chunk_mb"`         // 128
 	DeleteAfterH   int    `toml:"delete_after_h"`   // 6, counted from verified
 	FullVerifyDays int    `toml:"full_verify_days"` // 7: download-and-hash
@@ -50,13 +50,13 @@ type Checks struct {
 
 // Env var names for WebDAV credentials (never printed or logged).
 const (
-	EnvWebDAVUser = "WICKER_WEBDAV_USER"
-	EnvWebDAVPass = "WICKER_WEBDAV_PASS"
+	EnvWebDAVUser = "LIQWATCH_WEBDAV_USER"
+	EnvWebDAVPass = "LIQWATCH_WEBDAV_PASS"
 )
 
 func Load(path string) (*Config, error) {
 	c := Config{
-		DataDir:  "/var/lib/wicker",
+		DataDir:  "/var/lib/liqwatch",
 		Collect:  Collect{MetricsAddr: "127.0.0.1:9101", QuoteTopN: 50, DepthSpeed: "100ms", MaxStreamsPerWS: 100, QueueSize: 10000, OpenSpacingMS: 500},
 		Snapshot: Snapshot{Limit: 1000, VerifyEveryMin: 5, WeightFraction: 0.25},
 		Archive:  Archive{ChunkMB: 64, DeleteAfterH: 6, FullVerifyDays: 7, MaxKBps: 0},

@@ -2,10 +2,10 @@
 
 The owner-set deployment criterion is scale within 2x across symbols, days and sides. Obs/pred is not a true liquidated fraction: the observation stream is a lower bound.
 
-Common run, commit dfe4045: `python -m wicker_research.liqcal <day roots> --syms <SYM> --brackets <table> --oi <5-minute history> --oi-mode bucket_both --window-hours 8`.
+Common run, commit dfe4045: `python -m liqwatch_research.liqcal <day roots> --syms <SYM> --brackets <table> --oi <5-minute history> --oi-mode bucket_both --window-hours 8`.
 
 - Inputs: Parquet from recorded raw files (2026-11-04..10); brackets are the 2026-11-11 table for all days; open-interest history is public.
-- Outputs of the original runs are in `~/Agents/wicker-results/liqproc/root_results.tgz`, outside the repository. The ZEC fit rows were re-run from the saved decompositions with the repository script and match.
+- Outputs of the original runs are in `~/Agents/liqwatch-results/liqproc/root_results.tgz`, outside the repository. The ZEC fit rows were re-run from the saved decompositions with the repository script and match.
 
 ## Mark versus contract
 
@@ -62,7 +62,7 @@ Method: rolling day-pair ridge; interval counts above / below / containing zero 
 
 | Question | Method | Numbers | Date | Source |
 |---|---|---|---|---|
-| Does shape add information? | Six held-out days per side | BTC down 1/0/5, BTC up 0/0/6; ZEC down 3/0/3, ZEC up 3/0/3; HOT down 2/2/2, HOT up 1/0/5; ETH down 1/0/5, ETH up 0/0/6 | 2026-11-04..10 | `python -m wicker_research.liqcausal --rolling --model ridge`, same inputs, commit dfe4045 |
+| Does shape add information? | Six held-out days per side | BTC down 1/0/5, BTC up 0/0/6; ZEC down 3/0/3, ZEC up 3/0/3; HOT down 2/2/2, HOT up 1/0/5; ETH down 1/0/5, ETH up 0/0/6 | 2026-11-04..10 | `python -m liqwatch_research.liqcausal --rolling --model ridge`, same inputs, commit dfe4045 |
 | What is the aggregate? | 95% block-bootstrap intervals | 11/2/35 over 48; mean c-b between -0.011 and +0.048 | 2026-11-04..10 | same |
 | Nonlinear evidence? | Earlier three-day GBM, twelve cells | 5/0/7; mean c-b +0.044 | 2026-11-04..06 | `liqcausal --model gbm`, commit 7dd371c |
 
@@ -87,9 +87,9 @@ Method: independent synthetic code audit and methodological review.
 
 | Question | Method | Numbers / finding | Date | Source |
 |---|---|---|---|---|
-| Are results affected by scoring? | Code audit | Positive-prediction conditioning of `sum_obs` excludes zero-prediction observations and flatters the ratio | 2026-11-12 | `research/wicker_research/liqcal` |
-| Are inputs and survival aligned? | Code audit | Open-interest timestamp semantics assumed; survival by trade price may leave mark-crossed levels alive | 2026-11-12 | `research/wicker_research/liqmap` |
-| Are tiers and numeric operations exact? | Code audit | Fragment tiers are not position tiers; float cancellation can lose small mass; silent drop of fragments with no allowed leverage | 2026-11-12 | `research/wicker_research/liqmap` |
+| Are results affected by scoring? | Code audit | Positive-prediction conditioning of `sum_obs` excludes zero-prediction observations and flatters the ratio | 2026-11-12 | `research/liqwatch_research/liqcal` |
+| Are inputs and survival aligned? | Code audit | Open-interest timestamp semantics assumed; survival by trade price may leave mark-crossed levels alive | 2026-11-12 | `research/liqwatch_research/liqmap` |
+| Are tiers and numeric operations exact? | Code audit | Fragment tiers are not position tiers; float cancellation can lose small mass; silent drop of fragments with no allowed leverage | 2026-11-12 | `research/liqwatch_research/liqmap` |
 | Is the decision justified? | Independent method review | Partly supported: stable scale not demonstrated, cause unknown; deployment gate not statistical rejection | 2026-11-12 | [decision](decisions/0012-map-not-used-for-gain.md) |
 
 ## F. Literature and vendor findings

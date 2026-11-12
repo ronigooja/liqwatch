@@ -1,0 +1,18 @@
+[Unit]
+Description=Liqwatch collector
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+User=liqwatch
+ExecStart=/opt/liqwatch/current/liqwatch-collector -config /etc/liqwatch/config.toml
+Restart=always
+RestartSec=5s
+LimitNOFILE=65536
+MemoryMax=2500M
+CPUQuota=150%
+
+[Install]
+WantedBy=multi-user.target

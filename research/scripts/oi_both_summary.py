@@ -9,8 +9,8 @@ from datetime import date, datetime, timedelta, timezone
 
 import polars as pl
 
-from wicker_research.liqcal import load_day
-from wicker_research.liqmap import liquidation_map, load_brackets
+from liqwatch_research.liqcal import load_day
+from liqwatch_research.liqmap import liquidation_map, load_brackets
 
 
 def main(argv=None):

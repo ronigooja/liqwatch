@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wicker/wicker/internal/config"
-	"github.com/wicker/wicker/internal/rawlog"
+	"github.com/ronigooja/liqwatch/internal/config"
+	"github.com/ronigooja/liqwatch/internal/rawlog"
 )
 
 const (

@@ -4,13 +4,13 @@ Date: 2026-11-04. Extends the restart behavior in [p0-core-design.md](../p0-core
 
 ## Decision
 
-1. The collector runs as a named slot (`a` or `b`) under the template unit `wicker-collector@.service`. A planned release or config change starts the idle slot on the new release, waits until it is ready, then stops the old slot. The two slots overlap for about one to two minutes.
+1. The collector runs as a named slot (`a` or `b`) under the template unit `liqwatch-collector@.service`. A planned release or config change starts the idle slot on the new release, waits until it is ready, then stops the old slot. The two slots overlap for about one to two minutes.
 2. Every file name carries the slot: `<group>-<YYYYMMDDHH>.<slot>[.rN].jsonl.zst`. Crash recovery only renames `.part` files of its own slot. An exclusive file lock `state/instance-<slot>.lock` prevents two processes in one slot.
 3. The new slot opens its connections spaced by `collect.open_spacing_ms`, takes its own initial depth snapshots, and counts as ready only when every shard is open and every depth symbol has a snapshot written. The handoff script requires readiness to hold for 60 s and messages to be flowing.
 4. Any failure before the old slot stops leaves the old slot untouched; the new slot is stopped. This is also the rollback.
 5. Unplanned depth reconnects trigger fresh snapshots for all depth symbols ([collector](../../internal/collector/collector.go) `OnReconnect`).
 6. `RegisterClosed` is idempotent, and the collector skips already registered paths, so two slots never overwrite manifest state.
-7. `wicker-checks` reads every configured metrics address; the collector is down only if none is reachable.
+7. `liqwatch-checks` reads every configured metrics address; the collector is down only if none is reachable.
 
 ## Replay de-duplication keys (for the replay engine, P1)
 

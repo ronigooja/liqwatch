@@ -9,7 +9,7 @@ import (
 func TestLoadDefaultsAndValidation(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	contents := "data_dir = \"/tmp/wicker\"\n[collect]\ndepth_symbols = [\"BTCUSDT\"]\n"
+	contents := "data_dir = \"/tmp/liqwatch\"\n[collect]\ndepth_symbols = [\"BTCUSDT\"]\n"
 	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
 		t.Fatal(err)
 	}

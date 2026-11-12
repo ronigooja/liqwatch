@@ -40,7 +40,7 @@ Hourly run (timer, a few minutes after each UTC hour boundary), per [decision 00
 7. Throttle: cap upload rate and run at low CPU/IO priority so it never competes with recording. Upload throughput seen: ~4.5 MB/s [measured, single test]; re-measure over several days.
 8. On any failure, retry with backoff and leave the file in `uploading`; alert if a file is not `verified` after 3 hours.
 
-Storage host free disk is small (~6 GB) and nginx buffers request bodies [measured], so one chunk at a time. Uses the dedicated `wicker` WebDAV account ([infrastructure.md](infrastructure.md)); never the admin account. Remote root: `/dav/ronigooja_onedrive/wicker/` (see [infrastructure.md](infrastructure.md)).
+Storage host free disk is small (~6 GB) and nginx buffers request bodies [measured], so one chunk at a time. Uses the dedicated `liqwatch` WebDAV account ([infrastructure.md](infrastructure.md)); never the admin account. Remote root: `/dav/ronigooja_onedrive/liqwatch/` (see [infrastructure.md](infrastructure.md)).
 
 ## Component 7: Manifest
 
@@ -68,7 +68,7 @@ The manifest is the index. The raw files and the validator log remain the source
 
 Decision: [0006](decisions/0006-alert-interface.md). Producers and delivery are separate so new consumers (websites, apps, chat bots) are added without touching the recorder.
 
-**Flow:** check job or process -> append event to `state/alerts.jsonl` (append-only, source of truth) -> `wicker-alertd` reads it -> delivers through adapters and serves the pull API.
+**Flow:** check job or process -> append event to `state/alerts.jsonl` (append-only, source of truth) -> `liqwatch-alertd` reads it -> delivers through adapters and serves the pull API.
 
 **Event (schema version 1):**
 
@@ -84,7 +84,7 @@ Decision: [0006](decisions/0006-alert-interface.md). Producers and delivery are 
 - Ids are unique and sortable, so consumers can de-duplicate and resume.
 
 **Push (webhook adapter):**
-- Config lists endpoints with filters (minimum severity, type prefixes). Each endpoint has its own secret in `/etc/wicker/secrets.env`.
+- Config lists endpoints with filters (minimum severity, type prefixes). Each endpoint has its own secret in `/etc/liqwatch/secrets.env`.
 - HTTP POST with the event as JSON and an HMAC-SHA256 signature header over the body plus a timestamp header, so receivers can verify origin and reject replays.
 - Delivery is at least once. Retries use exponential backoff with a cap; a per-endpoint cursor survives restarts. Receivers de-duplicate by `id`.
 - A failing endpoint never blocks other endpoints or recording.
@@ -99,7 +99,7 @@ Decision: [0006](decisions/0006-alert-interface.md). Producers and delivery are 
 
 **Other adapters** (chat, email, mobile push) are separate consumers of the same stream or the webhook. None is part of the first stage.
 
-**Self-monitoring:** if `wicker-alertd` stops, a systemd failure hook and a periodic dead-man heartbeat to a configured endpoint (optional) make the silence visible.
+**Self-monitoring:** if `liqwatch-alertd` stops, a systemd failure hook and a periodic dead-man heartbeat to a configured endpoint (optional) make the silence visible.
 
 **Resource budget:** the service is small and runs at low priority; it must stay within a memory cap set in systemd.
 
@@ -111,9 +111,9 @@ Contents: per channel message counts and rates; coverage (valid seconds over tot
 
 ## Component 11: Deployment and Ops
 
-- **Binaries:** built off the recorder (cross-compiled) and copied. No compilers on the host. Layout `/opt/wicker/releases/<version>/` with a `current` symlink; rollback by switching the link.
-- **User and paths:** dedicated unprivileged user `wicker`; `/var/lib/wicker/{raw,state,manifest}`; config in `/etc/wicker/config.toml`; secrets in `/etc/wicker/secrets.env` mode 0600. Example templates: `config/config.toml.example` and `config/secrets.env.example`.
-- **Services (systemd):** `wicker-collector`, `wicker-validator`, `wicker-archiver` (timer), `wicker-checks` (timer), `wicker-alertd` (alert interface). The collector has the highest priority; the validator and archiver are lower (CPU weight, IO weight, memory max). Open-file limit raised (`LimitNOFILE`). `Restart=always` with a backoff.
+- **Binaries:** built off the recorder (cross-compiled) and copied. No compilers on the host. Layout `/opt/liqwatch/releases/<version>/` with a `current` symlink; rollback by switching the link.
+- **User and paths:** dedicated unprivileged user `liqwatch`; `/var/lib/liqwatch/{raw,state,manifest}`; config in `/etc/liqwatch/config.toml`; secrets in `/etc/liqwatch/secrets.env` mode 0600. Example templates: `config/config.toml.example` and `config/secrets.env.example`.
+- **Services (systemd):** `liqwatch-collector`, `liqwatch-validator`, `liqwatch-archiver` (timer), `liqwatch-checks` (timer), `liqwatch-alertd` (alert interface). The collector has the highest priority; the validator and archiver are lower (CPU weight, IO weight, memory max). Open-file limit raised (`LimitNOFILE`). `Restart=always` with a backoff.
 - **Host:** SSH keys only; firewall allows inbound SSH only; metrics bound to localhost; journald size capped; chrony running.
 - **Health:** a restart of any service writes an event. A restart of the collector is a gap and must appear in `gaps`.
 - **Changes:** every release records its version in each log record (parser version in outputs, see [p0-core-design.md](p0-core-design.md)).

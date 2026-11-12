@@ -5,7 +5,7 @@ import pyarrow.parquet as pq
 import pytest
 from polars.testing import assert_frame_equal
 
-from wicker_research.liqcal import (
+from liqwatch_research.liqcal import (
     INPUT_SCHEMA, MOMENT_SCHEMA, baseline, conditional_by_move, fit_scale,
     load_day, main, moments, move_baseline, partial_spearman, score,
 )
@@ -49,13 +49,13 @@ def test_crossing_and_flat():
     ('up', 90., 90., 100., 0.), ('up', 100., 90., 100., 100.),
 ])
 def test_predictions_count_only_future_crossed_levels(monkeypatch, side, level, m0, future, expected):
-    from wicker_research.liqmap import LiqMap
+    from liqwatch_research.liqmap import LiqMap
 
     empty = np.array([], dtype=float)
     levels, notionals = np.array([level]), np.array([100.])
     q = (LiqMap(levels, notionals, empty, empty) if side == 'down'
          else LiqMap(empty, empty, levels, notionals))
-    monkeypatch.setattr('wicker_research.liqcal.liquidation_map', lambda *args, **kwargs: q)
+    monkeypatch.setattr('liqwatch_research.liqcal.liquidation_map', lambda *args, **kwargs: q)
     tr, _, liq = day()
     mark = pl.DataFrame({'rw': [0, NS], 'mark': [m0, future]})
     result = moments(tr, mark, liq, 'BTCUSDT', step_s=1, horizon_s=1)
@@ -255,7 +255,7 @@ def test_move_validation():
 
 
 def test_brackets_oi_moments_and_cli(tmp_path, monkeypatch):
-    from wicker_research.liqmap import load_brackets
+    from liqwatch_research.liqmap import load_brackets
 
     bracket_path = tmp_path / 'brackets.csv'
     bracket_path.write_text('symbol,tier,lower,upper,max_leverage,mmr,maint_amount\n'
@@ -273,7 +273,7 @@ def test_brackets_oi_moments_and_cli(tmp_path, monkeypatch):
     result = moments(*data, 'BTCUSDT', horizon_s=60, params=params)
     assert result.filter(pl.col('t') == 300 * NS)['pred_down'].item() == 300.
     assert result.filter(pl.col('t') < 300 * NS)['pred_down'].sum() == 0
-    monkeypatch.setattr('wicker_research.liqcal.load_day', lambda roots, sym: data)
+    monkeypatch.setattr('liqwatch_research.liqcal.load_day', lambda roots, sym: data)
     out, dump = tmp_path / 'score.csv', tmp_path / 'moments.csv'
     args = [str(tmp_path), '--syms', 'BTCUSDT', '--out', str(out), '--moments', str(dump),
             '--horizon', '60', '--brackets', str(bracket_path), '--oi', str(tmp_path),
@@ -295,7 +295,7 @@ def test_bucket_both_cli_accepted(tmp_path, monkeypatch):
     tr, _, liq = day()
     tr = tr.with_columns(pl.lit(NS).alias('rw'))
     mark = pl.DataFrame({'rw': [0, 300 * NS, 360 * NS], 'mark': [100., 100., 80.]})
-    monkeypatch.setattr('wicker_research.liqcal.load_day', lambda roots, sym: (tr, mark, liq))
+    monkeypatch.setattr('liqwatch_research.liqcal.load_day', lambda roots, sym: (tr, mark, liq))
     out = tmp_path / 'score.csv'
     main([str(tmp_path), '--syms', 'BTCUSDT', '--out', str(out), '--horizon', '60',
           '--oi', str(tmp_path), '--oi-mode', 'bucket_both'])

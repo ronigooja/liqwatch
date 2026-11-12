@@ -1,6 +1,6 @@
 # Liquidation Model
 
-Decision: [0010](decisions/0010-liquidation-model-direction.md). Status: Python research code exists (`research/wicker_research/liqmap`,
+Decision: [0010](decisions/0010-liquidation-model-direction.md). Status: Python research code exists (`research/liqwatch_research/liqmap`,
    `liqcal`, `liqcausal`); the map is not used for `G` or `N*` ([0012](decisions/0012-map-not-used-for-gain.md)). Exchange facts below are
    unverified until moved to Verified in [open-questions.md](open-questions.md).
 

@@ -3,7 +3,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from wicker_research.liqmap import Brackets, VERSION, liquidation_map, load_brackets
+from liqwatch_research.liqmap import Brackets, VERSION, liquidation_map, load_brackets
 
 
 def trades(prices, makers=None, times=None, quantities=None):
@@ -252,7 +252,7 @@ def test_default_options_leave_original_map_unchanged():
 
 
 def test_oi_bucket_both_hand_computed_allocation_and_survival():
-    from wicker_research.liqmap import _oi_quantities
+    from liqwatch_research.liqmap import _oi_quantities
 
     df = trades([100, 200], [False, True], times=[1, 2], quantities=[1, 3])
     oi = (np.array([0, 300_000]), np.array([10., 14.]))

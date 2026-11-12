@@ -1,4 +1,4 @@
-# wicker
+# liqwatch
 
 Research and recording repository; main direction is the [liquidation model](docs/liquidation-model.md), see also [roadmap](docs/roadmap.md).
 

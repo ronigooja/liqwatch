@@ -99,7 +99,7 @@ var (
 func main() {
 	var cfg config
 	var dur string
-	flag.StringVar(&cfg.out, "out", "/var/lib/wicker/trial", "output directory")
+	flag.StringVar(&cfg.out, "out", "/var/lib/liqwatch/trial", "output directory")
 	flag.StringVar(&cfg.depthSyms, "depth", "", "comma-separated symbols for diff depth (e.g. BTCUSDT,ETHUSDT)")
 	flag.StringVar(&cfg.depthSpeed, "depth-speed", "100ms", "depth update speed: 100ms, 250ms, 500ms")
 	flag.StringVar(&cfg.bookTicker, "bookticker", "", "bookTicker symbols: comma list, 'all', or 'top:N'")

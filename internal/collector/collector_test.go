@@ -12,7 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/wicker/wicker/internal/rawlog"
+	"github.com/ronigooja/liqwatch/internal/rawlog"
 )
 
 type nopSink struct{}

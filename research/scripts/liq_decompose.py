@@ -28,8 +28,8 @@ import argparse
 import numpy as np
 import polars as pl
 
-from wicker_research.liqcal import NS, load_day
-from wicker_research.liqmap import _oi_quantities, load_brackets
+from liqwatch_research.liqcal import NS, load_day
+from liqwatch_research.liqmap import _oi_quantities, load_brackets
 
 LEVERAGES = (2, 3, 4, 5, 7, 10, 15, 20, 25, 30, 40, 50, 75, 100)
 WINDOW_NS = 8 * 3600 * NS

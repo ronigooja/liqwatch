@@ -11,8 +11,8 @@ from scripts.liq_event_inspect import inspect, main as event_main
 from scripts.liq_fit_weights import evaluate, fit_weights, main as fit_main
 from scripts.liq_trend_split import (bootstrap, check_totals, main as trend_main,
                                      split_rows, trend_features)
-from wicker_research.liqcal import INPUT_SCHEMA, NS, moments
-from wicker_research.liqmap import Brackets, liquidation_map
+from liqwatch_research.liqcal import INPUT_SCHEMA, NS, moments
+from liqwatch_research.liqmap import Brackets, liquidation_map
 
 
 def trades(prices=(100.,), times=(1,), makers=None):

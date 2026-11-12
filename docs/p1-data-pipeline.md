@@ -8,10 +8,10 @@ One page for the whole chain after recording. Recording itself: [p0-core-design.
 |---|---|---|---|---|---|
 | 1 | Record | Binance streams | Raw log `raw/<date>/<group>-<YYYYMMDDHH>[.<slot>][.rN].jsonl.zst` | 2, 3, 4 | done |
 | 2 | Archive | Raw log | Remote copy, verified, local delete after 6 h | 6, 7 | done |
-| 3 | Replay | Raw log, validation log | Event stream in causal order; `python -m wicker_research.replay`. `book_at(symbol, t)`: `wicker_research.bookat.SymbolBooks`, reads the Parquet depth and snapshot datasets | 8 | done (book equals every verification snapshot on 3 symbols, 1 h) |
-| 4 | Validate | Raw log | Validation log: sequence breaks, snapshot mismatches, unavailable intervals; `python -m wicker_research.book` | 5 | done (15 depth symbols, 1 h) |
-| 5 | Convert | Replay output | Columnar files for training (layout below); `python -m wicker_research.convert` | 6 | done (checked on 1 h sample; trades match raw exactly) |
-| 6 | Label | Trades | Four label tasks per time step; `python -m wicker_research.labels`. Reads raw trades, not yet the Parquet files | 12, 13 | first version |
+| 3 | Replay | Raw log, validation log | Event stream in causal order; `python -m liqwatch_research.replay`. `book_at(symbol, t)`: `liqwatch_research.bookat.SymbolBooks`, reads the Parquet depth and snapshot datasets | 8 | done (book equals every verification snapshot on 3 symbols, 1 h) |
+| 4 | Validate | Raw log | Validation log: sequence breaks, snapshot mismatches, unavailable intervals; `python -m liqwatch_research.book` | 5 | done (15 depth symbols, 1 h) |
+| 5 | Convert | Replay output | Columnar files for training (layout below); `python -m liqwatch_research.convert` | 6 | done (checked on 1 h sample; trades match raw exactly) |
+| 6 | Label | Trades | Four label tasks per time step; `python -m liqwatch_research.labels`. Reads raw trades, not yet the Parquet files | 12, 13 | first version |
 | 7 | Train and evaluate | Features, labels | Metrics and calibration | 15, P2 | todo |
 
 Every stage follows the [receive-time visibility invariant](architecture.md#invariants); later stages must not bypass replay.
@@ -90,4 +90,4 @@ The quote file (530 MB compressed) is not yet converted. Depth is the largest Pa
 2. Validator and `quality` dataset.
 3. Conversion to the columnar layout.
 4. Volatility estimator, labeler, baseline evaluator (components 12, 13, 15).
-5. Fill simulator (component 16): design done in [fill-simulator.md](fill-simulator.md); it found no needed change to the record format. `book_at` and the simulator are built (`wicker_research.fillsim`).
+5. Fill simulator (component 16): design done in [fill-simulator.md](fill-simulator.md); it found no needed change to the record format. `book_at` and the simulator are built (`liqwatch_research.fillsim`).

@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wicker/wicker/internal/rawlog"
+	"github.com/ronigooja/liqwatch/internal/rawlog"
 )
 
 const (

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run liqwatch archiver hourly
+
+[Timer]
+OnCalendar=*-*-* *:05:00
+Persistent=true
+Unit=liqwatch-archiver.service
+
+[Install]
+WantedBy=timers.target

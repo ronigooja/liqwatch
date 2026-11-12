@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wicker/wicker/internal/config"
-	"github.com/wicker/wicker/internal/manifest"
+	"github.com/ronigooja/liqwatch/internal/config"
+	"github.com/ronigooja/liqwatch/internal/manifest"
 )
 
 func TestUnverifiedHonorsAge(t *testing.T) {
@@ -80,11 +80,11 @@ func TestAlertStateTransitionsOnce(t *testing.T) {
 
 func TestEvaluateUsesAnyReachableMetricsEndpoint(t *testing.T) {
 	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte("wicker_queue_depth_ratio 0.1\nwicker_dropped_total{channel=\"aggTrade\"} 0\n"))
+		w.Write([]byte("liqwatch_queue_depth_ratio 0.1\nliqwatch_dropped_total{channel=\"aggTrade\"} 0\n"))
 	}))
 	defer good.Close()
 	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte("wicker_queue_depth_ratio 0.9\nwicker_dropped_total{channel=\"aggTrade\"} 5\n"))
+		w.Write([]byte("liqwatch_queue_depth_ratio 0.9\nliqwatch_dropped_total{channel=\"aggTrade\"} 5\n"))
 	}))
 	defer bad.Close()
 	addr := func(s *httptest.Server) string { return strings.TrimPrefix(s.URL, "http://") }

@@ -6,7 +6,7 @@ import pyarrow.parquet as pq
 import pytest
 import zstandard
 
-from wicker_research.convert import PARSER_VERSION, convert
+from liqwatch_research.convert import PARSER_VERSION, convert
 
 DAY = 1_793_923_200_000_000_000  # 2026-11-06 00:00:00 UTC in ns
 
@@ -36,7 +36,7 @@ def test_layout_columns_dedup_and_parser_version(tmp_path):
     assert set(t.column_names) >= {'rw', 'T', 'a', 'price', 'qty', 'buyer_is_maker', 'backfilled', 'date', 'sym'}
     assert (tmp_path / 'out' / 'trades' / 'date=20261106' / 'sym=BTCUSDT').is_dir()
     f = next((tmp_path / 'out' / 'trades').rglob('*.parquet'))
-    assert pq.read_schema(f).metadata[b'wicker_parser'].decode() == PARSER_VERSION
+    assert pq.read_schema(f).metadata[b'liqwatch_parser'].decode() == PARSER_VERSION
     assert pq.read_table(f)['price'].type == 'double'
 
 
@@ -80,7 +80,7 @@ def test_output_is_deterministic(tmp_path):
 
 @pytest.mark.real
 def test_real_liq_and_depth(tmp_path):
-    base = '/tmp/wicker-sample/'
+    base = '/tmp/liqwatch-sample/'
     if not os.path.exists(base + 'liq-2026110617.b.jsonl.zst'):
         pytest.skip('sample absent')
     written, stats, _ = convert([base + 'liq-2026110617.b.jsonl.zst', base + 'depth-2026110617.b.jsonl.zst'], tmp_path)

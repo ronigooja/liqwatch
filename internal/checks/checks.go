@@ -19,7 +19,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/wicker/wicker/internal/config"
+	"github.com/ronigooja/liqwatch/internal/config"
 )
 
 type Event struct {
@@ -73,7 +73,7 @@ func (s *AlertState) Set(dedup string, firing bool, severity, typ, summary strin
 	if err := os.MkdirAll(filepath.Dir(s.Path), 0750); err != nil {
 		return err
 	}
-	e := Event{Schema: 1, ID: newULID(s.Now()), TS: s.Now().UTC().Format(time.RFC3339), Severity: severity, State: map[bool]string{true: "firing", false: "resolved"}[firing], Type: typ, Source: "wicker-checks", Subject: map[string]string{}, DedupKey: dedup, Summary: summary, Details: details}
+	e := Event{Schema: 1, ID: newULID(s.Now()), TS: s.Now().UTC().Format(time.RFC3339), Severity: severity, State: map[bool]string{true: "firing", false: "resolved"}[firing], Type: typ, Source: "liqwatch-checks", Subject: map[string]string{}, DedupKey: dedup, Summary: summary, Details: details}
 	b, err := json.Marshal(e)
 	if err != nil {
 		return err
@@ -151,11 +151,11 @@ func evaluate(c *config.Config) ([]finding, error) {
 			continue
 		}
 		reachable++
-		if v, ok := metrics["wicker_queue_depth_ratio"]; ok && v > .5 {
+		if v, ok := metrics["liqwatch_queue_depth_ratio"]; ok && v > .5 {
 			out = append(out, finding{"collector.queue:" + addr, "warning", "data.queue", "collector queue is above 50%", map[string]any{"ratio": v, "addr": addr}})
 		}
 		for k, v := range metrics {
-			if strings.HasPrefix(k, "wicker_dropped_total{") && v > 0 {
+			if strings.HasPrefix(k, "liqwatch_dropped_total{") && v > 0 {
 				out = append(out, finding{"collector.drops:" + addr + ":" + k, "critical", "data.drop", "collector dropped messages", map[string]any{"metric": k, "count": v, "addr": addr}})
 			}
 		}

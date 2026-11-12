@@ -26,7 +26,7 @@ import json
 import numpy as np
 import polars as pl
 
-from wicker_research.liqcal import NS, load_day
+from liqwatch_research.liqcal import NS, load_day
 
 if __package__:
     from .liq_fit_weights import json_ready

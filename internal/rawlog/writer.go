@@ -36,7 +36,7 @@ type Closed struct {
 }
 
 type Options struct {
-	Dir        string // raw root, e.g. /var/lib/wicker/raw
+	Dir        string // raw root, e.g. /var/lib/liqwatch/raw
 	QueueSize  int
 	FlushEvery time.Duration // zstd frame close + fsync interval
 	MaxDiskPct float64       // stop writing above this; 0 disables

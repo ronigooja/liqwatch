@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wicker/wicker/internal/config"
+	"github.com/ronigooja/liqwatch/internal/config"
 )
 
 type fakeDoer struct {

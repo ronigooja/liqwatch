@@ -70,7 +70,7 @@ func TestMkdirAllFailsWhenParentMissing(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	defer srv.Close()
-	c := New(srv.URL+"/gone/wicker", "u", "p")
+	c := New(srv.URL+"/gone/liqwatch", "u", "p")
 	c.Retries = 1
 	if err := c.MkdirAll(context.Background(), "raw/20261103"); err == nil {
 		t.Fatal("MkdirAll must fail when the directory cannot be created")

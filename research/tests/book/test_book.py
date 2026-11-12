@@ -4,7 +4,7 @@ import os
 import pytest
 import zstandard
 
-from wicker_research.book import OrderBook, Validator
+from liqwatch_research.book import OrderBook, Validator
 
 
 def diff(U, u, pu, bids=None, rw=None):
@@ -78,7 +78,7 @@ def test_snapshot_inside_a_diff_is_checked_between_before_and_after():
 
 @pytest.mark.real
 def test_real_sample():
-    path = '/tmp/wicker-sample/depth-2026110617.b.jsonl.zst'
+    path = '/tmp/liqwatch-sample/depth-2026110617.b.jsonl.zst'
     if not os.path.exists(path):
         pytest.skip('sample absent')
     v = Validator()

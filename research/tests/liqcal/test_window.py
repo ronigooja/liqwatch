@@ -3,7 +3,7 @@ import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
 
-from wicker_research import liqcal, liqcausal
+from liqwatch_research import liqcal, liqcausal
 
 NS = liqcal.NS
 HOUR = 3600 * NS

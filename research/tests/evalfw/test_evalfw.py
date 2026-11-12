@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import pytest
 
-from wicker_research.evalfw import (
+from liqwatch_research.evalfw import (
     BaselineL, BaselineS, SealedTest, bootstrap_expectancy, brier, coverage,
     ece, extreme_profit_share, group_report, lead_time, log_loss, mean_width,
     multiclass_brier, multiclass_log_loss, non_crossing, pinball_loss, pr_auc,

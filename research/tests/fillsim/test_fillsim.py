@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from wicker_research.bookat import BookView
-from wicker_research.fillsim import SECOND, Simulator, run_grid
+from liqwatch_research.bookat import BookView
+from liqwatch_research.fillsim import SECOND, Simulator, run_grid
 
 MS = 1_000_000
 

@@ -1,14 +1,14 @@
-# Separate REST poller (`wickerpoll`)
+# Separate REST poller (`liqwatchpoll`)
 
-Applies to `research/wicker_research/poll/`; collector behavior is unchanged.
+Applies to `research/liqwatch_research/poll/`; collector behavior is unchanged.
 The repository has no deployment assets; the service was removed ([infrastructure](infrastructure.md#hosts)).
 Purpose and minimum input frequencies: [liquidation model](liquidation-model.md#separate-poller).
 Endpoint shapes, source caveats and verified exchange facts: [open questions](open-questions.md#verified).
 
 ## Run and scheduling
 
-Run `python -m wicker_research.poll --raw <collector-raw-root>` from `research/`.
-The CLI identifies itself as `wickerpoll`; no installed console script is required.
+Run `python -m liqwatch_research.poll --raw <collector-raw-root>` from `research/`.
+The CLI identifies itself as `liqwatchpoll`; no installed console script is required.
 One process holds `poll.lock`; do not use collector handoff slots for it
 ([handoff scope](decisions/0009-zero-gap-handoff.md)). HTTP session and clock are injectable.
 The default checkpoint is `<raw>/poll-state.json`; `--state` overrides it.

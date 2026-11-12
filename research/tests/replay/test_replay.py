@@ -4,7 +4,7 @@ import json
 import pytest
 import zstandard
 
-from wicker_research.replay import Replay, Stats, _IdSet, read_records
+from liqwatch_research.replay import Replay, Stats, _IdSet, read_records
 
 
 def record(rw, ch='aggTrade', sym='BTCUSDT', conn='a', p=None):
@@ -96,7 +96,7 @@ def test_torn_tail(tmp_path):
 
 @pytest.mark.real
 def test_real():
-    paths = glob.glob('/tmp/wicker-sample/trade-*.zst') + glob.glob('/tmp/wicker-sample/liq-*.zst')
+    paths = glob.glob('/tmp/liqwatch-sample/trade-*.zst') + glob.glob('/tmp/liqwatch-sample/liq-*.zst')
     if len(paths) < 2:
         pytest.skip('real sample unavailable')
     replay = Replay(paths)

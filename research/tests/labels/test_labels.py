@@ -2,7 +2,7 @@ import numpy as np
 import polars as pl
 import pyarrow.parquet as pq
 
-from wicker_research.labels import NS, labels, write_parquet
+from liqwatch_research.labels import NS, labels, write_parquet
 
 
 def trades(prices):

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run liqwatch health checks every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+Persistent=true
+Unit=liqwatch-checks.service
+
+[Install]
+WantedBy=timers.target

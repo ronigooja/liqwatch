@@ -56,7 +56,7 @@ Historical book and quote guidance below is conditional on future data availabil
 
 ## Status
 
-Built in `research/wicker_research/fillsim`: market-order walk, limit orders with both queue bounds, stops on mark price, funding, round trips with exit retries (a failed exit is reported as `exit_failed`, never given a price), and the grid runner. Tests use hand-computed examples, including that nothing reads the book before `t_s + L`.
+Built in `research/liqwatch_research/fillsim`: market-order walk, limit orders with both queue bounds, stops on mark price, funding, round trips with exit retries (a failed exit is reported as `exit_failed`, never given a price), and the grid runner. Tests use hand-computed examples, including that nothing reads the book before `t_s + L`.
 
 Sanity check on the 1 h sample, random entry times (no edge), 5 bp taker fee each way, 0.2 s latency, 10 s hold: BTCUSDT net about -9.9 bp at every size up to 20 k USD (fees only); FLOCKUSDT -15.5 bp at 100 USD, -23.5 bp at 1 k, -35 bp at 5 k, -72 bp at 20 k; XANUSDT -22 bp at 100 USD, -31 bp at 1 k, -65 bp at 20 k. Latency 0.2 s versus 1 s changes little at random times; it matters when the signal is a fast move. The cost of simply trading a small coin is therefore 15 to 70 bp per round trip before any edge.
 

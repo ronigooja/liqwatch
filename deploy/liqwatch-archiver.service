@@ -1,0 +1,10 @@
+[Unit]
+Description=Liqwatch archiver
+
+[Service]
+Type=oneshot
+User=liqwatch
+EnvironmentFile=/etc/liqwatch/secrets.env
+ExecStart=/opt/liqwatch/current/liqwatch-archiver -config /etc/liqwatch/config.toml
+Nice=15
+IOSchedulingClass=idle

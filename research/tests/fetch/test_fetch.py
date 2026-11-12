@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from wicker_research.fetch import Client
+from liqwatch_research.fetch import Client
 
 
 @pytest.fixture

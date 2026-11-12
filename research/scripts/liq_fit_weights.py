@@ -23,7 +23,7 @@ import json
 import numpy as np
 import polars as pl
 
-from wicker_research.liqcal import _spearman
+from liqwatch_research.liqcal import _spearman
 
 if __package__:
     from .liq_decompose import LEVERAGES

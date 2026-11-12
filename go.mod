@@ -1,4 +1,4 @@
-module github.com/wicker/wicker
+module github.com/ronigooja/liqwatch
 
 go 1.26.0
 

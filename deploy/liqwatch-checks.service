@@ -1,0 +1,7 @@
+[Unit]
+Description=Run liqwatch health checks
+
+[Service]
+Type=oneshot
+User=liqwatch
+ExecStart=/opt/liqwatch/current/liqwatch-checks -config /etc/liqwatch/config.toml

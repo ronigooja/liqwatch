@@ -4,7 +4,7 @@ Date: 2026-11-11. Supersedes items 2 (first use) and 6 (retention) of [0010](001
 
 ## Decision
 
-1. The liquidation model does not produce an alert (owner, 2026-11-11). Its output is the estimate itself: liquidation map, push cost, break-even `N*`, shown on the static page. `wicker-alertd` is not built for the model. No order placement (unchanged).
+1. The liquidation model does not produce an alert (owner, 2026-11-11). Its output is the estimate itself: liquidation map, push cost, break-even `N*`, shown on the static page. `liqwatch-alertd` is not built for the model. No order placement (unchanged).
 2. Push cost is computed from the live in-memory order book at the moment of use. Saved order books are not required for that, and are not recorded until a use needs them (for example checking the push-cost arithmetic against recorded books, or a study that needs book history). Recorded 15-symbol books from 2026-11-04 to 2026-11-10 exist for such checks.
 3. Quote (`bookTicker`, top 50) is no longer recorded: the full book contains the touch, and nothing reads the quote data (about 12 GB of 18 GB per day compressed, measured 2026-11-05).
 4. Record what cannot be fetched from public sources ([open-questions.md](../open-questions.md), 2026-11-11): liquidation orders (no public history) and the 1-second mark price (public history is 1-minute). Trades, open interest, funding and 1-minute mark, index and premium candles can be fetched; recording trades remains optional until the fetch is built and checked for gaps.

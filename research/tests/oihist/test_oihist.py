@@ -5,7 +5,7 @@ import polars as pl
 import pytest
 import requests
 
-from wicker_research import oihist
+from liqwatch_research import oihist
 
 STEP = 300_000
 

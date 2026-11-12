@@ -5,13 +5,13 @@ import pyarrow.parquet as pq
 import pytest
 from polars.testing import assert_frame_equal
 
-from wicker_research.liqcal import INPUT_SCHEMA
-from wicker_research.liqcausal import (
+from liqwatch_research.liqcal import INPUT_SCHEMA
+from liqwatch_research.liqcausal import (
     DAY, NS, average_precision, bootstrap_differences, evaluate, gbm_predict, load_day, main,
     map_features, metrics, moments, ridge_predict, roc_auc, rolling_pairs,
     split_moments,
 )
-from wicker_research.liqmap import LiqMap
+from liqwatch_research.liqmap import LiqMap
 
 
 def data():
@@ -108,7 +108,7 @@ def test_optional_past_funding_oi_and_bucket_causality():
 
 
 def test_bucket_oi_and_brackets_forwarded():
-    from wicker_research.liqmap import Brackets
+    from liqwatch_research.liqmap import Brackets
 
     tr, _, liq = data()
     tr = tr.head(1).with_columns(pl.lit(NS).alias('rw'))
@@ -267,7 +267,7 @@ def test_rolling_pairs_and_cli(tmp_path, monkeypatch, capsys):
         i = int(roots[0].split('/')[-1])
         return tuple(df.with_columns(pl.col('rw') + i * DAY) for df in (tr, mark, liq))
 
-    monkeypatch.setattr('wicker_research.liqcausal.load_day', fake_load)
+    monkeypatch.setattr('liqwatch_research.liqcausal.load_day', fake_load)
     out = tmp_path / 'scores'
     main([*roots, '--rolling', '--syms', 'A', '--out', str(out), '--step', '60',
           '--horizon', '60', '--embargo-minutes', '0', '--bootstrap', '2'])
@@ -403,7 +403,7 @@ def test_gbm_nonlinear_baselines_beat_ridge():
 
 def test_gbm_transforms_preserve_missing_and_train_only_fit(monkeypatch):
     from sklearn.ensemble import HistGradientBoostingRegressor
-    from wicker_research.liqcausal import GBM_PARAMS, gbm_predict
+    from liqwatch_research.liqcausal import GBM_PARAMS, gbm_predict
 
     train, test = world()
     train = train.with_columns(pl.when(pl.int_range(pl.len()) % 7 == 0).then(None)
@@ -435,7 +435,7 @@ def test_ridge_does_not_import_sklearn():
 import sys
 import numpy as np
 import polars as pl
-from wicker_research.liqcausal import DAY, NS, evaluate
+from liqwatch_research.liqcausal import DAY, NS, evaluate
 assert not any(k == 'sklearn' or k.startswith('sklearn.') for k in sys.modules)
 n = 120
 frame = pl.DataFrame({'t': np.arange(n, dtype=np.int64) * 60 * NS,
@@ -452,8 +452,8 @@ assert not any(k == 'sklearn' or k.startswith('sklearn.') for k in sys.modules)
 def test_gbm_cli_suffix_preserves_ridge(tmp_path, monkeypatch):
     train, test = world(n=1200)
     frame = pl.concat([train, test])
-    monkeypatch.setattr('wicker_research.liqcausal.load_day', lambda roots, sym: data())
-    monkeypatch.setattr('wicker_research.liqcausal.moments', lambda *args, **kwargs: frame)
+    monkeypatch.setattr('liqwatch_research.liqcausal.load_day', lambda roots, sym: data())
+    monkeypatch.setattr('liqwatch_research.liqcausal.moments', lambda *args, **kwargs: frame)
     args = ['--root=1970-01-01=unused', '--root=1970-01-02=unused',
             '--train', '1970-01-01', '--test', '1970-01-02', '--syms', 'A',
             '--out', str(tmp_path), '--bootstrap', '2']
@@ -482,8 +482,8 @@ def test_bucket_both_cli_accepted_and_forwarded(tmp_path, monkeypatch):
         captured.update(kwargs['params'])
         return pl.concat([train, test])
 
-    monkeypatch.setattr('wicker_research.liqcausal.load_day', lambda roots, sym: data())
-    monkeypatch.setattr('wicker_research.liqcausal.moments', fake_moments)
+    monkeypatch.setattr('liqwatch_research.liqcausal.load_day', lambda roots, sym: data())
+    monkeypatch.setattr('liqwatch_research.liqcausal.moments', fake_moments)
     main(['--root=1970-01-01=unused', '--root=1970-01-02=unused',
           '--train', '1970-01-01', '--test', '1970-01-02', '--syms', 'A',
           '--out', str(tmp_path), '--bootstrap', '2', '--embargo-minutes', '0',

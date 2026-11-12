@@ -30,8 +30,8 @@ import json
 import numpy as np
 import polars as pl
 
-from wicker_research.liqcal import NS
-from wicker_research.liqmap import DEFAULT_LEVERAGE_WEIGHTS
+from liqwatch_research.liqcal import NS
+from liqwatch_research.liqmap import DEFAULT_LEVERAGE_WEIGHTS
 
 if __package__:
     from .liq_decompose import LEVERAGES, add_data_arguments, crossed_levels, read_inputs

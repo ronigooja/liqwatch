@@ -60,7 +60,7 @@ An option that fails a row is rejected for the 2 vCPU host or its scope is reduc
 
 ## Safety
 
-- Trial data lives in `/var/lib/wicker/trial/`; it is not part of the production archive and is deleted after analysis, or uploaded to the storage account if the owner wants to keep it.
+- Trial data lives in `/var/lib/liqwatch/trial/`; it is not part of the production archive and is deleted after analysis, or uploaded to the storage account if the owner wants to keep it.
 - Disk: the tool stops writing at 80% disk use and logs it.
 - REST: one snapshot per depth symbol at start, then at most one per symbol per 10 minutes. Backs off on HTTP 429 and never retries in a tight loop.
 - WebSocket: connections opened gradually; at most 100 streams per connection; control messages well below 10 per second.

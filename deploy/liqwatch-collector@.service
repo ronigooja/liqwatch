@@ -1,0 +1,20 @@
+[Unit]
+Description=Liqwatch collector slot %i
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+User=liqwatch
+ExecStart=/opt/liqwatch/slots/%i/liqwatch-collector -config /etc/liqwatch/config.toml -instance %i -metrics-addr ${LIQWATCH_METRICS_ADDR}
+EnvironmentFile=/etc/liqwatch/slot-%i.env
+Restart=always
+RestartSec=1s
+TimeoutStopSec=60s
+LimitNOFILE=65536
+MemoryMax=2500M
+CPUQuota=150%
+
+[Install]
+WantedBy=multi-user.target

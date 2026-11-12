@@ -1,4 +1,4 @@
-data_dir = "/var/lib/wicker"
+data_dir = "/var/lib/liqwatch"
 
 [collect]
 metrics_addr = "127.0.0.1:9101"
@@ -17,7 +17,7 @@ verify_every_min = 5
 weight_fraction = 0.25
 
 [archive]
-remote_root = "https://example.invalid/dav/ronigooja_onedrive/wicker/"
+remote_root = "https://example.invalid/dav/ronigooja_onedrive/liqwatch/"
 chunk_mb = 128
 delete_after_h = 6
 full_verify_days = 7

@@ -6,10 +6,10 @@ import pyarrow.parquet as pq
 import pytest
 import requests
 
-from wicker_research.convert import convert
-from wicker_research.poll import (BracketsStructureError, Config, Poller, RawWriter,
+from liqwatch_research.convert import convert
+from liqwatch_research.poll import (BracketsStructureError, Config, Poller, RawWriter,
                                   RetryPoll, validate_brackets)
-from wicker_research.replay import Replay, read_records
+from liqwatch_research.replay import Replay, read_records
 
 
 class Clock:
@@ -209,10 +209,10 @@ def test_missing_symbols_warn_once_per_day_and_persist(tmp_path, caplog):
 @pytest.mark.parametrize('value', ['', ',', 'BTCUSDT,', ',BTCUSDT', 'BTCUSDT,,ETHUSDT',
                                   'btcusdt', 'BTCUSDT,ethusdt', 'BTC USDT', 'BTCUSDT;ETHUSDT'])
 def test_cli_invalid_symbols_rejected(tmp_path, monkeypatch, capsys, value):
-    from wicker_research.poll.__main__ import main
+    from liqwatch_research.poll.__main__ import main
 
     raw = tmp_path / 'raw'
-    monkeypatch.setattr('sys.argv', ['wickerpoll', '--raw', str(raw), '--syms', value])
+    monkeypatch.setattr('sys.argv', ['liqwatchpoll', '--raw', str(raw), '--syms', value])
     with pytest.raises(SystemExit) as exc:
         main()
     assert exc.value.code == 2
@@ -221,7 +221,7 @@ def test_cli_invalid_symbols_rejected(tmp_path, monkeypatch, capsys, value):
 
 
 def test_cli_parses_symbols(tmp_path, monkeypatch):
-    from wicker_research.poll import __main__ as cli
+    from liqwatch_research.poll import __main__ as cli
 
     configs = []
 
@@ -233,7 +233,7 @@ def test_cli_parses_symbols(tmp_path, monkeypatch):
             raise KeyboardInterrupt
 
     monkeypatch.setattr(cli, 'Poller', StoppedPoller)
-    monkeypatch.setattr('sys.argv', ['wickerpoll', '--raw', str(tmp_path), '--syms',
+    monkeypatch.setattr('sys.argv', ['liqwatchpoll', '--raw', str(tmp_path), '--syms',
                                     'BTCUSDT,ETHUSDT', '--weight-cap', '120'])
     assert cli.main() == 0
     assert configs[0].symbols == ('BTCUSDT', 'ETHUSDT')
