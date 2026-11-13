@@ -603,8 +603,8 @@ binance = 'BEAMXUSDT'
 venue = 'bitget'
 symbol = 'BEAMUSDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.9999335212'
+status = "reviewed"
+note = "ratio=0.9999335212 | Merit Circle rebranded to Beam | https://www.binance.com/en/support/announcement/detail/c8705b752c7c47fc814a373a0f1856ee"
 
 [[pair]]
 binance = 'BEATUSDT'
@@ -723,7 +723,7 @@ binance = 'BROCCOLI714USDT'
 venue = 'bitget'
 symbol = 'BROCCOLIUSDT'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=1.001234568'
 
 [[pair]]
@@ -1059,8 +1059,8 @@ binance = 'DATAIPUSDT'
 venue = 'bitget'
 symbol = 'DATAUSDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.999471738'
+status = "reviewed"
+note = "ratio=0.999471738 | Story IP rebranded to DATA, 1:1 swap | https://announcements.bybit.com/en/article/story-ip-rebranding-to-data-data-and-token-swap-blt2eb534d1e37d3aad"
 
 [[pair]]
 binance = 'DEEPUSDT'
@@ -1971,7 +1971,7 @@ binance = 'LUNA2USDT'
 venue = 'bitget'
 symbol = 'LUNAUSDT'
 exp10 = 0
-status = 'review'
+status = "review"
 note = 'ratio=0.9999257811'
 
 [[pair]]
@@ -2235,8 +2235,8 @@ binance = 'NEIROUSDT'
 venue = 'bitget'
 symbol = 'NEIROCTOUSDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=1.000362253'
+status = "reviewed"
+note = "ratio=1.000362253 | same Ethereum contract 0x812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee | https://www.bitget.com/support/articles/12560603815693"
 
 [[pair]]
 binance = 'NEOUSDT'
@@ -2635,7 +2635,7 @@ binance = 'RAYSOLUSDT'
 venue = 'bitget'
 symbol = 'RAYUSDT'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=0.9998112843'
 
 [[pair]]
@@ -3451,8 +3451,8 @@ binance = 'XAUTUSDT'
 venue = 'bitget'
 symbol = 'XAUUSDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.004708719'
+status = "rejected"
+note = "ratio=1.004708719 | different gold index contract | https://www.okx.com/help/okx-will-rename-xautusdt-perpetual-to-xauusdt-perpetual"
 
 [[pair]]
 binance = 'XLMUSDT'
@@ -3643,24 +3643,24 @@ binance = '哈基米USDT'
 venue = 'bitget'
 symbol = '哈基米USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9965541815'
+status = "reviewed"
+note = "ratio=0.9965541815 | BNB contract 0x82ec31d69b3c289e541b50e30681fd1acad24444 | https://www.coingecko.com/en/coins/hajimi"
 
 [[pair]]
 binance = '牛来USDT'
 venue = 'bitget'
 symbol = '牛来USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.00033795'
+status = "reviewed"
+note = "ratio=1.00033795 | BNB contract 0xbeea1d618e533a387d941f58a7d4c9b7bd377777; distinct token 0x4b75dc7fedcb6f881dba0398dc68f7b36054ffff | https://www.coingecko.com/en/coins/niu-lai"
 
 [[pair]]
 binance = '龙虾USDT'
 venue = 'bitget'
 symbol = '龙虾USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9975144517'
+status = "reviewed"
+note = "ratio=0.9975144517 | BNB contract 0xeccbb861c0dda7efd964010085488b69317e4444 | https://www.coingecko.com/en/coins/lobster-2"
 
 [[pair]]
 binance = '0GUSDT'
@@ -3739,8 +3739,8 @@ binance = '1000SHIBUSDT'
 venue = 'bybit'
 symbol = 'SHIB1000USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.999630985'
+status = "reviewed"
+note = "ratio=0.999630985 | scaled SHIB | https://www.bybit.com/en/learn/daily-bits/shiba-inu-secures-investment-for-new-blockchain"
 
 [[pair]]
 binance = '1000XECUSDT'
@@ -4283,8 +4283,8 @@ binance = 'BEAMXUSDT'
 venue = 'bybit'
 symbol = 'BEAMUSDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=1.000437843'
+status = "reviewed"
+note = "ratio=1.000437843 | Merit Circle rebranded to Beam | https://www.binance.com/en/support/announcement/detail/c8705b752c7c47fc814a373a0f1856ee"
 
 [[pair]]
 binance = 'BEATUSDT'
@@ -4427,7 +4427,7 @@ binance = 'BROCCOLI714USDT'
 venue = 'bybit'
 symbol = 'BROCCOLIUSDT'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=1.00154321'
 
 [[pair]]
@@ -4755,8 +4755,8 @@ binance = 'DATAIPUSDT'
 venue = 'bybit'
 symbol = 'DATAUSDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.000211305'
+status = "reviewed"
+note = "ratio=1.000211305 | Story IP rebranded to DATA, 1:1 swap | https://announcements.bybit.com/en/article/story-ip-rebranding-to-data-data-and-token-swap-blt2eb534d1e37d3aad"
 
 [[pair]]
 binance = 'DEEPUSDT'
@@ -5611,8 +5611,8 @@ binance = 'LAYERUSDT'
 venue = 'bybit'
 symbol = 'SOLAYERUSDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=1.002196688'
+status = "reviewed"
+note = "ratio=1.002196688 | Solayer LAYER | https://www.bybit.com/en/learn/daily-bits/boson-protocol-expands-to-base"
 
 [[pair]]
 binance = 'LDOUSDT'
@@ -6219,8 +6219,8 @@ binance = 'PLAYUSDT'
 venue = 'bybit'
 symbol = 'PLAYSOUTUSDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=1.001360544'
+status = "reviewed"
+note = "ratio=1.001360544 | PlaysOut | https://coinalyze.net/playsout/usdt/bybit/open-interest-chart/playsoutusdt_oi/"
 
 [[pair]]
 binance = 'PLUMEUSDT'
@@ -6315,8 +6315,8 @@ binance = 'PUMPUSDT'
 venue = 'bybit'
 symbol = 'PUMPFUNUSDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=1'
+status = "reviewed"
+note = "ratio=1 | Pump.fun | https://www.mexc.com/futures/PUMPFUN_USDT"
 
 [[pair]]
 binance = 'PUNDIXUSDT'
@@ -6595,7 +6595,7 @@ binance = 'SKYAIUSDT'
 venue = 'bybit'
 symbol = 'SKYAI1USDT'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=0.9980102331'
 
 [[pair]]
@@ -7219,7 +7219,7 @@ binance = 'XAUTUSDT'
 venue = 'bybit'
 symbol = 'XAUUSDT'
 exp10 = 0
-status = 'review'
+status = "review"
 note = 'ratio=1.004997218'
 
 [[pair]]
@@ -7435,24 +7435,24 @@ binance = '哈基米USDT'
 venue = 'bybit'
 symbol = 'HAJIMIUSDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.014650657'
+status = "reviewed"
+note = "ratio=1.014650657 | Bybit HAJIMI listing | https://announcements.bybit.com/en/article/new-listing-hajimiusdt-perpetual-contract-in-innovation-zone-with-up-to-10x-leverage--arte7ee8f9bc7dc"
 
 [[pair]]
 binance = '牛来USDT'
 venue = 'bybit'
 symbol = 'NIULAIUSDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.001182402'
+status = "reviewed"
+note = "ratio=1.001182402 | BNB contract 0xbeea1d618e533a387d941f58a7d4c9b7bd377777; distinct token 0x4b75dc7fedcb6f881dba0398dc68f7b36054ffff | https://www.coingecko.com/en/coins/niu-lai"
 
 [[pair]]
 binance = '龙虾USDT'
 venue = 'bybit'
 symbol = 'LONGXIAUSDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9987643274'
+status = "reviewed"
+note = "ratio=0.9987643274 | BNB contract 0xeccbb861c0dda7efd964010085488b69317e4444 | https://www.coingecko.com/en/coins/lobster-2"
 
 [[pair]]
 binance = '0GUSDT'
@@ -7555,8 +7555,8 @@ binance = '1MBABYDOGEUSDT'
 venue = 'gate'
 symbol = 'MBABYDOGE_USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=1.001007484'
+status = "reviewed"
+note = "ratio=1.001007484 | one million BABYDOGE | https://www.gate.com/ar/article/23492"
 
 [[pair]]
 binance = '2ZUSDT'
@@ -8251,7 +8251,7 @@ binance = 'BROCCOLI714USDT'
 venue = 'gate'
 symbol = 'BROCCOLI_USDT'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=1.001851852'
 
 [[pair]]
@@ -8627,8 +8627,8 @@ binance = 'DATAIPUSDT'
 venue = 'gate'
 symbol = 'DATA_USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.000528262'
+status = "reviewed"
+note = "ratio=1.000528262 | Story IP rebranded to DATA, 1:1 swap | https://announcements.bybit.com/en/article/story-ip-rebranding-to-data-data-and-token-swap-blt2eb534d1e37d3aad"
 
 [[pair]]
 binance = 'DEEPUSDT'
@@ -8747,8 +8747,8 @@ binance = 'EDGEUSDT'
 venue = 'gate'
 symbol = 'EDGEX_USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9982075352'
+status = "reviewed"
+note = "ratio=0.9982075352 | edgeX | https://www.gate.com/futures/USDT/EDGEX_USDT"
 
 [[pair]]
 binance = 'EDGEUSDT'
@@ -9659,7 +9659,7 @@ binance = 'LUNA2USDT'
 venue = 'gate'
 symbol = 'LUNA_USDT'
 exp10 = 0
-status = 'review'
+status = "review"
 note = 'ratio=1.001085451'
 
 [[pair]]
@@ -10355,7 +10355,7 @@ binance = 'RAYSOLUSDT'
 venue = 'gate'
 symbol = 'RAY_USDT'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=0.9989734356'
 
 [[pair]]
@@ -10443,7 +10443,7 @@ binance = 'RONINUSDT'
 venue = 'gate'
 symbol = 'RON_USDT'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=0.9969966369'
 
 [[pair]]
@@ -11019,8 +11019,8 @@ binance = 'TSTUSDT'
 venue = 'gate'
 symbol = 'TSTBSC_USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=1.000109707'
+status = "reviewed"
+note = "ratio=1.000109707 | Test TST | https://www.coingecko.com/en/coins/test-2"
 
 [[pair]]
 binance = 'TURBOUSDT'
@@ -11283,8 +11283,8 @@ binance = 'XAUTUSDT'
 venue = 'gate'
 symbol = 'XAU_USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.005141468'
+status = "rejected"
+note = "ratio=1.005141468 | different gold index contract | https://www.okx.com/help/okx-will-rename-xautusdt-perpetual-to-xauusdt-perpetual"
 
 [[pair]]
 binance = 'XLMUSDT'
@@ -11483,32 +11483,32 @@ binance = '哈基米USDT'
 venue = 'gate'
 symbol = '哈基米_USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9996742634'
+status = "reviewed"
+note = "ratio=0.9996742634 | BNB contract 0x82ec31d69b3c289e541b50e30681fd1acad24444 | https://www.coingecko.com/en/coins/hajimi"
 
 [[pair]]
 binance = '币安人生USDT'
 venue = 'gate'
 symbol = '币安人生_USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9984502798'
+status = "reviewed"
+note = "ratio=0.9984502798 | BNB contract 0x924fa68a0fc644485b8df8abfa0a41c2e7744444 | https://www.coingecko.com/en/coins/bianrensheng"
 
 [[pair]]
 binance = '牛来USDT'
 venue = 'gate'
 symbol = '牛来_USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9989868264'
+status = "reviewed"
+note = "ratio=0.9989868264 | BNB contract 0xbeea1d618e533a387d941f58a7d4c9b7bd377777; distinct token 0x4b75dc7fedcb6f881dba0398dc68f7b36054ffff | https://www.coingecko.com/en/coins/niu-lai"
 
 [[pair]]
 binance = '龙虾USDT'
 venue = 'gate'
 symbol = '龙虾_USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9964350136'
+status = "reviewed"
+note = "ratio=0.9964350136 | BNB contract 0xeccbb861c0dda7efd964010085488b69317e4444 | https://www.coingecko.com/en/coins/lobster-2"
 
 [[pair]]
 binance = '0GUSDT'
@@ -12643,8 +12643,8 @@ binance = 'DATAIPUSDT'
 venue = 'kucoin'
 symbol = 'DATAUSDTM'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.999471738'
+status = "reviewed"
+note = "ratio=0.999471738 | Story IP rebranded to DATA, 1:1 swap | https://announcements.bybit.com/en/article/story-ip-rebranding-to-data-data-and-token-swap-blt2eb534d1e37d3aad"
 
 [[pair]]
 binance = 'DEEPUSDT'
@@ -12659,8 +12659,8 @@ binance = 'DODOXUSDT'
 venue = 'kucoin'
 symbol = 'DODOUSDTM'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.998257095'
+status = "reviewed"
+note = "ratio=0.998257095 | Binance DODOX identifies DODO | https://www.binance.com/en/futures/dodoxusdt"
 
 [[pair]]
 binance = 'DOGEUSDT'
@@ -13531,8 +13531,8 @@ binance = 'LAYERUSDT'
 venue = 'kucoin'
 symbol = 'SOLAYERUSDTM'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.998289088'
+status = "reviewed"
+note = "ratio=0.998289088 | Solayer LAYER | https://bitcoinwisdom.io/markets/kucoin-futures/solayerusdtm"
 
 [[pair]]
 binance = 'LDOUSDT'
@@ -13611,8 +13611,8 @@ binance = 'LUNA2USDT'
 venue = 'kucoin'
 symbol = 'LUNAUSDTM'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9990560283'
+status = "reviewed"
+note = "ratio=0.9990560283 | Terra 2.0 | https://www.kucoin.com/price/LUNA"
 
 [[pair]]
 binance = 'LYNUSDT'
@@ -13883,8 +13883,8 @@ binance = 'NEIROUSDT'
 venue = 'kucoin'
 symbol = 'NEIROCTOUSDTM'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.9994566202'
+status = "reviewed"
+note = "ratio=0.9994566202 | same Ethereum contract 0x812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee | https://www.bitget.com/support/articles/12560603815693"
 
 [[pair]]
 binance = 'NEOUSDT'
@@ -14299,7 +14299,7 @@ binance = 'RAYSOLUSDT'
 venue = 'kucoin'
 symbol = 'RAYUSDTM'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=0.9996179346'
 
 [[pair]]
@@ -14315,7 +14315,7 @@ binance = 'REDUSDT'
 venue = 'kucoin'
 symbol = 'REDSTONEUSDTM'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=0.9911261744'
 
 [[pair]]
@@ -14379,7 +14379,7 @@ binance = 'RONINUSDT'
 venue = 'kucoin'
 symbol = 'RONUSDTM'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=0.998424317'
 
 [[pair]]
@@ -14939,8 +14939,8 @@ binance = 'TSTUSDT'
 venue = 'kucoin'
 symbol = 'TSTBSCUSDTM'
 exp10 = 0
-status = 'auto'
-note = 'ratio=1.000025317'
+status = "reviewed"
+note = "ratio=1.000025317 | on-chain ticker TST | https://www.kucoin.com/announcement/en-test-tstbsc-gets-listed-on-kucoin"
 
 [[pair]]
 binance = 'TURBOUSDT'
@@ -15403,23 +15403,23 @@ binance = '哈基米USDT'
 venue = 'kucoin'
 symbol = 'HAJIMIUSDTM'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.002170329'
+status = "reviewed"
+note = "ratio=1.002170329 | BNB contract 0x82ec31d69b3c289e541b50e30681fd1acad24444 | https://www.coingecko.com/en/coins/hajimi"
 
 [[pair]]
 binance = '我踏马来了USDT'
 venue = 'kucoin'
 symbol = 'WOTAMALAILEUSDTM'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9874884762'
+status = "reviewed"
+note = "ratio=0.9874884762 | BNB contract 0xc51a9250795c0186a6fb4a7d20a90330651e4444 | https://www.coingecko.com/en/coins/wo-ta-ma-lai-le"
 
 [[pair]]
 binance = '牛来USDT'
 venue = 'kucoin'
 symbol = 'NIULAIUSDTM'
 exp10 = 0
-status = 'review'
+status = "review"
 note = 'ratio=1.000844621'
 
 [[pair]]
@@ -15427,8 +15427,8 @@ binance = '龙虾USDT'
 venue = 'kucoin'
 symbol = 'LONGXIAUSDTM'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9980257645'
+status = "reviewed"
+note = "ratio=0.9980257645 | BNB contract 0xeccbb861c0dda7efd964010085488b69317e4444 | https://www.coingecko.com/en/coins/lobster-2"
 
 [[pair]]
 binance = '0GUSDT'
@@ -15819,8 +15819,8 @@ binance = 'ARCUSDT'
 venue = 'mexc'
 symbol = 'ARCSOL_USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.9993378859'
+status = "reviewed"
+note = "ratio=0.9993378859 | AI Rig Complex | https://www.mexc.co/how-to-buy/ARCSOL"
 
 [[pair]]
 binance = 'ARIAUSDT'
@@ -16251,7 +16251,7 @@ binance = 'BROCCOLI714USDT'
 venue = 'mexc'
 symbol = 'BROCCOLI_USDT'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=1'
 
 [[pair]]
@@ -16627,7 +16627,7 @@ binance = 'DATAIPUSDT'
 venue = 'mexc'
 symbol = 'DATA_USDT'
 exp10 = 0
-status = 'review'
+status = "review"
 note = 'ratio=0.9984152139'
 
 [[pair]]
@@ -16659,8 +16659,8 @@ binance = 'DODOXUSDT'
 venue = 'mexc'
 symbol = 'DODO_USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.9990096447'
+status = "reviewed"
+note = "ratio=0.9990096447 | Binance DODOX identifies DODO | https://www.binance.com/en/futures/dodoxusdt"
 
 [[pair]]
 binance = 'DOGEUSDT'
@@ -16947,8 +16947,8 @@ binance = 'FILUSDT'
 venue = 'mexc'
 symbol = 'FILECOIN_USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.9998628634'
+status = "reviewed"
+note = "ratio=0.9998628634 | Filecoin | https://www.mexc.com/futures/FILECOIN_USDT"
 
 [[pair]]
 binance = 'FLOCKUSDT'
@@ -17851,8 +17851,8 @@ binance = 'MONUSDT'
 venue = 'mexc'
 symbol = 'MONAD_USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.9999897282'
+status = "reviewed"
+note = "ratio=0.9999897282 | Monad | https://www.mexc.com/futures/MONAD_USDT"
 
 [[pair]]
 binance = 'MOODENGUSDT'
@@ -17939,8 +17939,8 @@ binance = 'NEIROUSDT'
 venue = 'mexc'
 symbol = 'NEIROCTO_USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.9998188734'
+status = "reviewed"
+note = "ratio=0.9998188734 | same Ethereum contract 0x812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee | https://www.bitget.com/support/articles/12560603815693"
 
 [[pair]]
 binance = 'NEOUSDT'
@@ -18067,8 +18067,8 @@ binance = 'OPENUSDT'
 venue = 'mexc'
 symbol = 'OPENLEDGER_USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.9998349309'
+status = "reviewed"
+note = "ratio=0.9998349309 | OpenLedger | https://coinmarketcap.com/currencies/openledger/"
 
 [[pair]]
 binance = 'OPGUSDT'
@@ -18323,8 +18323,8 @@ binance = 'PUMPUSDT'
 venue = 'mexc'
 symbol = 'PUMPFUN_USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=1'
+status = "reviewed"
+note = "ratio=1 | Pump.fun | https://www.mexc.com/futures/PUMPFUN_USDT"
 
 [[pair]]
 binance = 'PUNDIXUSDT'
@@ -18387,7 +18387,7 @@ binance = 'RAYSOLUSDT'
 venue = 'mexc'
 symbol = 'RAY_USDT'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=1.000197984'
 
 [[pair]]
@@ -18707,8 +18707,8 @@ binance = 'SOONUSDT'
 venue = 'mexc'
 symbol = 'SOONNETWORK_USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.9995796553'
+status = "reviewed"
+note = "ratio=0.9995796553 | SOON Network | https://www.mexc.com/futures/SOONNETWORK_USDT"
 
 [[pair]]
 binance = 'SOPHUSDT'
@@ -19043,8 +19043,8 @@ binance = 'TRUMPUSDT'
 venue = 'mexc'
 symbol = 'TRUMPOFFICIAL_USDT'
 exp10 = 0
-status = 'auto'
-note = 'ratio=0.998986562'
+status = "reviewed"
+note = "ratio=0.998986562 | Official Trump | https://www.mexc.com/ja-JP/futures/TRUMPOFFICIAL_USDT"
 
 [[pair]]
 binance = 'TRUSTUSDT'
@@ -19339,8 +19339,8 @@ binance = 'XAUTUSDT'
 venue = 'mexc'
 symbol = 'XAU_USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.004773116'
+status = "rejected"
+note = "ratio=1.004773116 | different gold index contract | https://www.okx.com/help/okx-will-rename-xautusdt-perpetual-to-xauusdt-perpetual"
 
 [[pair]]
 binance = 'XLMUSDT'
@@ -19547,15 +19547,15 @@ binance = '哈基米USDT'
 venue = 'mexc'
 symbol = 'HAJIMI_USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.00029828'
+status = "reviewed"
+note = "ratio=1.00029828 | BNB contract 0x82ec31d69b3c289e541b50e30681fd1acad24444 | https://www.coingecko.com/en/coins/hajimi"
 
 [[pair]]
 binance = '币安人生USDT'
 venue = 'mexc'
 symbol = 'BIANRENSHENG_USDT'
 exp10 = 0
-status = 'review'
+status = "review"
 note = 'ratio=1.000215239'
 
 [[pair]]
@@ -19563,15 +19563,15 @@ binance = '我踏马来了USDT'
 venue = 'mexc'
 symbol = 'WOTAMALAILE_USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9996048992'
+status = "reviewed"
+note = "ratio=0.9996048992 | BNB contract 0xc51a9250795c0186a6fb4a7d20a90330651e4444 | https://www.coingecko.com/en/coins/wo-ta-ma-lai-le"
 
 [[pair]]
 binance = '牛来USDT'
 venue = 'mexc'
 symbol = 'NIULAI_USDT'
 exp10 = 0
-status = 'review'
+status = "review"
 note = 'ratio=0.9998312785'
 
 [[pair]]
@@ -19579,8 +19579,8 @@ binance = '龙虾USDT'
 venue = 'mexc'
 symbol = 'LONGXIA_USDT'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9993324527'
+status = "reviewed"
+note = "ratio=0.9993324527 | BNB contract 0xeccbb861c0dda7efd964010085488b69317e4444 | https://www.coingecko.com/en/coins/lobster-2"
 
 [[pair]]
 binance = '0GUSDT'
@@ -20163,8 +20163,8 @@ binance = 'DATAIPUSDT'
 venue = 'okx'
 symbol = 'DATA-USDT-SWAP'
 exp10 = 0
-status = 'review'
-note = 'ratio=0.9984152139'
+status = "reviewed"
+note = "ratio=0.9984152139 | Story IP rebranded to DATA, 1:1 swap | https://announcements.bybit.com/en/article/story-ip-rebranding-to-data-data-and-token-swap-blt2eb534d1e37d3aad"
 
 [[pair]]
 binance = 'DOGEUSDT'
@@ -20723,8 +20723,8 @@ binance = 'LUNA2USDT'
 venue = 'okx'
 symbol = 'LUNA-USDT-SWAP'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.000795534'
+status = "reviewed"
+note = "ratio=1.000795534 | Terra 2.0 | https://www.okx.com/price/terra-luna"
 
 [[pair]]
 binance = 'MAGICUSDT'
@@ -21131,7 +21131,7 @@ binance = 'RAYSOLUSDT'
 venue = 'okx'
 symbol = 'RAY-USDT-SWAP'
 exp10 = 0
-status = 'auto'
+status = "review"
 note = 'ratio=1.000133534'
 
 [[pair]]
@@ -21603,8 +21603,8 @@ binance = 'XAUTUSDT'
 venue = 'okx'
 symbol = 'XAU-USDT-SWAP'
 exp10 = 0
-status = 'review'
-note = 'ratio=1.00482721'
+status = "rejected"
+note = "ratio=1.00482721 | different gold index contract | https://www.okx.com/help/okx-will-rename-xautusdt-perpetual-to-xauusdt-perpetual"
 
 [[pair]]
 binance = 'XLMUSDT'
