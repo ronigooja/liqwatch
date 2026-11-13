@@ -20,6 +20,40 @@ type nopSink struct{}
 
 func (nopSink) Write(string, rawlog.Record) {}
 
+func TestDialHeadersOnReconnect(t *testing.T) {
+	headers := make(chan string, 2)
+	var conns atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headers <- r.Header.Get("X-Test-Header")
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.CloseNow()
+		if conns.Add(1) == 1 {
+			ws.Close(websocket.StatusGoingAway, "drop")
+			return
+		}
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	c := New(nopSink{}, fakeAdapter{}, []Shard{{Name: "headers", URL: srv.URL, Header: http.Header{"X-Test-Header": []string{"value"}}}})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { c.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	for i := 0; i < 2; i++ {
+		select {
+		case got := <-headers:
+			if got != "value" {
+				t.Fatalf("connection %d header = %q", i+1, got)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("connection %d missing", i+1)
+		}
+	}
+}
+
 func TestOnReconnectOnlyAfterUnplannedDrop(t *testing.T) {
 	var conns atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
