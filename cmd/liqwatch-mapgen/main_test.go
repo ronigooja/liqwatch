@@ -32,11 +32,36 @@ func TestDifferentAndChinese(t *testing.T) {
 	for _, p := range propose(bn, vs, "gate") {
 		got[p.Symbol] = p
 	}
-	if got["SHIB"].Status != "auto" || got["NEIRO"].Status != "auto" || got["LUNA"].Status != "review" || got["CN"].Status != "review" {
+	if got["SHIB"].Status != "review" || got["NEIRO"].Status != "review" || got["LUNA"].Status != "review" || got["CN"].Status != "review" {
 		t.Fatal(got)
 	}
 	if got["DATA"].Status == "auto" || got["XAU"].Status == "auto" {
 		t.Fatal(got)
+	}
+}
+
+func TestShortNameRule(t *testing.T) {
+	for _, tc := range []struct{ binance, venue, want string }{
+		{"DODOX", "DODO", "auto"}, {"LAYER", "SOLAYER", "auto"},
+		{"RAYSOL", "RAY", "auto"}, {"RONIN", "RON", "review"},
+		{"PLAY", "PLAYSOUT", "review"}, {"TOKEN", "TOKENCOIN", "auto"},
+		{"LONGNAME", "LONGNAMEOTHER", "auto"},
+	} {
+		t.Run(tc.binance+"/"+tc.venue, func(t *testing.T) {
+			got := propose([]instrument{{"B", tc.binance, 1}}, []instrument{{"V", tc.venue, 1}}, "gate")
+			if len(got) != 1 || got[0].Status != tc.want {
+				t.Fatalf("got %+v, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMergeKeepsAllReviewedFields(t *testing.T) {
+	old := []venuemap.Pair{{Binance: "LAYER", Venue: "bybit", Symbol: "SOLAYER", Exp10: 3, Status: "reviewed", Note: "human"}, {Binance: "X", Venue: "gate", Symbol: "XAU", Exp10: 4, Status: "rejected", Note: "human rejection"}}
+	fresh := []venuemap.Pair{{Binance: "OTHER", Venue: "bybit", Symbol: "SOLAYER", Status: "auto", Note: "new ratio"}, {Binance: "X", Venue: "gate", Symbol: "XAU", Status: "auto", Note: "new ratio"}}
+	got, diff := merge(old, fresh, map[string]bool{"bybit": true, "gate": true})
+	if len(got) != 2 || got[0] != old[0] || got[1] != old[1] || len(diff) != 0 {
+		t.Fatalf("got %+v diff %v", got, diff)
 	}
 }
 func TestMergePreservesDecisions(t *testing.T) {

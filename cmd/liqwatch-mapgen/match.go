@@ -35,6 +35,23 @@ func power(r float64) (int, bool) {
 	return int(n), math.Abs(x-n) < 0.06
 }
 
+// shortNameNeedsReview guards different names with a short shared ticker.
+// The allowed extra text can precede or follow the shared name (e.g. SOLAYER).
+func shortNameNeedsReview(a, b string) bool {
+	if len([]rune(a)) > len([]rune(b)) {
+		a, b = b, a
+	}
+	if len([]rune(a)) >= 6 {
+		return false
+	}
+	for _, extra := range []string{"SOL", "BSC", "ETH", "ERC20", "OFFICIAL", "COIN", "NETWORK", "LEDGER", "PROTOCOL", "FUN", "X"} {
+		if b == a+extra || b == extra+a || extra == "SOL" && a == "LAYER" && b == "SOLAYER" {
+			return false
+		}
+	}
+	return true
+}
+
 var pinyin = map[string][]string{
 	"币安人生": {"BIANRENSHENG"}, "我踏马来了": {"WOTAMALAILE"}, "龙虾": {"LONGXIA"}, "牛来": {"NIULAI"}, "哈基米": {"HAJIMI"},
 }
@@ -94,7 +111,7 @@ func propose(bn, vs []instrument, venue string) []venuemap.Pair {
 					continue
 				}
 				p.Status = "auto"
-				if bnNames[vn] || venueNames[vn] > 1 || venueNames[n] > 0 || strings.Contains(n, "LUNA2") && vn == "LUNA" || n == "XAUT" && vn == "XAU" || n == "DATAIP" && vn == "DATA" {
+				if shortNameNeedsReview(n, vn) || bnNames[vn] || venueNames[vn] > 1 || venueNames[n] > 0 || strings.Contains(n, "LUNA2") && vn == "LUNA" || n == "XAUT" && vn == "XAU" || n == "DATAIP" && vn == "DATA" {
 					p.Status = "review"
 				}
 			}
