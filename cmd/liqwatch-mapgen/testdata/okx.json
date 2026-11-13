@@ -1,0 +1,17 @@
+[
+  {
+    "symbol": "ANTHROPIC-USDT-SWAP",
+    "base": "ANTHROPIC",
+    "price": 104.28
+  },
+  {
+    "symbol": "BTC-USDT-SWAP",
+    "base": "BTC",
+    "price": 68549.0
+  },
+  {
+    "symbol": "ETH-USDT-SWAP",
+    "base": "ETH",
+    "price": 1927.25
+  }
+]

@@ -1,0 +1,17 @@
+[
+  {
+    "symbol": "XBTUSDTM",
+    "base": "XBT",
+    "price": 68549.18
+  },
+  {
+    "symbol": "ETHUSDTM",
+    "base": "ETH",
+    "price": 1927.34
+  },
+  {
+    "symbol": "SOLUSDTM",
+    "base": "SOL",
+    "price": 79.173
+  }
+]

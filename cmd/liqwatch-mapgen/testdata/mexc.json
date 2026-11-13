@@ -1,0 +1,17 @@
+[
+  {
+    "symbol": "BTC_USDT",
+    "base": "BTC",
+    "price": 68547.8
+  },
+  {
+    "symbol": "ETH_USDT",
+    "base": "ETH",
+    "price": 1927.6
+  },
+  {
+    "symbol": "XAU_USDT",
+    "base": "XAU",
+    "price": 3906.44
+  }
+]

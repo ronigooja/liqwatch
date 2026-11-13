@@ -1,0 +1,17 @@
+[
+  {
+    "symbol": "BTCUSDT",
+    "base": "BTC",
+    "price": 68551.0
+  },
+  {
+    "symbol": "ETHUSDT",
+    "base": "ETH",
+    "price": 1927.49
+  },
+  {
+    "symbol": "XRPUSDT",
+    "base": "XRP",
+    "price": 1.0195
+  }
+]

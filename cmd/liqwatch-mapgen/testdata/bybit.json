@@ -1,0 +1,17 @@
+[
+  {
+    "symbol": "0GUSDT",
+    "base": "0G",
+    "price": 0.1534
+  },
+  {
+    "symbol": "1000000BABYDOGEUSDT",
+    "base": "1000000BABYDOGE",
+    "price": 0.0002761
+  },
+  {
+    "symbol": "1000000MOGUSDT",
+    "base": "1000000MOG",
+    "price": 0.08458
+  }
+]

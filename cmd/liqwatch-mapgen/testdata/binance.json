@@ -1,0 +1,17 @@
+[
+  {
+    "symbol": "BTCUSDT",
+    "base": "BTC",
+    "price": 68527.6
+  },
+  {
+    "symbol": "ETHUSDT",
+    "base": "ETH",
+    "price": 1927.22
+  },
+  {
+    "symbol": "BCHUSDT",
+    "base": "BCH",
+    "price": 217.44985055
+  }
+]
