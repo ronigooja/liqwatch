@@ -54,6 +54,35 @@ Y = documented keyless public source; N = none found; ? = unverified. Live = Web
 
 No venue documents historical risk-tier snapshots, so tiers must be recorded as snapshots.
 
+## Recordable data per venue (liquidation model inputs)
+
+Scope: all seven centralized venues are recorded (owner, 2026-11-12); DEXes are not ([0013](decisions/0013-no-dex-recording.md)); order books are not in this list. Channels are from the surveys in this file; apart from MEXC `sub.deal` and KuCoin `execution` no WebSocket channel here was connected live, so confirm fields and cadence per channel before recording.
+
+| Data | Binance | Bybit | OKX | Bitget | Gate | MEXC | KuCoin |
+|---|---|---|---|---|---|---|---|
+| Trades | WS `aggTrade` | WS `publicTrade` | WS `trades-all` (business endpoint) | WS `publicTrade` (V3) | WS `futures.trades` | WS `sub.deal` | WS `execution` (public token) |
+| Open/close flag | none | not found | not found | not found | not found | `O` field (below) | not found |
+| Liquidations | `!forceOrder@arr`, one per symbol per second (lower bound) | `allLiquidation`, doc says all, 500 ms batches | `liquidation-orders`, OKX says not all | `liquidation`, sampled, two per pair per second | `public_liquidates` (`!all`), doc says batched not sampled | none | none |
+| Mark price | `markPrice@1s` | `tickers`, 100 ms | `mark-price`, 200 ms | `ticker`, 200 ms on change | `tickers`, cadence unspecified | `sub.fair.price`, on change | `instrument`, 1 s |
+| Index price | same stream | `tickers` | `index-tickers`, 100 ms | `ticker` | `tickers` | `sub.index.price` | `instrument`, 1 s |
+| Funding rate | same stream | `tickers` | `funding-rate`, 30 to 90 s | `funding-rate` | `tickers` | `sub.funding.rate` | `instrument`, 1 min |
+| Open interest | REST poll, 5 min | `tickers`, 100 ms | `open-interest`, 3 s | `ticker` field | `contract_stats`, 1 min | `sub.ticker` `holdVol` | UTA `mark-price` `oi`, 1 s, or REST |
+| Leverage tiers | website internal endpoint (may change), daily | REST `risk-limit` | REST `position-tiers` | WS `position-tier` | REST `risk_limit_tiers` | REST `contract/detail` | REST `risk-limit` per symbol |
+| Long/short ratios | REST: top-trader position, top-trader account, global account, taker volume; 5 min | REST `account-ratio`, 5 min | REST contract and top-trader ratios, 5 min | REST, three endpoints, 5 min | `contract_stats`, 1 min | none | none |
+| Index constituents | `constituents`, daily | n/a | n/a | n/a | n/a | n/a | n/a |
+
+Constraints that shape recording:
+
+| Constraint | Detail |
+|---|---|
+| Trade history is short | Public trade history is the latest 1,000 (Bybit), 100 (MEXC), 100 (KuCoin); Bitget 90 days, OKX 3 months, Gate unknown. Record trades live on all venues except Binance, whose daily public files can fill gaps. |
+| Liquidation history | Only Gate has REST history (3,600 s per query, retention unknown). Others must be recorded live. |
+| MEXC `O` | Record the exchange timestamps `t` and `cts` with `T`, `O`, `M`; alignment by receipt time drops the check from correlation 0.9976 to 0.52. |
+| Open interest units | Bybit docs say both sides, Gate `total_size` is twice `position_size`, MEXC side undocumented, KuCoin unit (contracts or lots) confirmed only for XBT. Store raw fields and the unit metadata, convert later. |
+| Gate | Futures WS needs header `X-Gate-Size-Decimal: 1` or fractional sizes are truncated. `lsr_taker` and `lsr_account` labels differ between REST and WS docs; check live. |
+| Symbol mapping | Scale prefixes (`1000PEPE`, `10000CAT`, `1MBABYDOGE`) and aliases (`XBT` for `BTC`); build a reviewed mapping from each venue's instrument list and Binance `exchangeInfo`, store the raw symbol. |
+| Not obtainable anywhere | Trader leverage distribution, share of crossed positions that liquidate, account-level positions. |
+
 ## Per venue
 
 ### Bybit
