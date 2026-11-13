@@ -28,3 +28,4 @@
 {"time":1794554503,"time_ms":1794554503915,"conn_id":"11d7b1049b3aa369","trace_id":"668dc2af9fcaa4a4d0c988972d16196c","channel":"futures.contract_stats","event":"subscribe","payload":["BTC_USDT","1m"],"result":{"status":"success"}}
 {"time":1794554504,"time_ms":1794554504615,"conn_id":"11d7b1049b3aa369","trace_id":"668dc2af9fcaa4a4d0c988972d16196c","channel":"futures.contract_stats","event":"subscribe","payload":["ETH_USDT","1m"],"result":{"status":"success"}}
 {"time":1794554505,"time_ms":1794554505315,"conn_id":"11d7b1049b3aa369","trace_id":"668dc2af9fcaa4a4d0c988972d16196c","channel":"futures.contract_stats","event":"subscribe","payload":["龙虾_USDT","1m"],"result":{"status":"success"}}
+{"time":1794554971,"time_ms":1794554971370,"channel":"futures.public_liquidates","event":"update","result":[{"contract":"BTC_USDT","price":"68758.2","size":"-76","time":1794554970431},{"contract":"BTC_USDT","price":"68755.6","size":"-8","time":1794554971312}]}
