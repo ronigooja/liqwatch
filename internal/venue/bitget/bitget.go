@@ -223,27 +223,54 @@ func gap(msg []byte) []rawlog.Record {
 
 // filterObject preserves field order and raw value representations.
 func (a *Adapter) filterObject(channel string, data []byte, noTime bool) ([]byte, bool, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
+	data = bytes.TrimSpace(data)
+	if len(data) < 2 || data[0] != '{' || !json.Valid(data) {
 		return nil, false, fmt.Errorf("invalid object")
-	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	if _, err := dec.Token(); err != nil {
-		return nil, false, err
 	}
 	var out bytes.Buffer
 	out.WriteByte('{')
 	meaningful := false
-	for dec.More() {
-		token, err := dec.Token()
-		if err != nil {
-			return nil, false, err
+	for i := 1; ; {
+		for i < len(data) && (data[i] == ' ' || data[i] == '\n' || data[i] == '\r' || data[i] == '\t' || data[i] == ',') {
+			i++
 		}
-		key := token.(string)
-		var value json.RawMessage
-		if err := dec.Decode(&value); err != nil {
-			return nil, false, err
+		if data[i] == '}' {
+			break
 		}
+		start := i
+		i = jsonStringEnd(data, i)
+		var key string
+		_ = json.Unmarshal(data[start:i], &key)
+		for data[i] != ':' {
+			i++
+		}
+		i++
+		for data[i] == ' ' || data[i] == '\n' || data[i] == '\r' || data[i] == '\t' {
+			i++
+		}
+		start = i
+		depth := 0
+		for i < len(data) {
+			switch data[i] {
+			case '"':
+				i = jsonStringEnd(data, i)
+				continue
+			case '{', '[':
+				depth++
+			case '}', ']':
+				if depth == 0 {
+					goto valueDone
+				}
+				depth--
+			case ',':
+				if depth == 0 {
+					goto valueDone
+				}
+			}
+			i++
+		}
+	valueDone:
+		value := json.RawMessage(bytes.TrimSpace(data[start:i]))
 		if dropFields[channel][key] || (noTime && (key == "ts" || key == "T")) {
 			continue
 		}
@@ -274,6 +301,20 @@ func (a *Adapter) filterObject(channel string, data []byte, noTime bool) ([]byte
 	}
 	out.WriteByte('}')
 	return out.Bytes(), meaningful, nil
+}
+
+// jsonStringEnd skips a validated JSON string, including escaped quotes.
+func jsonStringEnd(data []byte, i int) int {
+	for i++; i < len(data); i++ {
+		if data[i] == '\\' {
+			i++
+			continue
+		}
+		if data[i] == '"' {
+			return i + 1
+		}
+	}
+	return i
 }
 
 func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
