@@ -4,6 +4,7 @@ package binance
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -66,9 +67,19 @@ func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 		return SplitAllMarket(msg, a.universe)
 	}
 	if ch == "unknown" || sym == "" {
-		return nil
+		return unrecognized(msg)
 	}
 	return []rawlog.Record{{Channel: ch, Symbol: sym, Payload: msg}}
+}
+
+// unrecognized keeps a trace of a data frame this adapter cannot classify, so a new stream type is
+// not lost silently. Control frames (subscribe acknowledgements, errors without data) return nil.
+func unrecognized(msg []byte) []rawlog.Record {
+	if !bytes.Contains(msg, []byte(`"data"`)) {
+		return nil
+	}
+	p, _ := json.Marshal(map[string]any{"event": "unrecognized_frame", "bytes": len(msg), "head": string(msg[:min(len(msg), 200)])})
+	return []rawlog.Record{{Channel: "gap", Payload: p}}
 }
 
 func (*Adapter) Classes() func(string) (string, bool) {

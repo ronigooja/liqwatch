@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -274,11 +273,8 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		c.Messages.Add(1)
 		for _, rec := range c.adapter.Split(sh, data) {
 			rec.Venue, rec.Conn, rec.CSeq, rec.RecvWal, rec.RecvMon = c.adapter.Name(), k.id, cseq, rw.UnixNano(), rawlog.Mono()
-			group := rawlog.GroupTrade
-			if strings.HasPrefix(rec.Channel, "forceOrder") || strings.Contains(strings.ToLower(rec.Channel), "liquidation") {
-				group = rawlog.GroupLiq
-			}
-			c.sink.Write(group, rec)
+			// The writer routes by venue, symbol and channel; only GroupGap changes its handling.
+			c.sink.Write(rawlog.GroupTrade, rec)
 		}
 	}
 }

@@ -24,6 +24,16 @@ type Shard struct {
 }
 
 // Adapter provides venue-specific discovery, connection setup, and decoding.
+//
+// Call order: Symbols, then Shards, then Split for every received frame. Split may depend on state
+// set by Shards (for example the symbol universe), so an adapter must not be used before Shards ran.
+// Split is called from one goroutine per connection and several connections run at once: an adapter
+// that keeps state must make it safe for concurrent reads and must not rewrite it while connections
+// are open (calling Shards again, for instance to refresh a token, needs its own locking).
+// A frame that proves the link is alive but carries no data (pong, subscribe acknowledgement) must
+// return nil; the collector counts every received frame as liveness for stall detection.
+// A data frame the adapter cannot classify should return a record on channel "gap" describing it
+// instead of nil, so an unknown message type is not lost silently.
 type Adapter interface {
 	Name() string
 	// Symbols returns in-scope trading USDT-margined perpetual symbols in venue form.

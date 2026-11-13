@@ -24,6 +24,8 @@ func TestAdapterSplit(t *testing.T) {
 		{`{"stream":"!forceOrder@arr","data":{"o":{"s":"BTCUSDT"}}}`, []rawlog.Record{{Channel: "forceOrder_all", Symbol: "BTCUSDT", Payload: []byte(`{"stream":"!forceOrder@arr","data":{"o":{"s":"BTCUSDT"}}}`)}}},
 		{`{"result":null,"id":1}`, nil},
 		{`{"hello":"world"}`, nil},
+		{`{"stream":"btcusdt@newThing","data":{"x":1}}`, []rawlog.Record{{Channel: "newThing", Symbol: "BTCUSDT", Payload: []byte(`{"stream":"btcusdt@newThing","data":{"x":1}}`)}}},
+		{`{"data":{"x":1}}`, []rawlog.Record{{Channel: "gap", Payload: []byte(`{"bytes":16,"event":"unrecognized_frame","head":"{\"data\":{\"x\":1}}"}`)}}},
 	} {
 		if got := a.Split(venue.Shard{}, []byte(tt.input)); !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("Split(%s)=%+v want %+v", tt.input, got, tt.want)
