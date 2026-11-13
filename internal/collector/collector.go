@@ -86,6 +86,9 @@ func (c *Collector) runShard(ctx context.Context, sh Shard) {
 	var token uint64
 	for ctx.Err() == nil {
 		gen++
+		if gen > 1 {
+			url = refreshURL(ctx, sh, url)
+		}
 		cur = c.start(ctx, sh, url, gen)
 		started := time.Now()
 		if reconnected && (c.OnReconnect != nil || c.OnReconnectToken != nil) {
@@ -116,6 +119,7 @@ func (c *Collector) runShard(ctx context.Context, sh Shard) {
 				goto retry
 			case <-time.After(time.Until(started.Add(maxAge))):
 				// planned replacement: new connection first, then retire the old one
+				url = refreshURL(ctx, sh, url)
 				next := c.start(ctx, sh, url, gen+1)
 				select {
 				case <-next.opened:
@@ -148,6 +152,20 @@ func (c *Collector) runShard(ctx context.Context, sh Shard) {
 			backoff *= 2
 		}
 	}
+}
+
+func refreshURL(ctx context.Context, sh Shard, oldURL string) string {
+	if sh.Refresh == nil {
+		return oldURL
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	url, err := sh.Refresh(ctx)
+	if err != nil || url == "" {
+		log.Printf("shard %s URL refresh failed: %v", sh.Name, err)
+		return oldURL
+	}
+	return url
 }
 
 type conn struct {

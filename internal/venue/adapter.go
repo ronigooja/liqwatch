@@ -17,8 +17,9 @@ type Symbol = string
 type Shard struct {
 	Name             string
 	URL              string
-	Header           http.Header // Optional WebSocket dial headers; nil sends none.
-	Streams          []string    // Informational; used in gap records and readiness.
+	Refresh          func(ctx context.Context) (url string, err error) // Optional URL renewal before subsequent connections.
+	Header           http.Header                                       // Optional WebSocket dial headers; nil sends none.
+	Streams          []string                                          // Informational; used in gap records and readiness.
 	Stall            time.Duration
 	MaxAge           time.Duration // Zero selects the collector default.
 	MaxSubsPerConn   int           // Informational.

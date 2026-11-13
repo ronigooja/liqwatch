@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,6 +20,69 @@ import (
 type nopSink struct{}
 
 func (nopSink) Write(string, rawlog.Record) {}
+
+func TestRefreshConnections(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		replacement, fail bool
+	}{{"reconnect", false, false}, {"replacement", true, false}, {"fallback", false, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			paths := make(chan string, 4)
+			var calls atomic.Int32
+			var connections atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				paths <- r.URL.Path
+				ws, err := websocket.Accept(w, r, nil)
+				if err != nil {
+					return
+				}
+				defer ws.CloseNow()
+				if connections.Add(1) == 1 && !tc.replacement {
+					ws.Close(websocket.StatusGoingAway, "drop")
+					return
+				}
+				_, _, _ = ws.Read(r.Context())
+			}))
+			defer srv.Close()
+			base := "ws" + strings.TrimPrefix(srv.URL, "http")
+			sh := Shard{Name: tc.name, URL: base + "/old", Refresh: func(context.Context) (string, error) {
+				calls.Add(1)
+				if tc.fail {
+					return "", errors.New("temporary")
+				}
+				return base + "/new", nil
+			}}
+			if tc.replacement {
+				sh.MaxAge = 200 * time.Millisecond
+			}
+			c := New(nopSink{}, fakeAdapter{}, []Shard{sh})
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan struct{})
+			go func() { c.Run(ctx); close(done) }()
+			defer func() { cancel(); <-done }()
+			for i := 0; i < 2; i++ {
+				select {
+				case path := <-paths:
+					want := "/old"
+					if i == 1 && !tc.fail {
+						want = "/new"
+					}
+					if path != want {
+						t.Fatalf("connection %d path = %s, want %s", i, path, want)
+					}
+					if i == 0 && calls.Load() != 0 {
+						t.Fatal("refreshed before first connect")
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("connection timed out")
+				}
+			}
+			if calls.Load() != 1 {
+				t.Fatalf("refresh calls = %d", calls.Load())
+			}
+		})
+	}
+}
 
 func TestDialHeadersOnReconnect(t *testing.T) {
 	headers := make(chan string, 2)
