@@ -119,6 +119,12 @@ func TestFixtureSplit(t *testing.T) {
 			}
 			continue
 		}
+		if v.Channel == "rs.error" {
+			if len(records) != 1 || records[0].Channel != "gap" || records[0].Symbol != "" {
+				t.Fatalf("error frame %s: %+v", frame, records)
+			}
+			continue
+		}
 		if strings.HasPrefix(v.Channel, "rs.") || v.Channel == "pong" {
 			if len(records) != 0 {
 				t.Fatal(v.Channel)
@@ -172,6 +178,39 @@ func TestFixtureSplit(t *testing.T) {
 	}
 }
 
+func TestMetadataUsesShardsSymbolsNotDiscoveredSymbols(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"success":true,"code":0,"data":[{"symbol":"BTC_USDT","state":0,"futureType":1,"quoteCoin":"USDT","settleCoin":"USDT"},{"symbol":"BLKSTOCK_USDT","state":0,"futureType":1,"quoteCoin":"USDT","settleCoin":"USDT"}]}`)
+	}))
+	defer server.Close()
+	a := &Adapter{DetailURL: server.URL}
+	syms, err := a.Symbols(context.Background())
+	if err != nil || len(syms) != 2 {
+		t.Fatalf("discovered %v: %v", syms, err)
+	}
+	if _, err := a.Shards(context.Background(), []string{"BTC_USDT"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, channel := range []string{"push.contract", "push.contract.extra.update", "push.contract.marketOrderSetting.update", "push.contract.future.update"} {
+		for _, tc := range []struct {
+			symbol string
+			want   bool
+		}{{"BTC_USDT", true}, {"BLKSTOCK_USDT", false}} {
+			frame := fmt.Sprintf(`{"channel":%q,"symbol":%q,"data":{}}`, channel, tc.symbol)
+			got := a.Split(venue.Shard{Name: "metadata-test"}, []byte(frame))
+			if (len(got) > 0) != tc.want {
+				t.Fatalf("%s %s: %+v", channel, tc.symbol, got)
+			}
+		}
+	}
+	if _, err := a.Shards(context.Background(), []string{"BLKSTOCK_USDT"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Split(venue.Shard{}, []byte(`{"channel":"push.contract","symbol":"BTC_USDT","data":{}}`)); len(got) != 0 {
+		t.Fatal(got)
+	}
+}
+
 func TestFilteringAndSamples(t *testing.T) {
 	now := time.Unix(10000, 0)
 	samples.Lock()
@@ -202,7 +241,7 @@ func TestFilteringAndSamples(t *testing.T) {
 
 func TestGapPayloadAndNotices(t *testing.T) {
 	a := &Adapter{}
-	for _, frame := range []string{`{"channel":"notice","data":null}`, `{"channel":"notice"}`, `{"channel":"rs.error","data":"error"}`} {
+	for _, frame := range []string{`{"channel":"notice","data":null}`, `{"channel":"notice"}`} {
 		if got := a.Split(venue.Shard{}, []byte(frame)); len(got) != 0 {
 			t.Fatalf("notice %s: %+v", frame, got)
 		}
@@ -217,6 +256,28 @@ func TestGapPayloadAndNotices(t *testing.T) {
 		if len(got) != 1 || got[0].Channel != "gap" || json.Unmarshal(got[0].Payload, &p) != nil || p.Bytes != len(frame) || p.Head != frame[:min(len(frame), 4096)] {
 			t.Fatalf("length %d: %+v", n, got)
 		}
+	}
+}
+
+func TestSubscribeResponses(t *testing.T) {
+	a := &Adapter{}
+	for _, frame := range []string{`{"channel":"rs.sub.deal","data":"success"}`, `{"channel":"rs.sub.contract","data":"success"}`} {
+		if got := a.Split(venue.Shard{}, []byte(frame)); len(got) != 0 {
+			t.Fatal(got)
+		}
+	}
+	for _, frame := range []string{`{"channel":"rs.error","data":"Contract [X_USDT] not exists"}`, `{"channel":"rs.sub.deal","data":"failed"}`, `{"channel":"rs.sub.deal","data":{"success":false}}`, `{"channel":"rs.sub.deal","data":{"code":1001}}`, `{"channel":"rs.error","data":"` + strings.Repeat("x", 5000) + `"}`} {
+		got := a.Split(venue.Shard{}, []byte(frame))
+		var p struct {
+			Event string `json:"event"`
+			Frame string `json:"frame"`
+		}
+		if len(got) != 1 || got[0].Channel != "gap" || got[0].Symbol != "" || json.Unmarshal(got[0].Payload, &p) != nil || p.Event != "subscribe_error" || p.Frame != frame[:min(len(frame), 4096)] {
+			t.Fatalf("response: %+v", got)
+		}
+	}
+	if a.SubscribeAcks() != 2 || a.SubscribeErrors() != 5 {
+		t.Fatalf("acks %d errors %d", a.SubscribeAcks(), a.SubscribeErrors())
 	}
 }
 

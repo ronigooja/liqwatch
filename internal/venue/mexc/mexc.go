@@ -50,10 +50,28 @@ type Adapter struct {
 	mu        sync.RWMutex
 	universe  map[string]struct{}
 	unknown   atomic.Uint64
+	acks      atomic.Uint64
+	errors    atomic.Uint64
 }
 
 // UnknownFields returns the number of unrecognized data fields retained.
 func (a *Adapter) UnknownFields() uint64 { return a.unknown.Load() }
+
+// SubscribeAcks and SubscribeErrors count subscription responses across shards.
+func (a *Adapter) SubscribeAcks() uint64   { return a.acks.Load() }
+func (a *Adapter) SubscribeErrors() uint64 { return a.errors.Load() }
+
+func responseFailed(data json.RawMessage) bool {
+	var text string
+	if json.Unmarshal(data, &text) == nil {
+		return !strings.EqualFold(text, "success")
+	}
+	var result struct {
+		Success *bool `json:"success"`
+		Code    *int  `json:"code"`
+	}
+	return json.Unmarshal(data, &result) == nil && ((result.Success != nil && !*result.Success) || (result.Code != nil && *result.Code != 0))
+}
 
 // filterObject preserves source order and raw JSON values while removing known drops.
 func (a *Adapter) filterObject(ch string, data []byte) ([]byte, error) {
@@ -219,7 +237,18 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 		Data    json.RawMessage `json:"data"`
 	}
 	err := json.Unmarshal(msg, &v)
-	if err == nil && (v.Channel == "pong" || strings.HasPrefix(v.Channel, "rs.")) {
+	if err == nil && v.Channel == "pong" {
+		return nil
+	}
+	if err == nil && strings.HasPrefix(v.Channel, "rs.") {
+		if v.Channel == "rs.error" || responseFailed(v.Data) {
+			a.errors.Add(1)
+			p, _ := json.Marshal(map[string]any{"event": "subscribe_error", "frame": string(msg[:min(len(msg), 4096)])})
+			return []rawlog.Record{{Channel: "gap", Payload: p}}
+		}
+		if strings.HasPrefix(v.Channel, "rs.sub.") {
+			a.acks.Add(1)
+		}
 		return nil
 	}
 	if err == nil && strings.HasPrefix(v.Channel, "push.contract") {
