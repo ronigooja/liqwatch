@@ -103,8 +103,8 @@ func filterItem(channel string, entry []byte) ([]byte, error) {
 }
 
 const (
-	PublicURL      = "wss://ws.okx.com:8443/ws/v5/public"
-	BusinessURL    = "wss://ws.okx.com:8443/ws/v5/business"
+	PublicURL      = "wss://ws.okx.com/ws/v5/public"
+	BusinessURL    = "wss://ws.okx.com/ws/v5/business"
 	instrumentsURL = "https://www.okx.com/api/v5/public/instruments?instType=SWAP"
 	// One request per connection, at most 100 args and far below 64 KB.
 	maxArgs = 100
