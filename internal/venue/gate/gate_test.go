@@ -255,3 +255,18 @@ func TestFilterAndHourlySample(t *testing.T) {
 		t.Fatal("sample missing after hour")
 	}
 }
+
+func TestContractStatsClassification(t *testing.T) {
+	a := &Adapter{}
+	sh, _ := a.Shards(context.Background(), []string{"BTC_USDT"})
+	msg := []byte(`{"channel":"futures.contract_stats","event":"update","result":[{"contract":"BTC_USDT","time":1,"open_interest":"1","open_interest_usd":"2","lsr_account":"3","lsr_taker":"4","top_lsr_account":"5","top_lsr_size":"6","mark_price":"7","long_liq_amount":"8","long_liq_size":"9","long_liq_usd":"10","short_liq_amount":"11","short_liq_size":"12","short_liq_usd":"13"}]}`)
+	r := a.Split(sh[0], msg)
+	if len(r) == 0 || string(r[0].Payload) != string(msg) || a.UnknownFields() != 0 {
+		t.Fatalf("records=%+v unknown=%d", r, a.UnknownFields())
+	}
+	ticker := []byte(`{"channel":"futures.tickers","event":"update","result":[{"contract":"BTC_USDT","event_type":"update","last":"1"}]}`)
+	r = a.Split(sh[0], ticker)
+	if len(r) == 0 || strings.Contains(string(r[0].Payload), `"last"`) || !strings.Contains(string(r[0].Payload), `"event_type"`) || a.UnknownFields() != 0 {
+		t.Fatalf("records=%+v unknown=%d", r, a.UnknownFields())
+	}
+}
