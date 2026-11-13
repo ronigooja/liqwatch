@@ -2,7 +2,6 @@
 package okx
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -59,29 +58,69 @@ func sampleDue(shard, channel string) bool {
 	return true
 }
 
-// filterItem decodes values as raw JSON and writes members in their original order.
+// filterItem retains value bytes and emits keys in encoding/json's canonical form.
 func filterItem(channel string, entry []byte) ([]byte, error) {
-	var values map[string]json.RawMessage
-	if err := json.Unmarshal(entry, &values); err != nil || values == nil {
+	if len(entry) < 2 || entry[0] != '{' || !json.Valid(entry) {
 		return nil, fmt.Errorf("invalid item")
 	}
-	d := json.NewDecoder(bytes.NewReader(entry))
-	if _, err := d.Token(); err != nil {
-		return nil, err
-	}
-	var b bytes.Buffer
-	b.WriteByte('{')
-	first := true
+	out := make([]byte, 0, len(entry))
+	out = append(out, '{')
 	rule := fieldRules[channel]
-	for d.More() {
-		tok, err := d.Token()
-		if err != nil {
-			return nil, err
+	for i := 1; ; {
+		for entry[i] == ' ' || entry[i] == '\n' || entry[i] == '\r' || entry[i] == '\t' || entry[i] == ',' {
+			i++
 		}
-		key := tok.(string)
-		var value json.RawMessage
-		if err := d.Decode(&value); err != nil {
-			return nil, err
+		if entry[i] == '}' {
+			break
+		}
+		start := i
+		i = jsonStringEnd(entry, i)
+		rawKey := entry[start:i]
+		key := string(rawKey[1 : len(rawKey)-1])
+		simple := true
+		for _, c := range rawKey[1 : len(rawKey)-1] {
+			if c == '\\' || c == '<' || c == '>' || c == '&' || c >= 0x80 {
+				simple = false
+				break
+			}
+		}
+		if !simple {
+			if err := json.Unmarshal(rawKey, &key); err != nil {
+				return nil, err
+			}
+		}
+		for entry[i] != ':' {
+			i++
+		}
+		i++
+		for entry[i] == ' ' || entry[i] == '\n' || entry[i] == '\r' || entry[i] == '\t' {
+			i++
+		}
+		start = i
+		depth := 0
+		for {
+			switch entry[i] {
+			case '"':
+				i = jsonStringEnd(entry, i)
+				continue
+			case '{', '[':
+				depth++
+			case '}', ']':
+				if depth == 0 {
+					goto valueDone
+				}
+				depth--
+			case ',':
+				if depth == 0 {
+					goto valueDone
+				}
+			}
+			i++
+		}
+	valueDone:
+		end := i
+		for end > start && (entry[end-1] == ' ' || entry[end-1] == '\n' || entry[end-1] == '\r' || entry[end-1] == '\t') {
+			end--
 		}
 		if rule.drop[key] {
 			continue
@@ -89,17 +128,33 @@ func filterItem(channel string, entry []byte) ([]byte, error) {
 		if !rule.keep[key] {
 			unknownFields.Add(1)
 		}
-		if !first {
-			b.WriteByte(',')
+		if len(out) > 1 {
+			out = append(out, ',')
 		}
-		first = false
-		name, _ := json.Marshal(key)
-		b.Write(name)
-		b.WriteByte(':')
-		b.Write(value)
+		if simple {
+			out = append(out, rawKey...)
+		} else {
+			name, _ := json.Marshal(key)
+			out = append(out, name...)
+		}
+		out = append(out, ':')
+		out = append(out, entry[start:end]...)
 	}
-	b.WriteByte('}')
-	return b.Bytes(), nil
+	return append(out, '}'), nil
+}
+
+// jsonStringEnd skips a string in a previously validated JSON value.
+func jsonStringEnd(data []byte, i int) int {
+	for i++; i < len(data); i++ {
+		if data[i] == '\\' {
+			i++
+			continue
+		}
+		if data[i] == '"' {
+			return i + 1
+		}
+	}
+	return i
 }
 
 const (
