@@ -95,7 +95,7 @@ func TestFrames(t *testing.T) {
 	for _, f := range frames {
 		for _, r := range a.Split(sh[0], f) {
 			seen[r.Channel]++
-			if r.Symbol == "" || !json.Valid(r.Payload) {
+			if (r.Channel != "gap" && r.Symbol == "") || !json.Valid(r.Payload) {
 				t.Fatalf("bad record %+v", r)
 			}
 		}
@@ -110,6 +110,39 @@ func TestFrames(t *testing.T) {
 	}
 	if len(a.Split(sh[0], []byte(`{"channel":"futures.pong","result":null}`))) != 0 {
 		t.Fatal("pong")
+	}
+}
+
+func TestSubscriptionResponses(t *testing.T) {
+	a := &Adapter{}
+	sh := venue.Shard{}
+	ack := []byte(`{"event":"subscribe","result":{"status":"success"}}`)
+	if len(a.Split(sh, ack)) != 0 || a.SubscribeAcks() != 1 {
+		t.Fatal("ack")
+	}
+	for _, frame := range []string{`{"event":"subscribe","payload":["BAD_USDT","1m"],"error":{"code":2,"message":"bad"}}`, `{"event":"error","result":null}`} {
+		records := a.Split(sh, []byte(frame))
+		if len(records) != 1 || records[0].Channel != "gap" || records[0].Symbol != "" {
+			t.Fatal(records)
+		}
+		var payload struct {
+			Event string          `json:"event"`
+			Frame json.RawMessage `json:"frame"`
+		}
+		if json.Unmarshal(records[0].Payload, &payload) != nil || payload.Event != "subscribe_error" || string(payload.Frame) != frame {
+			t.Fatal(string(records[0].Payload))
+		}
+	}
+	if a.SubscribeErrors() != 2 {
+		t.Fatal(a.SubscribeErrors())
+	}
+	big := `{"event":"error","data":"` + strings.Repeat("x", 5000) + `"}`
+	r := a.Split(sh, []byte(big))
+	var payload struct {
+		Frame string `json:"frame"`
+	}
+	if json.Unmarshal(r[0].Payload, &payload) != nil || len(payload.Frame) != 4096 {
+		t.Fatal("truncation")
 	}
 }
 func TestSplitMultiAndConcurrent(t *testing.T) {
@@ -220,5 +253,20 @@ func TestFilterAndHourlySample(t *testing.T) {
 	now = now.Add(time.Hour)
 	if len(a.Split(sh[0], msg)) != 3 {
 		t.Fatal("sample missing after hour")
+	}
+}
+
+func TestContractStatsClassification(t *testing.T) {
+	a := &Adapter{}
+	sh, _ := a.Shards(context.Background(), []string{"BTC_USDT"})
+	msg := []byte(`{"channel":"futures.contract_stats","event":"update","result":[{"contract":"BTC_USDT","time":1,"open_interest":"1","open_interest_usd":"2","lsr_account":"3","lsr_taker":"4","top_lsr_account":"5","top_lsr_size":"6","mark_price":"7","long_liq_amount":"8","long_liq_size":"9","long_liq_usd":"10","short_liq_amount":"11","short_liq_size":"12","short_liq_usd":"13"}]}`)
+	r := a.Split(sh[0], msg)
+	if len(r) == 0 || string(r[0].Payload) != string(msg) || a.UnknownFields() != 0 {
+		t.Fatalf("records=%+v unknown=%d", r, a.UnknownFields())
+	}
+	ticker := []byte(`{"channel":"futures.tickers","event":"update","result":[{"contract":"BTC_USDT","event_type":"update","last":"1"}]}`)
+	r = a.Split(sh[0], ticker)
+	if len(r) == 0 || strings.Contains(string(r[0].Payload), `"last"`) || !strings.Contains(string(r[0].Payload), `"event_type"`) || a.UnknownFields() != 0 {
+		t.Fatalf("records=%+v unknown=%d", r, a.UnknownFields())
 	}
 }

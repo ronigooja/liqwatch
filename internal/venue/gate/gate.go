@@ -39,9 +39,9 @@ var policies = map[string]fieldPolicy{
 	// Liquidations: execution and contract-unit metadata.
 	"liquidations": {fields("contract", "size", "price", "time", "time_ms", "t", "create_time", "create_time_ms", "id", "quanto_multiplier"), fields()},
 	// Mark, index, funding, and open interest; ticker statistics are excluded.
-	"tickers": {fields("contract", "mark_price", "index_price", "funding_rate", "funding_rate_indicative", "funding_interval", "funding_offset", "funding_next_apply", "total_size", "time", "time_ms", "t", "quanto_multiplier"), fields("last", "change_percentage", "volume_24h", "volume_24h_base", "volume_24h_quote", "volume_24h_settle", "quanto_base_rate", "low_24h", "high_24h", "price_type", "change_from", "change_price", "highest_bid", "highest_size", "lowest_ask", "lowest_size", "bid", "ask", "bid_size", "ask_size")},
-	// Open interest and long/short ratios: retain unclassified statistics.
-	"contract_stats": {fields("contract", "time", "time_ms", "t", "open_interest"), fields()},
+	"tickers": {fields("contract", "mark_price", "index_price", "funding_rate", "funding_rate_indicative", "funding_interval", "funding_offset", "funding_next_apply", "total_size", "time", "time_ms", "t", "quanto_multiplier", "event_type"), fields("last", "change_percentage", "volume_24h", "volume_24h_base", "volume_24h_quote", "volume_24h_settle", "quanto_base_rate", "low_24h", "high_24h", "price_type", "change_from", "change_price", "highest_bid", "highest_size", "lowest_ask", "lowest_size", "bid", "ask", "bid_size", "ask_size")},
+	// Open interest, ratios, mark price and liquidation statistics.
+	"contract_stats": {fields("contract", "time", "time_ms", "t", "open_interest", "open_interest_usd", "lsr_account", "lsr_taker", "top_lsr_account", "top_lsr_size", "mark_price", "long_liq_amount", "long_liq_size", "long_liq_usd", "short_liq_amount", "short_liq_size", "short_liq_usd"), fields()},
 	// Contract units, leverage tiers, funding, mark, index, and open interest.
 	"contract_info": {fields("contract", "time", "time_ms", "t", "quanto_multiplier", "order_price_round", "mark_price_round", "risk_limit_tiers", "mark_price", "index_price", "funding_rate", "funding_next_apply", "total_size", "leverage_min", "leverage_max", "leverage_tiers"), fields("last", "change_percentage", "volume_24h", "volume_24h_base", "volume_24h_quote", "volume_24h_settle", "quanto_base_rate", "low_24h", "high_24h", "highest_bid", "highest_size", "lowest_ask", "lowest_size", "bid", "ask", "bid_size", "ask_size")},
 }
@@ -68,15 +68,23 @@ func sampleDue(shard, channel string) bool {
 }
 
 type Adapter struct {
-	HTTPClient    *http.Client
-	ContractsURL  string
-	mu            sync.RWMutex
-	universe      map[string]struct{}
-	unknownFields atomic.Uint64
+	HTTPClient      *http.Client
+	ContractsURL    string
+	mu              sync.RWMutex
+	universe        map[string]struct{}
+	unknownFields   atomic.Uint64
+	subscribeAcks   atomic.Uint64
+	subscribeErrors atomic.Uint64
 }
 
 // UnknownFields returns the number of unclassified field occurrences retained.
 func (a *Adapter) UnknownFields() uint64 { return a.unknownFields.Load() }
+
+// SubscribeAcks returns successful subscription acknowledgements observed.
+func (a *Adapter) SubscribeAcks() uint64 { return a.subscribeAcks.Load() }
+
+// SubscribeErrors returns error frames observed.
+func (a *Adapter) SubscribeErrors() uint64 { return a.subscribeErrors.Load() }
 
 // filterObject uses RawMessage for values and a decoder for original key order.
 func (a *Adapter) filterObject(src []byte, policy fieldPolicy, result []byte) ([]byte, error) {
@@ -229,11 +237,30 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 		Channel string          `json:"channel"`
 		Event   string          `json:"event"`
 		Result  json.RawMessage `json:"result"`
+		Error   json.RawMessage `json:"error"`
 	}
 	if json.Unmarshal(msg, &env) != nil {
 		return gap(msg)
 	}
-	if env.Event == "subscribe" || env.Event == "unsubscribe" || env.Channel == "futures.pong" {
+	if env.Event == "error" || (len(env.Error) > 0 && string(env.Error) != "null") {
+		a.subscribeErrors.Add(1)
+		var frame any = json.RawMessage(msg)
+		if len(msg) > 4096 {
+			frame = string(msg[:4096])
+		}
+		payload, _ := json.Marshal(map[string]any{"event": "subscribe_error", "frame": frame})
+		return []rawlog.Record{{Channel: "gap", Payload: payload}}
+	}
+	if env.Event == "subscribe" {
+		var result struct {
+			Status string `json:"status"`
+		}
+		if json.Unmarshal(env.Result, &result) == nil && result.Status == "success" {
+			a.subscribeAcks.Add(1)
+		}
+		return nil
+	}
+	if env.Event == "unsubscribe" || env.Channel == "futures.pong" {
 		return nil
 	}
 	if env.Event != "update" && env.Event != "all" {
