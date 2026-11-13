@@ -1,6 +1,6 @@
 OKX live fixtures, captured 2026-11-13 from the Linux build host.
 public.jsonl and business.jsonl contain up to four frames per channel or control type,
-one frame per line; the instrument response is trimmed to five original entries.
+one frame per line; the instrument response is trimmed to ten original entries.
 Capture: six swaps (BTC, ETH, SOL, DOGE, PEPE, WIF), SWAP liquidations;
 one subscription request per endpoint, text ping every 20 seconds, 10 minutes.
 Counts: trades 77613, mark 17844, index 8655, OI 366, funding 66,
