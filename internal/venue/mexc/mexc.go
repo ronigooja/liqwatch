@@ -2,12 +2,14 @@
 package mexc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -23,12 +25,91 @@ const (
 
 var topics = []string{"deal", "fair.price", "index.price", "ticker", "funding.rate"}
 
+// Field tables describe recorded items; unspecified fields are retained and counted.
+var keepFields = map[string]map[string]bool{
+	"trade":   {"p": true, "v": true, "T": true, "O": true, "M": true, "t": true, "i": true, "cts": true},                                               // trades
+	"mark":    {"symbol": true, "price": true},                                                                                                          // mark price
+	"index":   {"symbol": true, "price": true},                                                                                                          // index price
+	"funding": {"symbol": true, "rate": true, "nextSettleTime": true},                                                                                   // funding
+	"ticker":  {"symbol": true, "fairPrice": true, "indexPrice": true, "holdVol": true, "fundingRate": true, "nextSettleTime": true, "timestamp": true}, // prices, open interest, funding
+}
+var dropFields = map[string]map[string]bool{
+	"ticker": {"lastPrice": true, "riseFallRate": true, "volume24": true, "amount24": true, "maxBidPrice": true, "minAskPrice": true, "lower24Price": true, "high24Price": true, "bid1": true, "ask1": true, "riseFallValue": true, "zone": true, "riseFallRates": true, "riseFallRatesOfTimezone": true}, // quote and statistics
+}
+
+var samples = struct {
+	sync.Mutex
+	last map[string]time.Time
+	now  func() time.Time
+}{last: make(map[string]time.Time), now: time.Now}
+
 type Adapter struct {
 	// DetailURL and Client optionally override symbol discovery for tests.
 	DetailURL string
 	Client    *http.Client
 	mu        sync.RWMutex
 	universe  map[string]struct{}
+	unknown   atomic.Uint64
+}
+
+// UnknownFields returns the number of unrecognized data fields retained.
+func (a *Adapter) UnknownFields() uint64 { return a.unknown.Load() }
+
+// filterObject preserves source order and raw JSON values while removing known drops.
+func (a *Adapter) filterObject(ch string, data []byte) ([]byte, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
+		return nil, fmt.Errorf("invalid object")
+	}
+	d := json.NewDecoder(bytes.NewReader(data))
+	if _, err := d.Token(); err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	out.WriteByte('{')
+	first := true
+	for d.More() {
+		key, err := d.Token()
+		if err != nil {
+			return nil, err
+		}
+		var value json.RawMessage
+		if err := d.Decode(&value); err != nil {
+			return nil, err
+		}
+		name := key.(string)
+		if dropFields[ch][name] {
+			continue
+		}
+		if !keepFields[ch][name] {
+			a.unknown.Add(1)
+		}
+		if !first {
+			out.WriteByte(',')
+		}
+		first = false
+		k, _ := json.Marshal(name)
+		out.Write(k)
+		out.WriteByte(':')
+		out.Write(value)
+	}
+	out.WriteByte('}')
+	return out.Bytes(), nil
+}
+
+func sampled(sh venue.Shard, ch string, msg []byte, records []rawlog.Record) []rawlog.Record {
+	samples.Lock()
+	defer samples.Unlock()
+	now := samples.now()
+	key := sh.Name + "\x00" + ch
+	last, ok := samples.last[key]
+	if !ok || now.Sub(last) >= time.Hour {
+		samples.last[key] = now
+		payload := append([]byte(`{"sample":`), msg...)
+		payload = append(payload, '}')
+		records = append(records, rawlog.Record{Channel: ch, Symbol: records[0].Symbol, Payload: payload})
+	}
+	return records
 }
 
 func init()                   { venue.Register("mexc", func() venue.Adapter { return &Adapter{} }) }
@@ -131,7 +212,7 @@ func (*Adapter) Heartbeat(venue.Shard) (time.Duration, func() (int, []byte)) {
 	return 15 * time.Second, func() (int, []byte) { return int(websocket.MessageText), []byte(`{"method":"ping"}`) }
 }
 
-func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
+func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	var v struct {
 		Channel string          `json:"channel"`
 		Symbol  string          `json:"symbol"`
@@ -157,16 +238,42 @@ func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 		case "push.contract.marketOrderSetting.update":
 			ch = "ordersetting"
 		}
-		return []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: msg}}
+		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: msg}})
 	}
 	channels := map[string]string{"push.deal": "trade", "push.fair.price": "mark", "push.index.price": "index", "push.ticker": "ticker", "push.funding.rate": "funding"}
 	ch, known := channels[v.Channel]
 	if err == nil && known && len(v.Data) > 0 && string(v.Data) != "null" && v.Symbol != "" {
-		return []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: msg}}
+		payload := msg
+		if ch != "trade" {
+			filtered, e := a.filterObject(ch, v.Data)
+			if e != nil {
+				goto gap
+			}
+			// Replace only data, preserving the envelope and its order.
+			idx := bytes.Index(msg, v.Data)
+			if idx < 0 {
+				goto gap
+			}
+			payload = append(append(append([]byte{}, msg[:idx]...), filtered...), msg[idx+len(v.Data):]...)
+		} else {
+			var items []json.RawMessage
+			if len(v.Data) > 0 && v.Data[0] == '[' {
+				_ = json.Unmarshal(v.Data, &items)
+			} else {
+				items = []json.RawMessage{v.Data}
+			}
+			for _, item := range items {
+				if _, e := a.filterObject(ch, item); e != nil {
+					goto gap
+				}
+			}
+		}
+		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: payload}})
 	}
 	if err == nil && (len(v.Data) == 0 || string(v.Data) == "null") && !strings.HasPrefix(v.Channel, "push.") {
 		return nil
 	}
+gap:
 	p, _ := json.Marshal(map[string]any{"event": "unrecognized_frame", "bytes": len(msg), "head": string(msg[:min(len(msg), 4096)])})
 	return []rawlog.Record{{Channel: "gap", Payload: p}}
 }

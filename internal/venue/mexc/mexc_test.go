@@ -99,6 +99,9 @@ func TestFixtureSplit(t *testing.T) {
 			t.Fatal(err)
 		}
 		records := a.Split(venue.Shard{}, frame)
+		if len(records) == 2 {
+			records = records[:1]
+		}
 		if v.Channel == "push.contract.extra.update" || v.Channel == "push.contract.marketOrderSetting.update" {
 			counts[v.Channel+":"+v.Symbol]++
 			if v.Symbol != "BTC_USDT" {
@@ -122,7 +125,7 @@ func TestFixtureSplit(t *testing.T) {
 			}
 			continue
 		}
-		if len(records) != 1 || records[0].Symbol != v.Symbol || string(records[0].Payload) != string(frame) {
+		if len(records) != 1 || records[0].Symbol != v.Symbol || (v.Channel != "push.ticker" && string(records[0].Payload) != string(frame)) {
 			t.Fatalf("frame %s records %+v", frame, records)
 		}
 		counts[records[0].Channel]++
@@ -140,14 +143,14 @@ func TestFixtureSplit(t *testing.T) {
 		t.Fatal(unknown)
 	}
 	contract := []byte(`{"channel":"push.contract","symbol":"BTC_USDT","data":{"symbol":"BTC_USDT"}}`)
-	if r := a.Split(venue.Shard{}, contract); len(r) != 1 || r[0].Channel != "contract" {
+	if r := a.Split(venue.Shard{}, contract); len(r) < 1 || r[0].Channel != "contract" {
 		t.Fatal(r)
 	}
 	if r := a.Split(venue.Shard{}, []byte(`{"channel":"push.contract","symbol":"OTHER","data":{}}`)); len(r) != 0 {
 		t.Fatal(r)
 	}
 	unknownContract := []byte(`{"channel":"push.contract.future.update","symbol":"BTC_USDT","data":{"value":1}}`)
-	if r := a.Split(venue.Shard{}, unknownContract); len(r) != 1 || r[0].Channel != "contractmeta" || r[0].Symbol != "BTC_USDT" || string(r[0].Payload) != string(unknownContract) {
+	if r := a.Split(venue.Shard{}, unknownContract); len(r) < 1 || r[0].Channel != "contractmeta" || r[0].Symbol != "BTC_USDT" || string(r[0].Payload) != string(unknownContract) {
 		t.Fatal(r)
 	}
 	if r := a.Split(venue.Shard{}, []byte(strings.ReplaceAll(string(unknownContract), "BTC_USDT", "OTHER"))); len(r) != 0 {
@@ -166,6 +169,34 @@ func TestFixtureSplit(t *testing.T) {
 	}
 	if _, ok := a.Classes()("ticker"); ok {
 		t.Fatal("ticker must not be dropped as quote")
+	}
+}
+
+func TestFilteringAndSamples(t *testing.T) {
+	now := time.Unix(10000, 0)
+	samples.Lock()
+	old := samples.now
+	samples.now = func() time.Time { return now }
+	samples.last = make(map[string]time.Time)
+	samples.Unlock()
+	defer func() { samples.Lock(); samples.now = old; samples.last = make(map[string]time.Time); samples.Unlock() }()
+	a := &Adapter{}
+	frame := []byte(`{"symbol":"BTC_USDT","data":{"lastPrice":1,"holdVol":1.2300,"future":"x","bid1":2,"fairPrice":1e-8},"channel":"push.ticker","ts":123}`)
+	sh := venue.Shard{Name: "test"}
+	r := a.Split(sh, frame)
+	want := `{"symbol":"BTC_USDT","data":{"holdVol":1.2300,"future":"x","fairPrice":1e-8},"channel":"push.ticker","ts":123}`
+	if len(r) != 2 || string(r[0].Payload) != want || string(r[1].Payload) != `{"sample":`+string(frame)+`}` || a.UnknownFields() != 1 {
+		t.Fatalf("records %+v unknown %d", r, a.UnknownFields())
+	}
+	if r = a.Split(sh, frame); len(r) != 1 {
+		t.Fatal(r)
+	}
+	now = now.Add(time.Hour)
+	if r = a.Split(sh, frame); len(r) != 2 {
+		t.Fatal(r)
+	}
+	if r = a.Split(venue.Shard{Name: "other"}, frame); len(r) != 2 {
+		t.Fatal(r)
 	}
 }
 
