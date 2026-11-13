@@ -100,13 +100,20 @@ func TestFixtureSplit(t *testing.T) {
 		}
 		records := a.Split(venue.Shard{}, frame)
 		if v.Channel == "push.contract.extra.update" || v.Channel == "push.contract.marketOrderSetting.update" {
-			var gap struct {
-				Head string `json:"head"`
+			counts[v.Channel+":"+v.Symbol]++
+			if v.Symbol != "BTC_USDT" {
+				if len(records) != 0 {
+					t.Fatalf("out-of-universe frame %s records %+v", frame, records)
+				}
+				continue
 			}
-			if len(records) != 1 || records[0].Channel != "gap" || json.Unmarshal(records[0].Payload, &gap) != nil || gap.Head != string(frame) {
+			want := "contractextra"
+			if v.Channel == "push.contract.marketOrderSetting.update" {
+				want = "ordersetting"
+			}
+			if len(records) != 1 || records[0].Channel != want || records[0].Symbol != v.Symbol || string(records[0].Payload) != string(frame) {
 				t.Fatalf("frame %s records %+v", frame, records)
 			}
-			counts[v.Channel]++
 			continue
 		}
 		if strings.HasPrefix(v.Channel, "rs.") || v.Channel == "pong" {
@@ -125,8 +132,8 @@ func TestFixtureSplit(t *testing.T) {
 			t.Fatal(ch)
 		}
 	}
-	if counts["push.contract.extra.update"] != 2 || counts["push.contract.marketOrderSetting.update"] != 1 {
-		t.Fatalf("missing observed gap fixtures: %v", counts)
+	if counts["push.contract.extra.update:BTC_USDT"] != 2 || counts["push.contract.marketOrderSetting.update:BTC_USDT"] != 1 || counts["push.contract.extra.update:BLKSTOCK_USDT"] != 1 || counts["push.contract.extra.update:HK0700_USDT"] != 1 || counts["push.contract.marketOrderSetting.update:HK0700_USDT"] != 1 {
+		t.Fatalf("missing observed metadata fixtures: %v", counts)
 	}
 	unknown := a.Split(venue.Shard{}, []byte(`{"channel":"push.new","data":{"symbol":"BTC_USDT"}}`))
 	if len(unknown) != 1 || unknown[0].Channel != "gap" {
@@ -138,6 +145,18 @@ func TestFixtureSplit(t *testing.T) {
 	}
 	if r := a.Split(venue.Shard{}, []byte(`{"channel":"push.contract","symbol":"OTHER","data":{}}`)); len(r) != 0 {
 		t.Fatal(r)
+	}
+	unknownContract := []byte(`{"channel":"push.contract.future.update","symbol":"BTC_USDT","data":{"value":1}}`)
+	if r := a.Split(venue.Shard{}, unknownContract); len(r) != 1 || r[0].Channel != "contractmeta" || r[0].Symbol != "BTC_USDT" || string(r[0].Payload) != string(unknownContract) {
+		t.Fatal(r)
+	}
+	if r := a.Split(venue.Shard{}, []byte(strings.ReplaceAll(string(unknownContract), "BTC_USDT", "OTHER"))); len(r) != 0 {
+		t.Fatal(r)
+	}
+	for _, ch := range []string{"contract", "contractextra", "ordersetting", "contractmeta"} {
+		if class, ok := a.Classes()(ch); ok || class != "" {
+			t.Fatalf("metadata class %s: %q %v", ch, class, ok)
+		}
 	}
 	for ch, want := range map[string]string{"trade": "trade", "mark": "mark", "index": "mark"} {
 		got, ok := a.Classes()(ch)

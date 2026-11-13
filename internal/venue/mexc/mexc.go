@@ -141,17 +141,27 @@ func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 	if err == nil && (v.Channel == "pong" || strings.HasPrefix(v.Channel, "rs.")) {
 		return nil
 	}
-	channels := map[string]string{"push.deal": "trade", "push.fair.price": "mark", "push.index.price": "index", "push.ticker": "ticker", "push.funding.rate": "funding", "push.contract": "contract"}
+	if err == nil && strings.HasPrefix(v.Channel, "push.contract") {
+		a.mu.RLock()
+		_, ok := a.universe[v.Symbol]
+		a.mu.RUnlock()
+		if !ok {
+			return nil
+		}
+		ch := "contractmeta"
+		switch v.Channel {
+		case "push.contract":
+			ch = "contract"
+		case "push.contract.extra.update":
+			ch = "contractextra"
+		case "push.contract.marketOrderSetting.update":
+			ch = "ordersetting"
+		}
+		return []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: msg}}
+	}
+	channels := map[string]string{"push.deal": "trade", "push.fair.price": "mark", "push.index.price": "index", "push.ticker": "ticker", "push.funding.rate": "funding"}
 	ch, known := channels[v.Channel]
 	if err == nil && known && len(v.Data) > 0 && string(v.Data) != "null" && v.Symbol != "" {
-		if ch == "contract" {
-			a.mu.RLock()
-			_, ok := a.universe[v.Symbol]
-			a.mu.RUnlock()
-			if !ok {
-				return nil
-			}
-		}
 		return []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: msg}}
 	}
 	if err == nil && (len(v.Data) == 0 || string(v.Data) == "null") && !strings.HasPrefix(v.Channel, "push.") {
