@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 
@@ -46,47 +47,89 @@ func (*Adapter) UnknownFieldsSeen() uint64 { return unknownFields.Load() }
 // DroppedDeltas returns the number of ticker deltas containing no recordable data.
 func (*Adapter) DroppedDeltas() uint64 { return droppedDeltas.Load() }
 
-// orderedObject preserves original value bytes and field order.
+// orderedObject preserves field order and original value bytes while normalizing keys.
 func orderedObject(b []byte, f func(string, json.RawMessage) (json.RawMessage, bool)) ([]byte, error) {
-	d := json.NewDecoder(bytes.NewReader(b))
-	tok, err := d.Token()
-	if err != nil || tok != json.Delim('{') {
+	b = bytes.TrimSpace(b)
+	if len(b) < 2 || b[0] != '{' || !json.Valid(b) {
 		return nil, fmt.Errorf("expected object")
 	}
-	var out bytes.Buffer
-	out.WriteByte('{')
-	first := true
-	for d.More() {
-		t, err := d.Token()
-		if err != nil {
-			return nil, err
+	out := make([]byte, 0, len(b))
+	out = append(out, '{')
+	for i := 1; ; {
+		for i < len(b) && (b[i] == ' ' || b[i] == '\n' || b[i] == '\r' || b[i] == '\t' || b[i] == ',') {
+			i++
 		}
-		key, ok := t.(string)
-		if !ok {
-			return nil, fmt.Errorf("invalid key")
+		if b[i] == '}' {
+			break
 		}
-		var value json.RawMessage
-		if err := d.Decode(&value); err != nil {
-			return nil, err
+		start := i
+		i = stringEnd(b, i)
+		rawKey := b[start:i]
+		var key string
+		if bytes.IndexByte(rawKey, '\\') < 0 && utf8.Valid(rawKey) {
+			key = string(rawKey[1 : len(rawKey)-1])
+		} else {
+			_ = json.Unmarshal(rawKey, &key)
 		}
-		value, ok = f(key, value)
-		if !ok {
+		for b[i] != ':' {
+			i++
+		}
+		i++
+		for b[i] == ' ' || b[i] == '\n' || b[i] == '\r' || b[i] == '\t' {
+			i++
+		}
+		start = i
+		depth := 0
+		for i < len(b) {
+			switch b[i] {
+			case '"':
+				i = stringEnd(b, i)
+				continue
+			case '{', '[':
+				depth++
+			case '}', ']':
+				if depth == 0 {
+					goto valueDone
+				}
+				depth--
+			case ',':
+				if depth == 0 {
+					goto valueDone
+				}
+			}
+			i++
+		}
+	valueDone:
+		value, keep := f(key, json.RawMessage(bytes.TrimSpace(b[start:i])))
+		if !keep {
 			continue
 		}
-		if !first {
-			out.WriteByte(',')
+		if len(out) > 1 {
+			out = append(out, ',')
 		}
-		first = false
-		k, _ := json.Marshal(key)
-		out.Write(k)
-		out.WriteByte(':')
-		out.Write(value)
+		if bytes.IndexAny(rawKey, "\\<>&") < 0 && utf8.Valid(rawKey) && !bytes.Contains(rawKey, []byte("\u2028")) && !bytes.Contains(rawKey, []byte("\u2029")) {
+			out = append(out, rawKey...)
+		} else {
+			k, _ := json.Marshal(key)
+			out = append(out, k...)
+		}
+		out = append(out, ':')
+		out = append(out, value...)
 	}
-	if _, err := d.Token(); err != nil {
-		return nil, err
+	return append(out, '}'), nil
+}
+
+func stringEnd(b []byte, i int) int {
+	for i++; i < len(b); i++ {
+		if b[i] == '\\' {
+			i++
+			continue
+		}
+		if b[i] == '"' {
+			return i + 1
+		}
 	}
-	out.WriteByte('}')
-	return out.Bytes(), nil
+	return i
 }
 
 // WSLinear is Bybit's public linear derivatives endpoint.
