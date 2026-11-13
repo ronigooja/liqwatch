@@ -178,6 +178,39 @@ func TestFixtureSplit(t *testing.T) {
 	}
 }
 
+func TestMetadataUsesShardsSymbolsNotDiscoveredSymbols(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"success":true,"code":0,"data":[{"symbol":"BTC_USDT","state":0,"futureType":1,"quoteCoin":"USDT","settleCoin":"USDT"},{"symbol":"BLKSTOCK_USDT","state":0,"futureType":1,"quoteCoin":"USDT","settleCoin":"USDT"}]}`)
+	}))
+	defer server.Close()
+	a := &Adapter{DetailURL: server.URL}
+	syms, err := a.Symbols(context.Background())
+	if err != nil || len(syms) != 2 {
+		t.Fatalf("discovered %v: %v", syms, err)
+	}
+	if _, err := a.Shards(context.Background(), []string{"BTC_USDT"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, channel := range []string{"push.contract", "push.contract.extra.update", "push.contract.marketOrderSetting.update", "push.contract.future.update"} {
+		for _, tc := range []struct {
+			symbol string
+			want   bool
+		}{{"BTC_USDT", true}, {"BLKSTOCK_USDT", false}} {
+			frame := fmt.Sprintf(`{"channel":%q,"symbol":%q,"data":{}}`, channel, tc.symbol)
+			got := a.Split(venue.Shard{Name: "metadata-test"}, []byte(frame))
+			if (len(got) > 0) != tc.want {
+				t.Fatalf("%s %s: %+v", channel, tc.symbol, got)
+			}
+		}
+	}
+	if _, err := a.Shards(context.Background(), []string{"BLKSTOCK_USDT"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Split(venue.Shard{}, []byte(`{"channel":"push.contract","symbol":"BTC_USDT","data":{}}`)); len(got) != 0 {
+		t.Fatal(got)
+	}
+}
+
 func TestFilteringAndSamples(t *testing.T) {
 	now := time.Unix(10000, 0)
 	samples.Lock()
