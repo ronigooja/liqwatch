@@ -37,6 +37,11 @@ func TestShardsAndSubscriptions(t *testing.T) {
 	if e != nil || len(sh) != 3 {
 		t.Fatal(sh, e)
 	}
+	for _, shard := range sh {
+		if got := shard.Header.Get("X-Gate-Size-Decimal"); got != "1" {
+			t.Errorf("shard %s decimal header = %q", shard.Name, got)
+		}
+	}
 	if len(a.Subscribe(sh[0])) != 102 || len(a.Subscribe(sh[1])) != 3 || len(a.Subscribe(sh[2])) != 2 {
 		t.Fatal("subscription counts")
 	}
@@ -52,6 +57,33 @@ func TestShardsAndSubscriptions(t *testing.T) {
 		}
 		if m.Channel == "futures.contract_stats" && (len(m.Payload) != 2 || m.Payload[1] != "1m") {
 			t.Fatal(string(b))
+		}
+	}
+}
+func TestShardHeaderOnDial(t *testing.T) {
+	shards, err := (&Adapter{}).Shards(context.Background(), []string{"ETH_USDT"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := make(chan string, len(shards))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headers <- r.Header.Get("X-Gate-Size-Decimal")
+		ws, err := websocket.Accept(w, r, nil)
+		if err == nil {
+			ws.CloseNow()
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for _, sh := range shards {
+		ws, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: sh.Header})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ws.CloseNow()
+		if got := <-headers; got != "1" {
+			t.Errorf("shard %s dial header = %q", sh.Name, got)
 		}
 	}
 }

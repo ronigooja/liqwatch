@@ -77,9 +77,9 @@ func (a *Adapter) Shards(_ context.Context, syms []venue.Symbol) ([]venue.Shard,
 	var shards []venue.Shard
 	for i := 0; i < len(syms); i += shardSize {
 		part := append([]string(nil), syms[i:min(i+shardSize, len(syms))]...)
-		shards = append(shards, venue.Shard{Name: fmt.Sprintf("market%02d", i/shardSize), URL: wsURL, Streams: part, Stall: 90 * time.Second, MaxSubsPerConn: shardSize + 3, SubscribeSpacing: 700 * time.Millisecond})
+		shards = append(shards, venue.Shard{Name: fmt.Sprintf("market%02d", i/shardSize), URL: wsURL, Header: http.Header{"X-Gate-Size-Decimal": {"1"}}, Streams: part, Stall: 90 * time.Second, MaxSubsPerConn: shardSize + 3, SubscribeSpacing: 700 * time.Millisecond})
 	}
-	shards = append(shards, venue.Shard{Name: "all", URL: wsURL, Streams: []string{"!all"}, Stall: 90 * time.Second, SubscribeSpacing: 700 * time.Millisecond})
+	shards = append(shards, venue.Shard{Name: "all", URL: wsURL, Header: http.Header{"X-Gate-Size-Decimal": {"1"}}, Streams: []string{"!all"}, Stall: 90 * time.Second, SubscribeSpacing: 700 * time.Millisecond})
 	return shards, nil
 }
 func (*Adapter) Subscribe(sh venue.Shard) [][]byte {
