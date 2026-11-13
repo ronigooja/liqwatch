@@ -260,6 +260,12 @@ func (*Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 					for _, item := range items {
 						meaningful := false
 						filtered, e := orderedObject(item, func(k string, v json.RawMessage) (json.RawMessage, bool) {
+							if batch && k == "s" {
+								var symbol string
+								if json.Unmarshal(v, &symbol) == nil && symbol == p[1] {
+									return nil, false
+								}
+							}
 							if dropFields[ch][k] {
 								return nil, false
 							}

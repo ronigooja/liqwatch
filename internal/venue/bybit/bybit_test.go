@@ -279,7 +279,12 @@ func TestFilteringAndSampling(t *testing.T) {
 	}
 	batch := `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"s":"BTCUSDT","p":"1.00","L":"PlusTick"},{"s":"BTCUSDT","p":"2.00","L":"MinusTick"}]}`
 	r = a.Split(sh, []byte(batch))
-	if len(r) != 3 || string(r[0].Payload) != `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"s":"BTCUSDT","p":"1.00"}]}` || string(r[1].Payload) != `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"s":"BTCUSDT","p":"2.00"}]}` {
+	if len(r) != 3 || r[0].Symbol != "BTCUSDT" || string(r[0].Payload) != `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"p":"1.00"}]}` || string(r[1].Payload) != `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"p":"2.00"}]}` {
+		t.Fatal(r)
+	}
+	conflict := `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"s":"ETHUSDT","p":"1"}]}`
+	r = a.Split(sh, []byte(conflict))
+	if len(r) != 1 || !strings.Contains(string(r[0].Payload), `"s":"ETHUSDT"`) {
 		t.Fatal(r)
 	}
 }
