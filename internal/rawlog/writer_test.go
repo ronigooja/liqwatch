@@ -155,6 +155,21 @@ func TestCustomDropClass(t *testing.T) {
 		t.Fatal("missing custom drop gap")
 	}
 }
+func TestUnicodeSymbol(t *testing.T) {
+	w, err := NewWriter(Options{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	r := rec("aggTrade", now, `{}`)
+	r.Symbol = "牛来USDT"
+	stop := run(w)
+	w.Write(GroupTrade, r)
+	stop()
+	if len(readAll(t, filepath.Join(w.opts.Dir, "binance", r.Symbol, now.Format("20060102"), "aggTrade.jsonl"))) != 1 {
+		t.Fatal("missing unicode symbol")
+	}
+}
 func TestDiskStop(t *testing.T) {
 	w, _ := NewWriter(Options{Dir: t.TempDir(), MaxDiskPct: 0.000000001})
 	stop := run(w)

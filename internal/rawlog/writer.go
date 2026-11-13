@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode"
 )
 
 const (
@@ -171,7 +172,7 @@ func component(s string) bool {
 		return false
 	}
 	for _, c := range s {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '_' || c == '-') {
+		if !(unicode.IsLetter(c) || unicode.IsNumber(c) || c == '.' || c == '_' || c == '-') {
 			return false
 		}
 	}
