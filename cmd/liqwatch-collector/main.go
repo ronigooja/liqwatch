@@ -1,14 +1,11 @@
-// Command liqwatch-collector is the production recorder: tier A streams, depth, and snapshots to the raw log.
+// Command liqwatch-collector records trades, mark prices and liquidations.
 // Design: docs/p0-core-design.md, scope: docs/p0-rollout.md.
 package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -22,20 +19,22 @@ import (
 	"github.com/ronigooja/liqwatch/internal/backfill"
 	"github.com/ronigooja/liqwatch/internal/collector"
 	"github.com/ronigooja/liqwatch/internal/config"
-	"github.com/ronigooja/liqwatch/internal/manifest"
 	"github.com/ronigooja/liqwatch/internal/rawlog"
-	"github.com/ronigooja/liqwatch/internal/snapshot"
 	"github.com/ronigooja/liqwatch/internal/symbols"
 )
 
 func main() {
 	cfgPath := flag.String("config", "/etc/liqwatch/config.toml", "config file")
 	instance := flag.String("instance", "", "writer slot name (a or b) for handoff; empty is the legacy single process")
+	venue := flag.String("venue", "", "override collect.venue")
 	metricsAddr := flag.String("metrics-addr", "", "override collect.metrics_addr")
 	flag.Parse()
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		log.Fatalf("config: %v", err)
+	}
+	if *venue != "" {
+		cfg.Collect.Venue = *venue
 	}
 	if *metricsAddr != "" {
 		cfg.Collect.MetricsAddr = *metricsAddr
@@ -57,61 +56,23 @@ func run(cfg *config.Config, instance string) error {
 		}
 		defer unlock()
 	}
-	store, err := openManifest(cfg)
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-
-	var regMu sync.Mutex
-	register := func(c rawlog.Closed) {
-		regMu.Lock()
-		defer regMu.Unlock()
-		if ok, err := store.Known(filepath.ToSlash(c.Path)); err == nil && ok {
-			return
-		}
-		sum, err := fileSHA(filepath.Join(rawDir, c.Path))
-		if err != nil {
-			log.Printf("manifest: hash %s: %v", c.Path, err)
-			return
-		}
-		if err := store.RegisterClosed(manifest.File{
-			Path: filepath.ToSlash(c.Path), Group: c.Group, HourStart: c.HourStart,
-			MsgCount: c.MsgCount, Bytes: c.Bytes, SHA256: sum, ClosedAt: time.Now().UTC(), State: manifest.StateClosed,
-		}); err != nil {
-			log.Printf("manifest: register %s: %v", c.Path, err)
-		}
-	}
-
 	w, err := rawlog.NewWriter(rawlog.Options{
 		Dir: rawDir, QueueSize: cfg.Collect.QueueSize, MaxDiskPct: 92, Instance: instance,
-		OnClosed: func(c rawlog.Closed) { go register(c) },
 	})
 	if err != nil {
 		return err
 	}
-	// Files closed before this start (crash recovery, earlier runs) that the manifest has not seen.
-	for _, c := range rawlog.Sweep(rawDir, time.Now()) {
-		register(c)
-	}
-
 	ready := &readiness{}
 	uni, err := symbols.Load(ctx, filepath.Join(cfg.DataDir, "state"))
 	if err != nil {
 		return fmt.Errorf("symbols: %w", err)
 	}
-	quotes, err := symbols.TopByVolume(ctx, uni.All, cfg.Collect.QuoteTopN)
-	if err != nil {
-		return fmt.Errorf("top by volume: %w", err)
-	}
-	depth := validDepth(cfg.Collect.DepthSymbols, uni.All)
-	log.Printf("universe=%d quotes=%d depth=%v weight_limit=%d", len(uni.All), len(quotes), depth, uni.WeightPerMinLimit)
-
-	shards := collector.BuildShards(uni.All, quotes, depth, cfg.Collect.DepthSpeed, cfg.Collect.MaxStreamsPerWS)
+	log.Printf("universe=%d weight_limit=%d", len(uni.All), uni.WeightPerMinLimit)
+	shards := collector.BuildShards(uni.All, cfg.Collect.MaxStreamsPerWS)
 	tap := backfill.NewTap(w)
 	col := collector.New(tap, shards)
+	col.Venue = cfg.Collect.Venue
 	col.OpenSpacing = time.Duration(cfg.Collect.OpenSpacingMS) * time.Millisecond
-	snap := snapshot.New(cfg.Snapshot, depth, w, uni.WeightPerMinLimit, &http.Client{Timeout: 15 * time.Second})
 	bf := backfill.New(tap, tap, &http.Client{Timeout: 20 * time.Second}, uni.WeightPerMinLimit, 0.10)
 	shardSyms := map[string][]string{}
 	for _, sh := range shards {
@@ -136,15 +97,7 @@ func run(cfg *config.Config, instance string) error {
 	}
 	col.OnOpen = ready.shardOpened
 	ready.expectShards(len(shards))
-	col.OnReconnect = func(sh collector.Shard) {
-		if sh.Name != "depth" {
-			return
-		}
-		log.Printf("depth shard reconnected, requesting snapshots for %d symbols", len(depth))
-		for _, s := range depth {
-			snap.Trigger(s)
-		}
-	}
+	col.OnClose = ready.shardClosed
 
 	var writerDone sync.WaitGroup
 	writerCtx, writerStop := context.WithCancel(context.Background())
@@ -152,13 +105,11 @@ func run(cfg *config.Config, instance string) error {
 	go func() { defer writerDone.Done(); w.Run(writerCtx) }()
 
 	var prod sync.WaitGroup
-	prod.Add(3)
+	prod.Add(2)
 	go func() { defer prod.Done(); col.Run(ctx) }()
-	go func() { defer prod.Done(); snap.Run(ctx) }()
 	go func() { defer prod.Done(); bf.Run(ctx) }()
 
-	go serveMetrics(cfg.Collect.MetricsAddr, w, col, snap, ready, len(depth))
-	go sweepLoop(ctx, rawDir, register)
+	go serveMetrics(cfg.Collect.MetricsAddr, w, col, ready)
 
 	<-ctx.Done()
 	log.Printf("shutting down")
@@ -168,69 +119,13 @@ func run(cfg *config.Config, instance string) error {
 	return nil
 }
 
-func openManifest(cfg *config.Config) (*manifest.SQLiteStore, error) {
-	dir := filepath.Join(cfg.DataDir, "manifest")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return nil, err
-	}
-	return manifest.Open(filepath.Join(dir, "manifest.db"))
-}
-
-// validDepth keeps configured depth symbols that exist in the universe and warns about the rest.
-func validDepth(want, all []string) []string {
-	ok := map[string]bool{}
-	for _, s := range all {
-		ok[s] = true
-	}
-	var out []string
-	for _, s := range want {
-		s = strings.ToUpper(strings.TrimSpace(s))
-		if ok[s] {
-			out = append(out, s)
-		} else {
-			log.Printf("depth symbol %q not in universe, skipped", s)
-		}
-	}
-	return out
-}
-
-func fileSHA(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-// sweepLoop registers hour files that closed without a rotation callback (idle groups, recovery).
-func sweepLoop(ctx context.Context, rawDir string, register func(rawlog.Closed)) {
-	t := time.NewTicker(2 * time.Minute)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			for _, c := range rawlog.Sweep(rawDir, time.Now()) {
-				register(c)
-			}
-		}
-	}
-}
-
-func serveMetrics(addr string, w *rawlog.Writer, col *collector.Collector, snap *snapshot.Scheduler, ready *readiness, depthSyms int) {
+func serveMetrics(addr string, w *rawlog.Writer, col *collector.Collector, ready *readiness) {
 	if addr == "" {
 		return
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", func(rw http.ResponseWriter, _ *http.Request) {
 		s := w.Stats()
-		ss := snap.Stats()
 		fmt.Fprintf(rw, "liqwatch_queue_depth %d\nliqwatch_queue_depth_ratio %f\nliqwatch_written_bytes_total %d\n",
 			s.QueueDepth, float64(s.QueueDepth)/float64(max(s.QueueCap, 1)), s.Written)
 		for ch, n := range s.Dropped {
@@ -238,13 +133,10 @@ func serveMetrics(addr string, w *rawlog.Writer, col *collector.Collector, snap 
 		}
 		fmt.Fprintf(rw, "liqwatch_disk_stop_total %d\nliqwatch_reconnects_total %d\nliqwatch_stalls_total %d\nliqwatch_messages_total %d\n",
 			s.DiskStops, col.Reconnects.Load(), col.Stalls.Load(), col.Messages.Load())
-		fmt.Fprintf(rw, "liqwatch_snapshot_requests_total %d\nliqwatch_rest_weight_used %d\nliqwatch_rest_rate_limited_total %d\n",
-			ss.Requests, ss.WeightUsed, ss.RateLimited)
-		fmt.Fprintf(rw, "liqwatch_shards_open %d\nliqwatch_shards_expected %d\nliqwatch_snapshots_written %d\nliqwatch_snapshots_expected %d\nliqwatch_start_unix %d\n",
-			ready.open(), ready.expected(), ss.Written, depthSyms, startUnix)
+		fmt.Fprintf(rw, "liqwatch_shards_open %d\nliqwatch_shards_expected %d\nliqwatch_start_unix %d\n", ready.open(), ready.expected(), startUnix)
 	})
 	mux.HandleFunc("/ready", func(rw http.ResponseWriter, _ *http.Request) {
-		if ready.open() < ready.expected() || ready.expected() == 0 || snap.Stats().Written < uint64(depthSyms) {
+		if ready.open() < ready.expected() || ready.expected() == 0 {
 			http.Error(rw, "not ready", http.StatusServiceUnavailable)
 			return
 		}
@@ -261,7 +153,7 @@ var startUnix = time.Now().Unix()
 type readiness struct {
 	mu   sync.Mutex
 	want int
-	seen map[string]bool
+	seen map[string]int
 }
 
 func (r *readiness) expectShards(n int) { r.mu.Lock(); r.want = n; r.mu.Unlock() }
@@ -269,9 +161,18 @@ func (r *readiness) shardOpened(sh collector.Shard) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.seen == nil {
-		r.seen = map[string]bool{}
+		r.seen = map[string]int{}
 	}
-	r.seen[sh.Name] = true
+	r.seen[sh.Name]++
+}
+func (r *readiness) shardClosed(sh collector.Shard) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.seen[sh.Name] > 1 {
+		r.seen[sh.Name]--
+	} else {
+		delete(r.seen, sh.Name)
+	}
 }
 func (r *readiness) open() int     { r.mu.Lock(); defer r.mu.Unlock(); return len(r.seen) }
 func (r *readiness) expected() int { r.mu.Lock(); defer r.mu.Unlock(); return r.want }

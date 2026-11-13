@@ -294,7 +294,7 @@ func (b *Backfiller) write(symbol string, from int64, start time.Time, status in
 	}{Status: status, FromID: from, Body: body, ReqEndNS: end.UnixNano()}
 	p.ReqStartNS = start.UnixNano()
 	encoded, _ := json.Marshal(p)
-	b.sink.Write(rawlog.GroupTrade, rawlog.Record{RecvWal: end.UnixNano(), RecvMon: rawlog.Mono(), Channel: "aggTrade_backfill", Symbol: symbol, Payload: encoded})
+	b.sink.Write(rawlog.GroupTrade, rawlog.Record{Venue: "binance", RecvWal: end.UnixNano(), RecvMon: rawlog.Mono(), Channel: "aggTrade_backfill", Symbol: symbol, Payload: encoded})
 }
 
 func (b *Backfiller) allow(ctx context.Context) error {

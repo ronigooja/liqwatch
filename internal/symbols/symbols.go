@@ -56,7 +56,7 @@ func Load(ctx context.Context, stateDir string) (*Universe, error) {
 		}
 	}
 	for _, s := range v.Symbols {
-		if s.ContractType != "PERPETUAL" || s.Status != "TRADING" || s.QuoteAsset != "USDT" || isTradfi(s.UnderlyingType, s.UnderlyingSubType) {
+		if s.ContractType != "PERPETUAL" || s.Status != "TRADING" || s.QuoteAsset != "USDT" {
 			continue
 		}
 		u.All = append(u.All, s.Symbol)

@@ -53,6 +53,8 @@ type Collector struct {
 	OpenSpacing time.Duration
 	// OnOpen is called every time a connection of a shard opens (first, reconnect or replacement).
 	OnOpen func(Shard)
+	// OnClose is called when an opened connection closes.
+	OnClose func(Shard)
 
 	Reconnects atomic.Int64
 	Stalls     atomic.Int64
@@ -227,6 +229,9 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 	close(k.opened)
 	if c.OnOpen != nil {
 		c.OnOpen(sh)
+	}
+	if c.OnClose != nil {
+		defer c.OnClose(sh)
 	}
 	log.Printf("shard %s conn %s open (%d streams)", sh.Name, k.id, len(sh.Streams))
 

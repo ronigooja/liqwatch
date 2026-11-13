@@ -33,8 +33,16 @@ func TestReadinessCountsDistinctShards(t *testing.T) {
 	r.expectShards(3)
 	r.shardOpened(collector.Shard{Name: "trade00"})
 	r.shardOpened(collector.Shard{Name: "trade00"}) // reconnect of the same shard
-	r.shardOpened(collector.Shard{Name: "depth"})
+	r.shardOpened(collector.Shard{Name: "misc"})
 	if r.open() != 2 || r.expected() != 3 {
 		t.Fatalf("open=%d expected=%d", r.open(), r.expected())
+	}
+	r.shardClosed(collector.Shard{Name: "trade00"})
+	if r.open() != 2 {
+		t.Fatal("overlapping connection should remain open")
+	}
+	r.shardClosed(collector.Shard{Name: "trade00"})
+	if r.open() != 1 {
+		t.Fatal("closed shard counted as open")
 	}
 }
