@@ -247,3 +247,72 @@ func TestClasses(t *testing.T) {
 		}
 	}
 }
+
+func TestFilteringAndSampling(t *testing.T) {
+	a := &Adapter{}
+	sampleMu.Lock()
+	oldNow, oldTimes := sampleNow, sampleTimes
+	now := time.Unix(10000, 0)
+	sampleNow = func() time.Time { return now }
+	sampleTimes = map[string]time.Time{}
+	sampleMu.Unlock()
+	defer func() { sampleMu.Lock(); sampleNow, sampleTimes = oldNow, oldTimes; sampleMu.Unlock() }()
+	sh := venue.Shard{Name: "filter-test"}
+	frame := `{"topic":"tickers.BTCUSDT","type":"delta","data":{"symbol":"BTCUSDT","bid1Price":"3","markPrice":"1.2300","newField":"\\u0031"},"cs":123,"ts":456}`
+	before := a.UnknownFieldsSeen()
+	r := a.Split(sh, []byte(frame))
+	want := `{"topic":"tickers.BTCUSDT","type":"delta","data":{"symbol":"BTCUSDT","markPrice":"1.2300","newField":"\\u0031"},"cs":123,"ts":456}`
+	if len(r) != 2 || string(r[0].Payload) != want || string(r[1].Payload) != `{"sample":`+frame+`}` || a.UnknownFieldsSeen() != before+1 {
+		t.Fatalf("records: %+v unknown: %d", r, a.UnknownFieldsSeen()-before)
+	}
+	if r = a.Split(sh, []byte(frame)); len(r) != 1 {
+		t.Fatal(r)
+	}
+	now = now.Add(time.Hour)
+	if r = a.Split(sh, []byte(frame)); len(r) != 2 {
+		t.Fatal(r)
+	}
+	drop := `{"topic":"tickers.ETHUSDT","type":"delta","data":{"symbol":"ETHUSDT","bid1Size":"1"},"ts":1}`
+	before = a.DroppedDeltas()
+	if r = a.Split(sh, []byte(drop)); len(r) != 0 || a.DroppedDeltas() != before+1 {
+		t.Fatal(r)
+	}
+	batch := `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"s":"BTCUSDT","p":"1.00","L":"PlusTick"},{"s":"BTCUSDT","p":"2.00","L":"MinusTick"}]}`
+	r = a.Split(sh, []byte(batch))
+	if len(r) != 3 || string(r[0].Payload) != `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"s":"BTCUSDT","p":"1.00"}]}` || string(r[1].Payload) != `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"s":"BTCUSDT","p":"2.00"}]}` {
+		t.Fatal(r)
+	}
+}
+
+func TestFixtureSizes(t *testing.T) {
+	a := &Adapter{}
+	type totals struct{ frames, records, before, after int }
+	all := map[string]*totals{}
+	for _, f := range venuetest.Fixture(t, "testdata/frames.jsonl") {
+		var x struct {
+			Topic string `json:"topic"`
+		}
+		if json.Unmarshal(f, &x) != nil {
+			t.Fatal("bad fixture")
+		}
+		ch := map[string]string{"tickers": "mark", "publicTrade": "trade", "allLiquidation": "liquidation"}[strings.Split(x.Topic, ".")[0]]
+		if ch == "" {
+			continue
+		}
+		if all[ch] == nil {
+			all[ch] = &totals{}
+		}
+		v := all[ch]
+		v.frames++
+		v.before += len(f)
+		for _, r := range a.Split(venue.Shard{Name: "sizes"}, f) {
+			if !strings.HasPrefix(string(r.Payload), `{"sample":`) {
+				v.records++
+				v.after += len(r.Payload)
+			}
+		}
+	}
+	for ch, v := range all {
+		t.Logf("%s frames=%d records=%d before/frame=%.2f after/record=%.2f before total=%d after total=%d", ch, v.frames, v.records, float64(v.before)/float64(v.frames), float64(v.after)/float64(v.records), v.before, v.after)
+	}
+}
