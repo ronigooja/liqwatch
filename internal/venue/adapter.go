@@ -3,6 +3,7 @@ package venue
 
 import (
 	"context"
+	"net/http"
 	"sync"
 	"time"
 
@@ -16,7 +17,8 @@ type Symbol = string
 type Shard struct {
 	Name             string
 	URL              string
-	Streams          []string // Informational; used in gap records and readiness.
+	Header           http.Header // Optional WebSocket dial headers; nil sends none.
+	Streams          []string    // Informational; used in gap records and readiness.
 	Stall            time.Duration
 	MaxAge           time.Duration // Zero selects the collector default.
 	MaxSubsPerConn   int           // Informational.

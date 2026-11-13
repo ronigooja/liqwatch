@@ -187,7 +187,7 @@ func (c *Collector) start(parent context.Context, sh Shard, url string, gen int)
 }
 
 func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) error {
-	ws, _, err := websocket.Dial(ctx, url, nil)
+	ws, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: sh.Header})
 	if err != nil {
 		return err
 	}
