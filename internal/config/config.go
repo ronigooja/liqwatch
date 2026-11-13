@@ -14,6 +14,7 @@ type Config struct {
 	Collect  Collect  `toml:"collect"`
 	Snapshot Snapshot `toml:"snapshot"`
 	Archive  Archive  `toml:"archive"`
+	Pack     Pack     `toml:"pack"`
 	Checks   Checks   `toml:"checks"`
 }
 
@@ -35,11 +36,17 @@ type Snapshot struct {
 }
 
 type Archive struct {
-	RemoteRoot     string `toml:"remote_root"`      // https://.../dav/ronigooja_onedrive/liqwatch/
-	ChunkMB        int    `toml:"chunk_mb"`         // 128
-	DeleteAfterH   int    `toml:"delete_after_h"`   // 6, counted from verified
-	FullVerifyDays int    `toml:"full_verify_days"` // 7: download-and-hash
-	MaxKBps        int    `toml:"max_kbps"`
+	RemoteRoot          string `toml:"remote_root"` // https://.../dav/ronigooja_onedrive/liqwatch/
+	MaxPackMB           int    `toml:"max_pack_mb"`
+	FullVerifyDays      int    `toml:"full_verify_days"` // 7: download-and-hash
+	VerifySamplePercent int    `toml:"verify_sample_percent"`
+	MaxKBps             int    `toml:"max_kbps"`
+}
+
+type Pack struct {
+	Unit         string `toml:"unit"`
+	Level        int    `toml:"level"`
+	QuietMinutes int    `toml:"quiet_minutes"`
 }
 
 type Checks struct {
@@ -59,7 +66,8 @@ func Load(path string) (*Config, error) {
 		DataDir:  "/var/lib/liqwatch",
 		Collect:  Collect{MetricsAddr: "127.0.0.1:9101", QuoteTopN: 50, DepthSpeed: "100ms", MaxStreamsPerWS: 100, QueueSize: 10000, OpenSpacingMS: 500},
 		Snapshot: Snapshot{Limit: 1000, VerifyEveryMin: 5, WeightFraction: 0.25},
-		Archive:  Archive{ChunkMB: 64, DeleteAfterH: 6, FullVerifyDays: 7, MaxKBps: 0},
+		Archive:  Archive{MaxPackMB: 400, FullVerifyDays: 7, VerifySamplePercent: 10},
+		Pack:     Pack{Unit: "tar_then_zstd", Level: 3, QuietMinutes: 10},
 		Checks:   Checks{DiskWarnPct: 80, StaleWriteSec: 120, UnverifiedHours: 3},
 	}
 	b, err := os.ReadFile(path)
@@ -93,8 +101,11 @@ func (c Config) validate() error {
 	if c.Snapshot.Limit <= 0 || c.Snapshot.VerifyEveryMin <= 0 || c.Snapshot.WeightFraction <= 0 || c.Snapshot.WeightFraction > 1 {
 		return fmt.Errorf("snapshot values are invalid")
 	}
-	if c.Archive.ChunkMB <= 0 || c.Archive.DeleteAfterH < 0 || c.Archive.FullVerifyDays < 0 {
+	if c.Archive.MaxPackMB <= 0 || c.Archive.FullVerifyDays < 0 || c.Archive.MaxKBps < 0 || c.Archive.VerifySamplePercent < 0 || c.Archive.VerifySamplePercent > 100 {
 		return fmt.Errorf("archive values are invalid")
+	}
+	if (c.Pack.Unit != "tar_then_zstd" && c.Pack.Unit != "zstd_then_tar") || c.Pack.Level < 1 || c.Pack.Level > 22 || c.Pack.QuietMinutes <= 0 {
+		return fmt.Errorf("pack values are invalid")
 	}
 	if c.Checks.DiskWarnPct < 1 || c.Checks.DiskWarnPct > 100 || c.Checks.StaleWriteSec <= 0 || c.Checks.UnverifiedHours <= 0 {
 		return fmt.Errorf("checks values are invalid")

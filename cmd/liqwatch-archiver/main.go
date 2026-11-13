@@ -4,301 +4,286 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/ronigooja/liqwatch/internal/config"
+	"github.com/ronigooja/liqwatch/internal/manifest"
+	"github.com/ronigooja/liqwatch/internal/pack"
+	"github.com/ronigooja/liqwatch/internal/webdav"
 	"io"
+	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/pelletier/go-toml/v2"
-	"github.com/ronigooja/liqwatch/internal/config"
-	"github.com/ronigooja/liqwatch/internal/manifest"
-	"github.com/ronigooja/liqwatch/internal/webdav"
 )
 
 type meta struct {
-	Size   int64    `json:"size"`
-	SHA256 string   `json:"sha256"`
-	Chunks []string `json:"chunks"`
+	Size    int64             `json:"size"`
+	SHA256  string            `json:"sha256"`
+	Members []manifest.Member `json:"members"`
+	Unit    string            `json:"unit"`
+	Level   int               `json:"level"`
 }
 
 func main() {
-	var configPath string
-	flag.StringVar(&configPath, "config", "/etc/liqwatch/config.toml", "configuration file")
+	p := flag.String("config", "/etc/liqwatch/config.toml", "configuration file")
 	flag.Parse()
-	var cfg config.Config
-	b, err := os.ReadFile(configPath)
+	cfg, err := config.Load(*p)
+	if err == nil {
+		err = run(context.Background(), *cfg)
+	}
 	if err != nil {
-		fatal(err)
-	}
-	if err = toml.Unmarshal(b, &cfg); err != nil {
-		fatal(err)
-	}
-	if err = run(context.Background(), cfg); err != nil {
-		fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
-
 func run(ctx context.Context, cfg config.Config) error {
-	if cfg.Archive.ChunkMB <= 0 {
-		return errors.New("archive chunk_mb must be positive")
-	}
-	if err := os.MkdirAll(filepath.Join(cfg.DataDir, "manifest"), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Join(cfg.DataDir, "manifest"), 0750); err != nil {
 		return err
 	}
-	store, err := manifest.Open(filepath.Join(cfg.DataDir, "manifest", "manifest.db"))
+	s, err := manifest.Open(filepath.Join(cfg.DataDir, "manifest", "manifest.db"))
 	if err != nil {
 		return err
 	}
-	defer store.Close()
-	user, pass := os.Getenv(config.EnvWebDAVUser), os.Getenv(config.EnvWebDAVPass)
-	dav := webdav.New(cfg.Archive.RemoteRoot, user, pass)
+	defer s.Close()
+	dav := webdav.New(cfg.Archive.RemoteRoot, os.Getenv(config.EnvWebDAVUser), os.Getenv(config.EnvWebDAVPass))
 	dav.MaxKBps = cfg.Archive.MaxKBps
-	for _, state := range []manifest.State{manifest.StateClosed, manifest.StateUploading} {
-		files, err := store.ListByState(state)
+	var pending []manifest.Pack
+	for _, st := range []manifest.State{manifest.StateUploading, manifest.StateClosed} {
+		ps, err := s.ListByState(st)
 		if err != nil {
 			return err
 		}
-		for _, f := range files {
-			if state == manifest.StateClosed {
-				if err = store.SetState(f.ID, manifest.StateUploading); err != nil {
-					return err
-				}
-			}
-			if err = archiveOne(ctx, cfg, store, dav, f); err != nil {
-				return err
+		pending = append(pending, ps...)
+	}
+	failures := 0
+	for _, p := range pending {
+		if p.State == manifest.StateClosed {
+			if err = s.SetState(p.ID, manifest.StateUploading); err != nil {
+				log.Printf("upload %s: %v", p.Path, err)
+				failures++
+				continue
 			}
 		}
+		if err = archiveOne(ctx, cfg, s, dav, p); err != nil {
+			log.Printf("upload %s: %v", p.Path, err)
+			failures++
+		}
 	}
-	if err = verifyFiles(ctx, cfg, store, dav); err != nil {
-		return err
+	verificationFailures, verifyErr := verifyFiles(ctx, cfg, s, dav)
+	deletionFailures, deleteErr := deleteFiles(cfg, s)
+	failures += verificationFailures + deletionFailures
+	if failures > 0 || verifyErr != nil || deleteErr != nil {
+		return fmt.Errorf("archiver: %d pack failures; verification: %v; deletion: %v", failures, verifyErr, deleteErr)
 	}
-	return deleteFiles(cfg, store)
+	return nil
 }
-
-func archiveOne(ctx context.Context, cfg config.Config, store manifest.Store, dav *webdav.Client, f manifest.File) error {
-	local := filepath.Join(cfg.DataDir, "raw", filepath.FromSlash(f.Path))
-	in, err := os.Open(local)
+func remotePath(p manifest.Pack) string {
+	return path.Join("raw", p.Venue, p.Symbol, path.Base(filepath.ToSlash(p.Path)))
+}
+func metaPath(p manifest.Pack) string {
+	return path.Join("raw", p.Venue, p.Symbol, fmt.Sprintf("%08d.meta.json", p.Day))
+}
+func metadata(cfg config.Config, s manifest.Store, p manifest.Pack) ([]byte, error) {
+	members, err := s.Members(p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if members == nil {
+		members = []manifest.Member{}
+	}
+	unit := pack.ZstdThenTar
+	if strings.HasSuffix(p.Path, ".tar.zst") {
+		unit = pack.TarThenZstd
+	}
+	level := cfg.Pack.Level
+	return json.Marshal(meta{Size: p.Bytes, SHA256: p.SHA256, Members: members, Unit: unit, Level: level})
+}
+func archiveOne(ctx context.Context, cfg config.Config, s manifest.Store, dav *webdav.Client, p manifest.Pack) error {
+	local := filepath.Join(cfg.DataDir, "packs", filepath.FromSlash(p.Path))
+	f, err := os.Open(local)
 	if err != nil {
 		return err
 	}
-	defer in.Close()
 	h := sha256.New()
-	n, err := io.Copy(h, in)
+	n, err := io.Copy(h, f)
+	f.Close()
 	if err != nil {
 		return err
 	}
 	sum := hex.EncodeToString(h.Sum(nil))
-	if f.SHA256 != "" && f.SHA256 != sum {
-		return errors.New("local file checksum mismatch")
+	if n != p.Bytes || p.SHA256 != "" && p.SHA256 != sum {
+		return errors.New("local pack checksum or size mismatch")
 	}
-	if f.SHA256 == "" {
-		if s, ok := store.(*manifest.SQLiteStore); ok {
-			if err = s.SetSHA256(f.ID, sum); err != nil {
-				return err
-			}
-		}
-	}
-	if _, err = in.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	chunkSize := int64(cfg.Archive.ChunkMB) * 1024 * 1024
-	count := int((n + chunkSize - 1) / chunkSize)
-	dir := pathDate(f.Path)
-	base := filepath.Base(f.Path)
-	remoteDir := filepath.ToSlash(filepath.Join("raw", dir))
-	if err = dav.MkdirAll(ctx, remoteDir); err != nil {
-		return err
-	}
-	chunks := make([]string, 0, count)
-	buf := make([]byte, chunkSize)
-	for i := 0; i < count; i++ {
-		want := chunkSize
-		if rem := n - int64(i)*chunkSize; rem < want {
-			want = rem
-		}
-		if _, err = io.ReadFull(in, buf[:want]); err != nil {
+	if p.SHA256 == "" {
+		if err = s.SetSHA256(p.ID, sum); err != nil {
 			return err
 		}
-		name := fmt.Sprintf("%s.part%04d", base, i)
-		remote := filepath.ToSlash(filepath.Join(remoteDir, name))
-		chunks = append(chunks, name)
-		size, e := dav.Stat(ctx, remote)
-		if e == nil && size == want {
-			continue
-		}
-		if e == nil && size != want { /* overwrite below */
-		}
-		if err = putBytes(ctx, dav, remote, buf[:want]); err != nil {
+		p.SHA256 = sum
+	}
+	if n > int64(cfg.Archive.MaxPackMB)*1024*1024 {
+		log.Printf("warning: oversized pack %s (%d bytes)", p.Path, n)
+		if err = s.IncrSetting("pack_oversize_count"); err != nil {
 			return err
 		}
 	}
-	m := meta{Size: n, SHA256: sum, Chunks: chunks}
-	body, _ := json.Marshal(m)
-	metaName := filepath.ToSlash(filepath.Join(remoteDir, base+".meta.json"))
-	if err = putVerified(ctx, dav, metaName, body); err != nil {
+	remote := remotePath(p)
+	if err = dav.MkdirAll(ctx, path.Dir(remote)); err != nil {
 		return err
 	}
-	if s, ok := store.(*manifest.SQLiteStore); ok {
-		if err = s.SetUploadMetadata(f.ID, filepath.ToSlash(filepath.Join(remoteDir, base)), count); err != nil {
-			return err
-		}
-	}
-	if err = store.SetState(f.ID, manifest.StateUploaded); err != nil {
+	if err = dav.PutFile(ctx, remote, local, n); err != nil {
 		return err
 	}
-	return nil
+	size, err := dav.Stat(ctx, remote)
+	if err != nil {
+		return err
+	}
+	if size != n {
+		return fmt.Errorf("remote pack size mismatch: got %d want %d", size, n)
+	}
+	body, err := metadata(cfg, s, p)
+	if err != nil {
+		return err
+	}
+	if err = putVerified(ctx, dav, metaPath(p), body); err != nil {
+		return err
+	}
+	if err = s.SetUploadMetadata(p.ID, remote); err != nil {
+		return err
+	}
+	return s.SetState(p.ID, manifest.StateUploaded)
 }
-
-func putBytes(ctx context.Context, dav *webdav.Client, name string, b []byte) error {
-	return dav.Put(ctx, name, bytes.NewReader(b), int64(len(b)))
-}
-
-// putVerified uploads small metadata and reads it back; the storage once accepted a PUT and kept
-// a zero-byte file, which the size check on data chunks does not cover.
 func putVerified(ctx context.Context, dav *webdav.Client, name string, b []byte) error {
 	var err error
-	for attempt := 0; attempt < 3; attempt++ {
-		if err = putBytes(ctx, dav, name, b); err != nil {
+	for i := 0; i < 3; i++ {
+		if err = dav.Put(ctx, name, bytes.NewReader(b), int64(len(b))); err != nil {
+			continue
+		}
+		var size int64
+		size, err = dav.Stat(ctx, name)
+		if err != nil {
+			continue
+		}
+		if size != int64(len(b)) {
+			err = errors.New("remote metadata size mismatch")
+			continue
+		}
+		var r io.ReadCloser
+		r, _, err = dav.Get(ctx, name)
+		if err != nil {
 			continue
 		}
 		var got []byte
-		var r io.ReadCloser
-		if r, _, err = dav.Get(ctx, name); err != nil {
-			continue
-		}
 		got, err = io.ReadAll(r)
 		r.Close()
 		if err == nil && bytes.Equal(got, b) {
 			return nil
 		}
-		err = fmt.Errorf("metadata read-back mismatch for %s (%d of %d bytes)", name, len(got), len(b))
+		err = errors.New("metadata read-back mismatch")
 	}
 	return err
 }
-
-func pathDate(p string) string {
-	parts := strings.Split(filepath.ToSlash(p), "/")
-	for _, x := range parts {
-		if len(x) == 8 {
-			return x
-		}
-	}
-	return time.Now().UTC().Format("20060102")
-}
-
-func verifyFiles(ctx context.Context, cfg config.Config, store manifest.Store, dav *webdav.Client) error {
-	files, err := store.ListByState(manifest.StateUploaded)
+func ensureMeta(ctx context.Context, cfg config.Config, s manifest.Store, dav *webdav.Client, p manifest.Pack) error {
+	want, err := metadata(cfg, s, p)
 	if err != nil {
 		return err
 	}
-	first := time.Time{}
-	if s, ok := store.(interface{ FirstVerifiedDate() (time.Time, error) }); ok {
-		first, err = s.FirstVerifiedDate()
-		if err != nil {
-			return err
+	if r, _, e := dav.Get(ctx, metaPath(p)); e == nil {
+		got, e := io.ReadAll(r)
+		r.Close()
+		if e == nil && bytes.Equal(got, want) {
+			return nil
 		}
 	}
+	return putVerified(ctx, dav, metaPath(p), want)
+}
+func verifyFiles(ctx context.Context, cfg config.Config, s *manifest.SQLiteStore, dav *webdav.Client) (int, error) {
+	ps, err := s.ListByState(manifest.StateUploaded)
+	if err != nil {
+		return 0, err
+	}
+	first, err := s.FirstVerifiedDate()
+	if err != nil {
+		return 0, err
+	}
+	full := first.IsZero() || time.Now().Before(first.AddDate(0, 0, cfg.Archive.FullVerifyDays))
+	failures := 0
+	for _, p := range ps {
+		if err = verifyOne(ctx, cfg, s, dav, p, full); err != nil {
+			log.Printf("verify %s: %v", p.Path, err)
+			failures++
+			continue
+		}
+		if err = s.MarkVerified(p.ID, time.Now().UTC()); err != nil {
+			log.Printf("verify %s: %v", p.Path, err)
+			failures++
+		}
+	}
+	return failures, nil
+}
+func verifyOne(ctx context.Context, cfg config.Config, s manifest.Store, dav *webdav.Client, p manifest.Pack, full bool) error {
+	if err := ensureMeta(ctx, cfg, s, dav, p); err != nil {
+		return err
+	}
+	remote := p.RemotePath
+	if remote == "" {
+		remote = remotePath(p)
+	}
+	size, err := dav.Stat(ctx, remote)
 	if err != nil {
 		return err
 	}
-	full := first.IsZero() || time.Since(first.AddDate(0, 0, cfg.Archive.FullVerifyDays)) < 0
-	for _, f := range files {
-		if err = verifyOne(ctx, cfg, dav, f, full); err != nil {
-			return err
-		}
-		if err = store.MarkVerified(f.ID, filepath.ToSlash(filepath.Join("raw", pathDate(f.Path), filepath.Base(f.Path))), f.ChunkCount, time.Now().UTC()); err != nil {
-			return err
-		}
+	if size != p.Bytes {
+		return errors.New("remote pack size mismatch")
 	}
-	return nil
-}
-
-func verifyOne(ctx context.Context, cfg config.Config, dav *webdav.Client, f manifest.File, full bool) error {
-	if f.RemotePath == "" {
-		f.RemotePath = filepath.ToSlash(filepath.Join("raw", pathDate(f.Path), filepath.Base(f.Path)))
+	hash := sha256.Sum256([]byte(filepath.ToSlash(p.Path)))
+	if !full && binary.BigEndian.Uint64(hash[:8])%100 >= uint64(cfg.Archive.VerifySamplePercent) {
+		return nil
 	}
-	if f.ChunkCount <= 0 {
-		return errors.New("missing chunk count")
-	}
-	if err := ensureMeta(ctx, dav, f); err != nil {
+	r, _, err := dav.Get(ctx, remote)
+	if err != nil {
 		return err
 	}
-	chunkSize := int64(cfg.Archive.ChunkMB) * 1024 * 1024
 	h := sha256.New()
-	var total int64
-	for i := 0; i < f.ChunkCount; i++ {
-		name := fmt.Sprintf("%s.part%04d", f.RemotePath, i)
-		size, err := dav.Stat(ctx, name)
-		if err != nil {
-			return err
-		}
-		want := chunkSize
-		if rem := f.Bytes - int64(i)*chunkSize; rem < want {
-			want = rem
-		}
-		if size != want {
-			return fmt.Errorf("remote chunk size mismatch")
-		}
-		if full || i == 0 {
-			r, _, err := dav.Get(ctx, name)
-			if err != nil {
-				return err
-			}
-			_, err = io.Copy(h, r)
-			r.Close()
-			if err != nil {
-				return err
-			}
-		}
-		total += size
+	_, err = io.Copy(h, r)
+	r.Close()
+	if err != nil {
+		return err
 	}
-	if full && (total != f.Bytes || hex.EncodeToString(h.Sum(nil)) != f.SHA256) {
+	if hex.EncodeToString(h.Sum(nil)) != p.SHA256 {
 		return errors.New("remote verification checksum mismatch")
 	}
 	return nil
 }
-
-// ensureMeta makes sure the .meta.json next to the chunks is readable and matches the manifest. The
-// data chunks are the truth, so a bad metadata object is rewritten from the manifest.
-func ensureMeta(ctx context.Context, dav *webdav.Client, f manifest.File) error {
-	if f.SHA256 == "" {
-		return nil
+func deleteFiles(cfg config.Config, s manifest.Store) (int, error) {
+	ps, err := s.ListByState(manifest.StateVerified)
+	if err != nil {
+		return 0, err
 	}
-	name := f.RemotePath + ".meta.json"
-	chunks := make([]string, f.ChunkCount)
-	for i := range chunks {
-		chunks[i] = fmt.Sprintf("%s.part%04d", filepath.Base(f.RemotePath), i)
-	}
-	want, _ := json.Marshal(meta{Size: f.Bytes, SHA256: f.SHA256, Chunks: chunks})
-	if r, _, err := dav.Get(ctx, name); err == nil {
-		got, _ := io.ReadAll(r)
-		r.Close()
-		if bytes.Equal(got, want) {
-			return nil
+	failures := 0
+	for _, p := range ps {
+		if err = deleteOne(cfg, s, p); err != nil {
+			log.Printf("delete %s: %v", p.Path, err)
+			failures++
 		}
 	}
-	return putVerified(ctx, dav, name, want)
+	return failures, nil
 }
-
-func deleteFiles(cfg config.Config, store manifest.Store) error {
-	files, err := store.DeletableFiles(time.Duration(cfg.Archive.DeleteAfterH)*time.Hour, time.Now())
-	if err != nil {
+func deleteOne(cfg config.Config, s manifest.Store, p manifest.Pack) error {
+	if p.VerifiedAt.IsZero() {
+		return errors.New("missing verification time")
+	}
+	if err := pack.RemoveRaw(filepath.Join(cfg.DataDir, "raw"), p.Venue, p.Symbol, fmt.Sprintf("%08d", p.Day)); err != nil {
 		return err
 	}
-	for _, f := range files {
-		if err = store.MarkDeleted(f.ID, time.Duration(cfg.Archive.DeleteAfterH)*time.Hour, time.Now()); err != nil {
-			return err
-		}
-		if err = os.Remove(filepath.Join(cfg.DataDir, "raw", filepath.FromSlash(f.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
+	if err := os.Remove(filepath.Join(cfg.DataDir, "packs", filepath.FromSlash(p.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
-	return nil
+	return s.SetState(p.ID, manifest.StateDeleted)
 }
-func fatal(err error) { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
