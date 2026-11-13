@@ -73,4 +73,4 @@ Verified in the linked code: each table describes configured subscriptions, not 
 | Channels | Classic execution and instrument; UTA mark price/open interest |
 | Drop classes | trade → trade; mark and openinterest → mark |
 | Shards | Classic: 25 symbols; UTA: 50 symbols; token acquired for classic connections |
-| Cadence and deviations | Measured: [capture](venue-apis.md#live-adapter-captures); token refresh is being fixed separately; Chinese-named symbol not captured |
+| Cadence and deviations | Measured: [capture](venue-apis.md#live-adapter-captures); classic tokens (24 h) are renewed through `Shard.Refresh` before each reconnect or planned replacement (`MaxAge` 12 h), verified live and by test; Chinese-named symbol not captured |
