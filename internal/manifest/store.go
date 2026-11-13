@@ -4,157 +4,198 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
-
 	_ "modernc.org/sqlite"
+	"time"
 )
 
-var ErrNotFound = errors.New("manifest file not found")
+var ErrNotFound = errors.New("manifest pack not found")
 
 type SQLiteStore struct{ db *sql.DB }
 
 func Open(path string) (*SQLiteStore, error) {
-	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(10000)")
+	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(10000)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &SQLiteStore{db: db}
-	if err := s.init(); err != nil {
+	s := &SQLiteStore{db}
+	if err = s.init(); err != nil {
 		db.Close()
 		return nil, err
 	}
 	return s, nil
 }
-
 func (s *SQLiteStore) init() error {
 	_, err := s.db.Exec(`PRAGMA journal_mode=WAL;
-CREATE TABLE IF NOT EXISTS files (
- id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, group_name TEXT NOT NULL,
- hour_start INTEGER NOT NULL, msg_count INTEGER NOT NULL, bytes INTEGER NOT NULL,
- sha256 TEXT NOT NULL, closed_at INTEGER NOT NULL, state TEXT NOT NULL,
- remote_path TEXT NOT NULL DEFAULT '', chunk_count INTEGER NOT NULL DEFAULT 0,
- verified_at INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS packs (id INTEGER PRIMARY KEY, venue TEXT NOT NULL, symbol TEXT NOT NULL, day INTEGER NOT NULL, path TEXT NOT NULL UNIQUE, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, member_count INTEGER NOT NULL, state TEXT NOT NULL, remote_path TEXT NOT NULL DEFAULT '', closed_at INTEGER NOT NULL, verified_at INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS pack_members (pack_id INTEGER NOT NULL REFERENCES packs(id), name TEXT NOT NULL, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, PRIMARY KEY(pack_id,name));
 CREATE TABLE IF NOT EXISTS gaps (stream TEXT NOT NULL, start_ns INTEGER NOT NULL, end_ns INTEGER NOT NULL, cause TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS drops (window_start INTEGER NOT NULL, channel TEXT NOT NULL, count INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`)
 	return err
 }
-
-// RegisterClosed is idempotent: a path that is already registered keeps its original closed_at,
-// msg_count and state, so re-registration (sweeps, a second collector instance) changes nothing.
-func (s *SQLiteStore) RegisterClosed(f File) error {
-	if f.State == "" {
-		f.State = StateClosed
+func (s *SQLiteStore) RegisterPack(p Pack) error {
+	if p.State == "" {
+		p.State = StateClosed
 	}
-	_, err := s.db.Exec(`INSERT INTO files(path,group_name,hour_start,msg_count,bytes,sha256,closed_at,state,remote_path,chunk_count,verified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)
-ON CONFLICT(path) DO NOTHING`,
-		f.Path, f.Group, f.HourStart.UnixNano(), f.MsgCount, f.Bytes, f.SHA256, f.ClosedAt.UnixNano(), f.State, f.RemotePath, f.ChunkCount, nanos(f.VerifiedAt))
-	return err
+	if p.ClosedAt.IsZero() {
+		p.ClosedAt = time.Now().UTC()
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	r, err := tx.Exec(`INSERT INTO packs(venue,symbol,day,path,bytes,sha256,member_count,state,remote_path,closed_at,verified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO NOTHING`, p.Venue, p.Symbol, p.Day, p.Path, p.Bytes, p.SHA256, len(p.Members), p.State, p.RemotePath, nanos(p.ClosedAt), nanos(p.VerifiedAt))
+	if err != nil {
+		return err
+	}
+	n, err := r.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return tx.Commit()
+	}
+	id, err := r.LastInsertId()
+	if err != nil {
+		return err
+	}
+	for _, m := range p.Members {
+		if _, err = tx.Exec(`INSERT INTO pack_members VALUES(?,?,?,?)`, id, m.Name, m.Bytes, m.SHA256); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
-
-// Known reports whether path is already registered.
-func (s *SQLiteStore) Known(path string) (bool, error) {
+func (s *SQLiteStore) KnownPack(path string) (bool, error) {
 	var n int
-	err := s.db.QueryRow(`SELECT COUNT(1) FROM files WHERE path=?`, path).Scan(&n)
+	err := s.db.QueryRow(`SELECT count(*) FROM packs WHERE path=?`, path).Scan(&n)
 	return n > 0, err
 }
-
-func (s *SQLiteStore) ListByState(state State) ([]File, error) {
-	rows, err := s.db.Query(`SELECT id,path,group_name,hour_start,msg_count,bytes,sha256,closed_at,state,remote_path,chunk_count,verified_at FROM files WHERE state=? ORDER BY id`, state)
+func (s *SQLiteStore) ListByState(st State) ([]Pack, error) {
+	rows, err := s.db.Query(`SELECT id,venue,symbol,day,path,bytes,sha256,member_count,state,remote_path,closed_at,verified_at FROM packs WHERE state=? ORDER BY id`, st)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []File
+	var out []Pack
 	for rows.Next() {
-		f, err := scanFile(rows)
-		if err != nil {
+		var p Pack
+		var closed, verified int64
+		if err = rows.Scan(&p.ID, &p.Venue, &p.Symbol, &p.Day, &p.Path, &p.Bytes, &p.SHA256, &p.MemberCount, &p.State, &p.RemotePath, &closed, &verified); err != nil {
 			return nil, err
 		}
-		out = append(out, f)
+		if closed != 0 {
+			p.ClosedAt = time.Unix(0, closed)
+		}
+		if verified != 0 {
+			p.VerifiedAt = time.Unix(0, verified)
+		}
+		out = append(out, p)
 	}
 	return out, rows.Err()
 }
-
-func (s *SQLiteStore) SetState(id int64, state State) error {
+func (s *SQLiteStore) Members(id int64) ([]Member, error) {
+	rows, err := s.db.Query(`SELECT name,bytes,sha256 FROM pack_members WHERE pack_id=? ORDER BY name`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Member
+	for rows.Next() {
+		var m Member
+		if err = rows.Scan(&m.Name, &m.Bytes, &m.SHA256); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+func (s *SQLiteStore) SetState(id int64, st State) error {
 	var old State
-	if err := s.db.QueryRow(`SELECT state FROM files WHERE id=?`, id).Scan(&old); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		}
-		return err
+	err := s.db.QueryRow(`SELECT state FROM packs WHERE id=?`, id).Scan(&old)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
 	}
-	if !validTransition(old, state) {
-		return fmt.Errorf("invalid manifest transition %s -> %s", old, state)
-	}
-	_, err := s.db.Exec(`UPDATE files SET state=? WHERE id=?`, state, id)
-	return err
-}
-
-func (s *SQLiteStore) MarkVerified(id int64, remotePath string, chunks int, at time.Time) error {
-	var state State
-	if err := s.db.QueryRow(`SELECT state FROM files WHERE id=?`, id).Scan(&state); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		}
-		return err
-	}
-	if state != StateUploaded {
-		return fmt.Errorf("cannot verify state %s", state)
-	}
-	if _, err := s.db.Exec(`UPDATE files SET state=?,remote_path=?,chunk_count=?,verified_at=? WHERE id=?`, StateVerified, remotePath, chunks, at.UnixNano(), id); err != nil {
-		return err
-	}
-	_, err := s.db.Exec(`INSERT INTO settings(key,value) VALUES('first_verified_date',?) ON CONFLICT(key) DO NOTHING`, at.UTC().Format("2006-01-02"))
-	return err
-}
-
-func (s *SQLiteStore) SetSHA256(id int64, sum string) error {
-	_, err := s.db.Exec(`UPDATE files SET sha256=? WHERE id=? AND sha256=''`, sum, id)
-	return err
-}
-
-func (s *SQLiteStore) SetUploadMetadata(id int64, remotePath string, chunks int) error {
-	_, err := s.db.Exec(`UPDATE files SET remote_path=?,chunk_count=? WHERE id=? AND state IN (?,?)`, remotePath, chunks, id, StateUploading, StateUploaded)
-	return err
-}
-
-func (s *SQLiteStore) DeletableFiles(age time.Duration, now time.Time) ([]File, error) {
-	rows, err := s.db.Query(`SELECT id,path,group_name,hour_start,msg_count,bytes,sha256,closed_at,state,remote_path,chunk_count,verified_at FROM files WHERE state=? AND verified_at>0 AND verified_at<=? ORDER BY id`, StateVerified, now.Add(-age).UnixNano())
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []File
-	for rows.Next() {
-		f, err := scanFile(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
-}
-
-func (s *SQLiteStore) MarkDeleted(id int64, age time.Duration, now time.Time) error {
-	var state State
-	var verified int64
-	if err := s.db.QueryRow(`SELECT state,verified_at FROM files WHERE id=?`, id).Scan(&state, &verified); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		}
 		return err
 	}
-	if state != StateVerified || verified == 0 || time.Unix(0, verified).Add(age).After(now) {
-		return errors.New("file is not eligible for deletion")
+	order := map[State]int{StateOpen: 0, StateClosed: 1, StateUploading: 2, StateUploaded: 3, StateVerified: 4, StateDeleted: 5}
+	a, ok := order[old]
+	b, valid := order[st]
+	if !ok || !valid || b != a+1 || st == StateVerified {
+		return fmt.Errorf("invalid manifest transition %s -> %s", old, st)
 	}
-	_, err := s.db.Exec(`UPDATE files SET state=? WHERE id=? AND state=? AND verified_at>0 AND verified_at<=?`, StateDeleted, id, StateVerified, now.Add(-age).UnixNano())
+	res, err := s.db.Exec(`UPDATE packs SET state=? WHERE id=? AND state=?`, st, id, old)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err == nil && n != 1 {
+		return errors.New("concurrent state transition")
+	}
 	return err
 }
-
-func (s *SQLiteStore) AddGap(stream string, startNs, endNs int64, cause string) error {
-	_, err := s.db.Exec(`INSERT INTO gaps VALUES(?,?,?,?)`, stream, startNs, endNs, cause)
+func (s *SQLiteStore) SetSHA256(id int64, sum string) error {
+	_, err := s.db.Exec(`UPDATE packs SET sha256=? WHERE id=? AND sha256=''`, sum, id)
+	return err
+}
+func (s *SQLiteStore) SetUploadMetadata(id int64, path string) error {
+	_, err := s.db.Exec(`UPDATE packs SET remote_path=? WHERE id=? AND state IN (?,?)`, path, id, StateUploading, StateUploaded)
+	return err
+}
+func (s *SQLiteStore) MarkVerified(id int64, at time.Time) error {
+	if at.IsZero() {
+		return errors.New("verification time required")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	r, err := tx.Exec(`UPDATE packs SET state=?,verified_at=? WHERE id=? AND state=?`, StateVerified, nanos(at), id, StateUploaded)
+	if err != nil {
+		return err
+	}
+	n, err := r.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return errors.New("pack is not uploaded")
+	}
+	_, err = tx.Exec(`INSERT INTO settings(key,value) VALUES('first_verified_date',?) ON CONFLICT(key) DO NOTHING`, at.UTC().Format("2006-01-02"))
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+func (s *SQLiteStore) SetSetting(k, v string) error {
+	_, err := s.db.Exec(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, k, v)
+	return err
+}
+func (s *SQLiteStore) GetSetting(k string) (string, error) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE key=?`, k).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return v, err
+}
+func (s *SQLiteStore) IncrSetting(k string) error {
+	_, err := s.db.Exec(`INSERT INTO settings(key,value) VALUES(?, '1') ON CONFLICT(key) DO UPDATE SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT)`, k)
+	return err
+}
+func (s *SQLiteStore) FirstVerifiedDate() (time.Time, error) {
+	v, err := s.GetSetting("first_verified_date")
+	if err != nil || v == "" {
+		return time.Time{}, err
+	}
+	return time.Parse("2006-01-02", v)
+}
+func (s *SQLiteStore) AddGap(stream string, start, end int64, cause string) error {
+	_, err := s.db.Exec(`INSERT INTO gaps VALUES(?,?,?,?)`, stream, start, end, cause)
 	return err
 }
 func (s *SQLiteStore) AddDrop(start int64, channel string, count int64) error {
@@ -162,42 +203,9 @@ func (s *SQLiteStore) AddDrop(start int64, channel string, count int64) error {
 	return err
 }
 func (s *SQLiteStore) Close() error { return s.db.Close() }
-
-func (s *SQLiteStore) FirstVerifiedDate() (time.Time, error) {
-	var v string
-	err := s.db.QueryRow(`SELECT value FROM settings WHERE key='first_verified_date'`).Scan(&v)
-	if errors.Is(err, sql.ErrNoRows) {
-		return time.Time{}, nil
-	}
-	if err != nil {
-		return time.Time{}, err
-	}
-	t, err := time.Parse("2006-01-02", v)
-	return t, err
-}
 func nanos(t time.Time) int64 {
 	if t.IsZero() {
 		return 0
 	}
 	return t.UnixNano()
-}
-func validTransition(a, b State) bool {
-	order := map[State]int{StateOpen: 0, StateClosed: 1, StateUploading: 2, StateUploaded: 3, StateVerified: 4, StateDeleted: 5}
-	return b != StateOpen && order[b] == order[a]+1
-}
-
-type scanner interface{ Scan(...any) error }
-
-func scanFile(r scanner) (File, error) {
-	var f File
-	var hs, ca, va int64
-	var st string
-	err := r.Scan(&f.ID, &f.Path, &f.Group, &hs, &f.MsgCount, &f.Bytes, &f.SHA256, &ca, &st, &f.RemotePath, &f.ChunkCount, &va)
-	f.HourStart = time.Unix(0, hs)
-	f.ClosedAt = time.Unix(0, ca)
-	f.State = State(st)
-	if va != 0 {
-		f.VerifiedAt = time.Unix(0, va)
-	}
-	return f, err
 }

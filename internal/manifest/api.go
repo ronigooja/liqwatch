@@ -1,6 +1,4 @@
-// Package manifest is the SQLite index of raw files (docs/p0-support-design.md, Component 7).
-// Pure-Go driver (modernc.org/sqlite), WAL mode. Used by the collector (register closed files,
-// gaps, drops) and the archiver (state transitions).
+// Package manifest maintains the durable index of daily packs.
 package manifest
 
 import "time"
@@ -16,32 +14,37 @@ const (
 	StateDeleted   State = "deleted"
 )
 
-type File struct {
-	ID         int64
-	Path       string // relative to raw dir, e.g. 20261103/trade-2026110312.jsonl.zst
-	Group      string
-	HourStart  time.Time
-	MsgCount   int64
-	Bytes      int64
-	SHA256     string
-	ClosedAt   time.Time
-	State      State
-	RemotePath string
-	ChunkCount int
-	VerifiedAt time.Time // zero until verified
+type Member struct {
+	Name   string `json:"name"`
+	Bytes  int64  `json:"bytes"`
+	SHA256 string `json:"sha256"`
 }
-
-// Store is the manifest API. Rules enforced inside the implementation:
-//   - transitions only move forward: closed -> uploading -> uploaded -> verified -> deleted;
-//   - MarkDeleted fails unless State is verified and VerifiedAt is at least the given age ago.
+type Pack struct {
+	ID                   int64
+	Venue, Symbol        string
+	Day                  int
+	Path                 string
+	Bytes                int64
+	SHA256               string
+	MemberCount          int
+	Members              []Member
+	State                State
+	RemotePath           string
+	ClosedAt, VerifiedAt time.Time
+}
 type Store interface {
-	RegisterClosed(f File) error
-	ListByState(s State) ([]File, error)
-	SetState(id int64, s State) error
-	MarkVerified(id int64, remotePath string, chunks int, at time.Time) error
-	DeletableFiles(minAge time.Duration, now time.Time) ([]File, error)
-	MarkDeleted(id int64, minAge time.Duration, now time.Time) error
-	AddGap(stream string, startNs, endNs int64, cause string) error
-	AddDrop(windowStart int64, channel string, count int64) error
+	RegisterPack(Pack) error
+	KnownPack(string) (bool, error)
+	ListByState(State) ([]Pack, error)
+	SetState(int64, State) error
+	SetSHA256(int64, string) error
+	SetUploadMetadata(int64, string) error
+	MarkVerified(int64, time.Time) error
+	Members(int64) ([]Member, error)
+	SetSetting(string, string) error
+	GetSetting(string) (string, error)
+	IncrSetting(string) error
+	AddGap(string, int64, int64, string) error
+	AddDrop(int64, string, int64) error
 	Close() error
 }

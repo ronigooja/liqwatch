@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -19,6 +20,33 @@ type Client struct {
 	HTTP             *http.Client
 	Retries          int
 	MaxKBps          int
+}
+
+// PutFile uploads a file without buffering it in memory and reopens it on retry.
+func (c *Client) PutFile(ctx context.Context, name, filename string, size int64) error {
+	if c.MaxKBps > 0 {
+		t := time.NewTimer(time.Duration(float64(size) / float64(c.MaxKBps*1024) * float64(time.Second)))
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return ctx.Err()
+		case <-t.C:
+		}
+	}
+	return c.retry(ctx, func() error {
+		f, err := os.Open(filename)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		resp, err := c.do(ctx, "PUT", name, f, size)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		_, err = io.Copy(io.Discard, resp.Body)
+		return err
+	})
 }
 
 func New(root, user, pass string) *Client {
