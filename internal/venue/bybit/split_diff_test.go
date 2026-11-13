@@ -36,6 +36,13 @@ func TestSplitDifferential(t *testing.T) {
 		`{"topic":"publicTrade.BTCUSDT","data":[]}`, `{"topic":"publicTrade.BTCUSDT","data":null}`,
 		`{"topic":"publicTrade.BTCUSDT","data":[{"s":"BTCUSDT","p":1},{"s":"BTCUSDT","p":2}]}`,
 		`{"topic":"tickers.BTCUSDT","data":{"x":1,"x":2},"data":{"s":"BTCUSDT"}}`,
+		`{"TOPIC":"tickers.BTCUSDT","TYPE":"snapshot","DATA":{"x":1},"data":{"y":2}}`,
+		`{"topic":"tickers.BTCUSDT","topic":null,"data":{"x":1}}`,
+		`{"topic":"publicTrade.BTCUSDT","data":[{"x":1},null]}`,
+		`{"op":"subscribe","success":false,"success":null}`,
+		`{"topic":"tickers.BTCUSDT","data":{"a\u2028b":1,"\ud800":2,"<>&":3}}`,
+		`{"topic":"tickers.BTCUSDT","data":{"x":-1.02e+20,"y":[{},[true,false,null]]}}`,
+
 		`{"topic":"tickers.BTCUSDT","data":{"\u0073ymbol":"BTCUSDT","a\"b":"<>&"}}`,
 		`{"topic":"tickers.BTCUSDT","data":{"x":1`, `{"topic":"tickers.BTCUSDT","data":[{},]}`,
 		`{"op":"subscribe","success":true}`, `{"op":"subscribe","success":false,"ret_msg":"bad"}`,
@@ -101,4 +108,75 @@ func BenchmarkSplit(b *testing.B) {
 			})
 		}
 	}
+}
+
+func compareSplits(t *testing.T, frame []byte) {
+	t.Helper()
+	run := func(legacy bool) ([]rawlog.Record, uint64, uint64, uint64, uint64, map[string]time.Time) {
+		unknownFields.Store(0)
+		droppedDeltas.Store(0)
+		sampleTimes = map[string]time.Time{}
+		a := &Adapter{}
+		sh := venue.Shard{Name: "fuzz"}
+		var r []rawlog.Record
+		for i := 0; i < 2; i++ {
+			if legacy {
+				r = append(r, a.legacySplit(sh, frame)...)
+			} else {
+				r = append(r, a.Split(sh, frame)...)
+			}
+		}
+		return r, unknownFields.Load(), droppedDeltas.Load(), a.SubscribeAcks(), a.SubscribeErrors(), sampleTimes
+	}
+	a, b, c, d, e, f := run(true)
+	x, y, z, u, v, w := run(false)
+	if !reflect.DeepEqual(a, x) || b != y || c != z || d != u || e != v || !reflect.DeepEqual(f, w) {
+		t.Fatalf("frame %q\nold %+v %d %d %d %d %v\nnew %+v %d %d %d %d %v", frame, a, b, c, d, e, f, x, y, z, u, v, w)
+	}
+}
+func fixtureFrames(t testing.TB) [][]byte {
+	t.Helper()
+	f, err := os.Open("testdata/frames.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	s := bufio.NewScanner(f)
+	s.Buffer(make([]byte, 4096), 16<<20)
+	var frames [][]byte
+	for s.Scan() {
+		frames = append(frames, append([]byte(nil), s.Bytes()...))
+	}
+	if err := s.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return frames
+}
+func TestSplitMutations(t *testing.T) {
+	old := sampleNow
+	defer func() { sampleNow = old }()
+	sampleNow = func() time.Time { return time.Unix(123456, 0) }
+	for _, frame := range fixtureFrames(t) {
+		for i := range frame {
+			compareSplits(t, frame[:i])
+			mut := append([]byte(nil), frame...)
+			mut[i] ^= 1
+			compareSplits(t, mut)
+		}
+	}
+}
+func FuzzSplitDifferential(f *testing.F) {
+	for _, frame := range fixtureFrames(f) {
+		f.Add(frame)
+	}
+	f.Add([]byte(`{"topic":"publicTrade.X","data":[{"s":"X","x":1}]}`))
+	f.Fuzz(func(t *testing.T, frame []byte) {
+		if len(frame) > 1<<20 {
+			t.Skip()
+		}
+		old := sampleNow
+		defer func() { sampleNow = old }()
+		sampleNow = func() time.Time { return time.Unix(123456, 0) }
+		compareSplits(t, frame)
+	})
 }

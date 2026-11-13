@@ -2,7 +2,6 @@
 package bybit
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,7 +13,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"github.com/coder/websocket"
 
@@ -46,91 +44,6 @@ func (*Adapter) UnknownFieldsSeen() uint64 { return unknownFields.Load() }
 
 // DroppedDeltas returns the number of ticker deltas containing no recordable data.
 func (*Adapter) DroppedDeltas() uint64 { return droppedDeltas.Load() }
-
-// orderedObject preserves field order and original value bytes while normalizing keys.
-func orderedObject(b []byte, f func(string, json.RawMessage) (json.RawMessage, bool)) ([]byte, error) {
-	b = bytes.TrimSpace(b)
-	if len(b) < 2 || b[0] != '{' || !json.Valid(b) {
-		return nil, fmt.Errorf("expected object")
-	}
-	out := make([]byte, 0, len(b))
-	out = append(out, '{')
-	for i := 1; ; {
-		for i < len(b) && (b[i] == ' ' || b[i] == '\n' || b[i] == '\r' || b[i] == '\t' || b[i] == ',') {
-			i++
-		}
-		if b[i] == '}' {
-			break
-		}
-		start := i
-		i = stringEnd(b, i)
-		rawKey := b[start:i]
-		var key string
-		if bytes.IndexByte(rawKey, '\\') < 0 && utf8.Valid(rawKey) {
-			key = string(rawKey[1 : len(rawKey)-1])
-		} else {
-			_ = json.Unmarshal(rawKey, &key)
-		}
-		for b[i] != ':' {
-			i++
-		}
-		i++
-		for b[i] == ' ' || b[i] == '\n' || b[i] == '\r' || b[i] == '\t' {
-			i++
-		}
-		start = i
-		depth := 0
-		for i < len(b) {
-			switch b[i] {
-			case '"':
-				i = stringEnd(b, i)
-				continue
-			case '{', '[':
-				depth++
-			case '}', ']':
-				if depth == 0 {
-					goto valueDone
-				}
-				depth--
-			case ',':
-				if depth == 0 {
-					goto valueDone
-				}
-			}
-			i++
-		}
-	valueDone:
-		value, keep := f(key, json.RawMessage(bytes.TrimSpace(b[start:i])))
-		if !keep {
-			continue
-		}
-		if len(out) > 1 {
-			out = append(out, ',')
-		}
-		if bytes.IndexAny(rawKey, "\\<>&") < 0 && utf8.Valid(rawKey) && !bytes.Contains(rawKey, []byte("\u2028")) && !bytes.Contains(rawKey, []byte("\u2029")) {
-			out = append(out, rawKey...)
-		} else {
-			k, _ := json.Marshal(key)
-			out = append(out, k...)
-		}
-		out = append(out, ':')
-		out = append(out, value...)
-	}
-	return append(out, '}'), nil
-}
-
-func stringEnd(b []byte, i int) int {
-	for i++; i < len(b); i++ {
-		if b[i] == '\\' {
-			i++
-			continue
-		}
-		if b[i] == '"' {
-			return i + 1
-		}
-	}
-	return i
-}
 
 // WSLinear is Bybit's public linear derivatives endpoint.
 const WSLinear = "wss://stream.bybit.com/v5/public/linear"
@@ -283,17 +196,58 @@ func (*Adapter) Heartbeat(venue.Shard) (time.Duration, func() (int, []byte)) {
 	return 20 * time.Second, func() (int, []byte) { return int(websocket.MessageText), []byte(`{"op":"ping"}`) }
 }
 func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
-	var x struct {
-		Topic   string          `json:"topic"`
-		Type    string          `json:"type"`
-		Data    json.RawMessage `json:"data"`
-		Op      string          `json:"op"`
-		Success *bool           `json:"success"`
-		RetMsg  string          `json:"ret_msg"`
+	s := jsonScanner{b: msg}
+	root, valid := s.value(0, true)
+	s.ws()
+	valid = valid && s.i == len(msg)
+	var topic, typ, op, ret string
+	var data *jsonNode
+	success := -1
+	if valid && root.start < len(msg) && msg[root.start] == '{' {
+		for i := range root.children {
+			n := &root.children[i]
+			raw := msg[n.start:n.end]
+			key := n.key
+			switch {
+			case strings.EqualFold(key, "topic"), strings.EqualFold(key, "type"), strings.EqualFold(key, "op"), strings.EqualFold(key, "ret_msg"):
+				if string(raw) == "null" {
+					continue
+				}
+				if len(raw) == 0 || raw[0] != '"' {
+					valid = false
+					continue
+				}
+				v := decodeString(raw)
+				switch {
+				case strings.EqualFold(key, "topic"):
+					topic = v
+				case strings.EqualFold(key, "type"):
+					typ = v
+				case strings.EqualFold(key, "op"):
+					op = v
+				default:
+					ret = v
+				}
+			case strings.EqualFold(key, "success"):
+				switch string(raw) {
+				case "null":
+					success = -1
+				case "true":
+					success = 1
+				case "false":
+					success = 0
+				default:
+					valid = false
+				}
+			case strings.EqualFold(key, "data"):
+				data = n
+			}
+		}
+	} else if valid && string(msg[root.start:root.end]) != "null" {
+		valid = false
 	}
-	err := json.Unmarshal(msg, &x)
-	if err == nil && x.Op == "subscribe" {
-		if (x.Success != nil && !*x.Success) || x.RetMsg != "" {
+	if valid && op == "subscribe" {
+		if success == 0 || ret != "" {
 			a.subscribeErrors.Add(1)
 			var frame any = json.RawMessage(msg)
 			if len(msg) > 4096 {
@@ -302,89 +256,106 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 			payload, _ := json.Marshal(map[string]any{"event": "subscribe_error", "frame": frame})
 			return []rawlog.Record{{Channel: "gap", Payload: payload}}
 		}
-		if x.Success != nil && *x.Success {
+		if success == 1 {
 			a.subscribeAcks.Add(1)
 		}
 		return nil
 	}
-	if err == nil && len(x.Data) == 0 && x.Topic == "" && x.Op != "" {
+	if valid && data == nil && topic == "" && op != "" {
 		return nil
 	}
-	if err == nil && len(x.Data) > 0 && string(x.Data) != "null" {
-		p := strings.SplitN(x.Topic, ".", 2)
-		if len(p) == 2 && p[1] != "" {
-			ch := map[string]string{"publicTrade": "trade", "tickers": "mark", "allLiquidation": "liquidation"}[p[0]]
-			if ch != "" {
-				var items []json.RawMessage
-				batch := x.Data[0] == '['
-				if batch {
-					err = json.Unmarshal(x.Data, &items)
-				} else {
-					items = []json.RawMessage{x.Data}
+	if valid && data != nil && string(msg[data.start:data.end]) != "null" {
+		prefix, symbol, ok := strings.Cut(topic, ".")
+		ch := ""
+		switch prefix {
+		case "publicTrade":
+			ch = "trade"
+		case "tickers":
+			ch = "mark"
+		case "allLiquidation":
+			ch = "liquidation"
+		}
+		if ok && symbol != "" && ch != "" {
+			batch := msg[data.start] == '['
+			items := []jsonNode{*data}
+			if batch {
+				items = data.children
+			}
+			var out []rawlog.Record
+			validItems := true
+			for _, item := range items {
+				if msg[item.start] != '{' {
+					validItems = false
+					break
 				}
-				if err == nil {
-					var out []rawlog.Record
-					valid := true
-					for _, item := range items {
-						meaningful := false
-						filtered, e := orderedObject(item, func(k string, v json.RawMessage) (json.RawMessage, bool) {
-							if batch && k == "s" {
-								var symbol string
-								if json.Unmarshal(v, &symbol) == nil && symbol == p[1] {
-									return nil, false
-								}
-							}
-							if dropFields[ch][k] {
-								return nil, false
-							}
-							if !keepFields[ch][k] {
-								unknownFields.Add(1)
-							}
-							if k != "symbol" && k != "s" && k != "ts" {
-								meaningful = true
-							}
-							return v, true
-						})
-						if e != nil {
-							valid = false
-							break
-						}
-						if ch == "mark" && x.Type == "delta" && !meaningful {
-							droppedDeltas.Add(1)
-							continue
-						}
+				filtered := make([]byte, 0, item.end-item.start)
+				filtered = append(filtered, '{')
+				meaningful := false
+				for _, field := range item.children {
+					k := field.key
+					v := msg[field.start:field.end]
+					if batch && k == "s" && len(v) > 0 && v[0] == '"' && decodeString(v) == symbol {
+						continue
+					}
+					if dropFields[ch][k] {
+						continue
+					}
+					if !keepFields[ch][k] {
+						unknownFields.Add(1)
+					}
+					if k != "symbol" && k != "s" && k != "ts" {
+						meaningful = true
+					}
+					if len(filtered) > 1 {
+						filtered = append(filtered, ',')
+					}
+					filtered = appendKey(filtered, k)
+					filtered = append(filtered, ':')
+					filtered = append(filtered, v...)
+				}
+				filtered = append(filtered, '}')
+				if ch == "mark" && typ == "delta" && !meaningful {
+					droppedDeltas.Add(1)
+					continue
+				}
+				payload := make([]byte, 0, len(msg))
+				payload = append(payload, '{')
+				for i, field := range root.children {
+					if i > 0 {
+						payload = append(payload, ',')
+					}
+					payload = appendKey(payload, field.key)
+					payload = append(payload, ':')
+					if field.key == "data" {
 						if batch {
-							filtered = append(append([]byte{'['}, filtered...), ']')
+							payload = append(payload, '[')
 						}
-						payload, e := orderedObject(msg, func(k string, v json.RawMessage) (json.RawMessage, bool) {
-							if k == "data" {
-								return filtered, true
-							}
-							return v, true
-						})
-						if e != nil {
-							valid = false
-							break
+						payload = append(payload, filtered...)
+						if batch {
+							payload = append(payload, ']')
 						}
-						out = append(out, rawlog.Record{Channel: ch, Symbol: p[1], Payload: payload})
-					}
-					if valid {
-						sampleMu.Lock()
-						now := sampleNow()
-						key := sh.Name + "\x00" + ch
-						last, exists := sampleTimes[key]
-						sample := !exists || now.Sub(last) >= time.Hour
-						if sample {
-							sampleTimes[key] = now
-						}
-						sampleMu.Unlock()
-						if sample {
-							payload := append(append([]byte(`{"sample":`), msg...), '}')
-							out = append(out, rawlog.Record{Channel: ch, Symbol: p[1], Payload: payload})
-						}
-						return out
+					} else {
+						payload = append(payload, msg[field.start:field.end]...)
 					}
 				}
+				payload = append(payload, '}')
+				out = append(out, rawlog.Record{Channel: ch, Symbol: symbol, Payload: payload})
+			}
+			if validItems {
+				sampleMu.Lock()
+				now := sampleNow()
+				key := sh.Name + "\x00" + ch
+				last, exists := sampleTimes[key]
+				sample := !exists || now.Sub(last) >= time.Hour
+				if sample {
+					sampleTimes[key] = now
+				}
+				sampleMu.Unlock()
+				if sample {
+					payload := append(append([]byte(`{"sample":`), msg...), '}')
+					out = append(out, rawlog.Record{Channel: ch, Symbol: symbol, Payload: payload})
+				}
+				return out
 			}
 		}
 	}
