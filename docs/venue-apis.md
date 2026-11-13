@@ -1,8 +1,21 @@
 # Venue APIs (non-Binance)
 
-Archive of keyless public API facts for venues other than Binance, surveyed on 2026-11-12 by subagents. Governing context: [liquidation-model.md](liquidation-model.md) Multiple venues, [0010](decisions/0010-liquidation-model-direction.md) item 7, [0004](decisions/0004-defer-game-layers-and-multi-venue.md). Recording another venue needs a new decision record; DEXes are excluded by [0013](decisions/0013-no-dex-recording.md).
+Keyless public API facts surveyed on 2026-11-12 and live adapter captures on 2026-11-13. Governing records: [0013](decisions/0013-no-dex-recording.md) and [0014](decisions/0014-daily-pack-storage.md).
 
-Status labels: **measured** = a live keyless call succeeded on 2026-11-12; **doc** = stated in the official documentation, not tested live; **unverified** = not found or not tested. WebSocket behavior was not tested live for any venue. Counts are response-filter counts, not tradable-volume counts. Binance intersection counts were not computed for any venue.
+Status labels: **measured** = live observation with stated date; **doc** = stated in official documentation, not necessarily tested live; **unverified** = not established. Live WebSocket captures are listed below. Counts are response-filter counts, not tradable-volume counts.
+
+## Live adapter captures
+
+Measured on 2026-11-13; fixture captures demonstrate observed delivery, not completeness. Official links and detailed counts are in each cited README.
+
+| Venue | Observation and source |
+|---|---|
+| Bybit | [Capture](../internal/venue/bybit/testdata/README.txt): 9m59s, six symbols; ticker saved-delta intervals 99–300 ms; deltas omit unchanged fields; liquidation completeness unestablished. |
+| OKX | [Capture](../internal/venue/okx/testdata/README.txt): 10 min, six swaps; 77,613 trade, 17,844 mark, 8,655 index, 366 OI, 66 funding, 69 liquidation frames; index IDs are underlying IDs. Official docs say liquidation feed is incomplete ([survey](#okx)). |
+| Bitget | [Capture](../internal/venue/bitget/testdata/README.txt): V3 trade, ticker, funding, position-tier and global liquidation delivered; position-tier data was an object, unlike the documented array example. Official docs specify 100 connections/IP and ticker on-change cadence; see capture links. |
+| Gate | [Capture](../internal/venue/gate/testdata/README.txt): identical ETH trade size was `0.1` with decimal header and `0` without it; stats symbol batching rejected; three-minute stats probe had no updates. |
+| MEXC | [Capture](../internal/venue/mexc/testdata/README.txt): 610 s, four symbols; ticker 246–247 frames/symbol, about 2.45 s average versus documented 1 s on trades; 100 ticker subscriptions received data in 90 s. |
+| KuCoin | [Capture](../internal/venue/kucoin/testdata/README.txt): 610 s, eight symbols; mark/index 37–378 updates/symbol, funding 10/symbol, executions 81–566/symbol. Active-contract response contained no non-ASCII symbol; Chinese-named symbol not captured. |
 
 ## Binance index constituents (measured)
 
@@ -56,7 +69,7 @@ No venue documents historical risk-tier snapshots, so tiers must be recorded as 
 
 ## Recordable data per venue (liquidation model inputs)
 
-Scope: all seven centralized venues are recorded (owner, 2026-11-12); DEXes are not ([0013](decisions/0013-no-dex-recording.md)); order books are not in this list. Channels are from the surveys in this file; apart from MEXC `sub.deal` and KuCoin `execution` no WebSocket channel here was connected live, so confirm fields and cadence per channel before recording.
+Scope: seven centralized venues are in scope ([0014](decisions/0014-daily-pack-storage.md)); DEXes are not ([0013](decisions/0013-no-dex-recording.md)). This table describes recordable sources, not all implemented channels; see [adapter captures](#live-adapter-captures) and [implementation](venue-adapters.md).
 
 | Data | Binance | Bybit | OKX | Bitget | Gate | MEXC | KuCoin |
 |---|---|---|---|---|---|---|---|
@@ -102,7 +115,7 @@ Constraints that shape recording:
 | History | trades 3 months, 100 per page; OI 1,440 rows, 5 m minimum; funding 3 months, 400 per page; mark and index 1 m candles | doc |
 | Limits | REST history 10 to 20 requests per 2 s per IP; WS 3 connection attempts per s per IP, 480 subscribe requests per connection per hour, 64 KB args; 30 s idle close; connections per IP and forced reconnect not found | doc |
 | Units | swap sizes are in contracts, spot in base currency | doc |
-| Live access | two keyless instrument-list calls returned HTTP 403; live testing stopped; counts not measured | measured (403), cause unverified |
+| Live access | Initial instrument-list calls returned HTTP 403; later REST and WebSocket capture succeeded ([capture](#live-adapter-captures)) | measured; original 403 cause unverified |
 
 ### Bitget
 | Item | Value | Status |
@@ -110,7 +123,7 @@ Constraints that shape recording:
 | Endpoints | V3 WS `publicTrade`, `ticker` (mark, index, OI), `liquidation`, `funding-rate`, `position-tier`; V2 REST `/api/v2/mix/market/*` | doc; REST measured |
 | Liquidation | once per second, at most two records per pair per second (largest long and largest short); sampled; no REST history | doc |
 | History | trades 90 days, 7-day window, 1,000 per page (spot timestamps second-level); candles 1 m, 90-day range; OI snapshot only | doc |
-| Limits | V2 WS: 300 connection requests per 5 min per IP, 100 connections per IP, 1,000 subscriptions per connection (under 50 recommended), ping every 30 s; V3 limits not established; V3 trade snapshot on subscribe is removed on 2026-11-17 | doc |
+| Limits | V3 docs specify 300 connection requests per 5 min per IP, 100 connections per IP, under 50 channels recommended, ping every 30 s; V3 trade snapshot on subscribe is removed on 2026-11-17 ([source](../internal/venue/bitget/testdata/README.txt)) | doc |
 | Universe | 885 USDT-futures entries (not filtered by `symbolType`); 3,669 spot pairs, 3,662 online | measured |
 
 ### Gate
@@ -272,9 +285,8 @@ Recording design if needed (inferred): pool metadata and initial state (chain, c
 
 | Point | Note |
 |---|---|
-| Symbol mapping | String equality is unsafe: multipliers (`1000PEPEUSDT` vs `PEPE_USDT` at 10,000,000 or 520,000), aliases (XBT for BTC), quote currency. Needs a reviewed mapping built from each venue's instrument list and Binance `exchangeInfo`. |
-| Binance overlap counts | Not computed for any venue. |
-| 403 responses | OKX, MEXC (`/country`) and Coinbase Exchange returned HTTP 403 to keyless calls; cause (regional block, rate rule or client filter) unknown. Recording from the recorder host needs a test from that host. |
+| Symbol mapping | String equality is unsafe; reviewed map and unresolved entries: [venue map](venue-map.md). |
+| 403 responses | Initial OKX, MEXC (`/country`) and Coinbase Exchange calls returned HTTP 403; cause unknown. Later OKX and MEXC captures succeeded ([captures](#live-adapter-captures)). |
 | Liquidation feeds | Complete: Bybit (doc). Sampled or incomplete: Bitget, OKX. Batched, not sampled per doc: Gate. None found: MEXC, KuCoin. |
 | AMM DEX prices | Index constituents include `pancakeswapV3` (32 symbols), `pancakeswapV2` (3), `uniswapV2` (3), `uniswapV3` (2). Pool addresses, fee tiers, `uindex()` rule, a BNB Chain log provider, swap volume per pool: all unverified. |
 | Perp DEX gaps | Variational, GRVT, Antarctic, GMX market counts; all liquidation-feed completeness; Hyperliquid builder-deployed DEXes; Binance total volume and open interest for scale. |

@@ -12,6 +12,8 @@ Read only what the task needs.
 | [docs/liquidation-model.md](docs/liquidation-model.md) | Design | Main model direction | Working on liquidation research |
 | [docs/liquidation-results.md](docs/liquidation-results.md) | Results | Measured results of the liquidation map | Judging whether the map is usable |
 | [docs/poller.md](docs/poller.md) | Design | REST poller design and status | Working on polling |
+| [docs/venue-adapters.md](docs/venue-adapters.md) | Design | Collector adapter contract and venue implementations | Working on venue collection |
+| [docs/venue-map.md](docs/venue-map.md) | Design | Symbol matching, review and map regeneration | Working on symbol selection |
 | [docs/p0-rollout.md](docs/p0-rollout.md) | Operations | Recorder rollout and status | Checking recording operations |
 | [docs/p1-data-pipeline.md](docs/p1-data-pipeline.md) | Design | Research data pipeline | Replaying or converting data |
 | [docs/fill-simulator.md](docs/fill-simulator.md) | Design | Fill simulator design and results | Evaluating simulated fills |
