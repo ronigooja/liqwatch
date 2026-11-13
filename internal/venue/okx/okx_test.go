@@ -74,6 +74,37 @@ func TestFixtures(t *testing.T) {
 		t.Fatal("liquidations droppable")
 	}
 }
+
+func TestFilterAndSampling(t *testing.T) {
+	a, _ := fixtureAdapter(t)
+	now := time.Unix(10000, 0)
+	old := sampleClock
+	sampleClock = func() time.Time { return now }
+	t.Cleanup(func() { sampleClock = old })
+	sh := venue.Shard{Name: "filter-test"}
+	frame := []byte(`{"arg":{"channel":"index-tickers","instId":"BTC-USDT"},"data":[{"instId":"BTC-USDT","idxPx":"1.2300","open24h":"4","future":"\u0031","ts":"123"},{"instId":"BTC-USDT","idxPx":"2","ts":"124"}]}`)
+	before := a.UnknownFields()
+	r := a.Split(sh, frame)
+	if len(r) != 3 || a.UnknownFields() != before+1 {
+		t.Fatalf("records/count: %+v %d", r, a.UnknownFields()-before)
+	}
+	if string(r[0].Payload) != `{"arg":{"channel":"index-tickers","instId":"BTC-USDT"},"data":[{"instId":"BTC-USDT","idxPx":"1.2300","future":"\u0031","ts":"123"}]}` {
+		t.Fatalf("filtered: %s", r[0].Payload)
+	}
+	if string(r[1].Payload) != `{"sample":`+string(frame)+`}` {
+		t.Fatalf("sample: %s", r[1].Payload)
+	}
+	if got := a.Split(sh, frame); len(got) != 2 {
+		t.Fatalf("duplicate sample: %d", len(got))
+	}
+	now = now.Add(time.Hour)
+	if got := a.Split(sh, frame); len(got) != 3 {
+		t.Fatalf("missing hourly sample: %d", len(got))
+	}
+	if got := a.Split(venue.Shard{Name: "filter-test-other"}, frame); len(got) != 3 {
+		t.Fatalf("missing shard sample: %d", len(got))
+	}
+}
 func TestShardsSubscribeAndHeartbeat(t *testing.T) {
 	a, shards := fixtureAdapter(t)
 	if len(shards) != 2 || shards[0].URL != PublicURL || shards[1].URL != BusinessURL {

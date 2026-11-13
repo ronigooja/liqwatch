@@ -2,6 +2,7 @@
 package okx
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,12 +11,96 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/ronigooja/liqwatch/internal/rawlog"
 	"github.com/ronigooja/liqwatch/internal/venue"
 )
+
+// Per-channel item fields: trades, mark, index, funding, open interest, liquidations.
+var fieldRules = map[string]struct{ keep, drop map[string]bool }{
+	"trades-all":         {fields("instId tradeId px sz side ts source"), fields("")},
+	"mark-price":         {fields("instId instType markPx ts"), fields("")},
+	"index-tickers":      {fields("instId idxPx ts"), fields("open24h high24h low24h sodUtc0 sodUtc8")},
+	"funding-rate":       {fields("formulaType fundingRate fundingTime impactValue instId instType interestRate maxFundingRate method minFundingRate nextFundingRate nextFundingTime premium prevFundingTime settFundingRate settState ts"), fields("")},
+	"open-interest":      {fields("instId instType oi oiCcy oiUsd ts"), fields("")},
+	"liquidation-orders": {fields("details instFamily instId instType uly"), fields("")},
+}
+
+func fields(s string) map[string]bool {
+	m := map[string]bool{}
+	for _, k := range strings.Fields(s) {
+		m[k] = true
+	}
+	return m
+}
+
+var unknownFields atomic.Uint64
+var sampleClock = time.Now
+var sampler = struct {
+	sync.Mutex
+	last map[string]time.Time
+}{last: make(map[string]time.Time)}
+
+// UnknownFields reports the number of unclassified item fields observed.
+func (*Adapter) UnknownFields() uint64 { return unknownFields.Load() }
+
+func sampleDue(shard, channel string) bool {
+	sampler.Lock()
+	defer sampler.Unlock()
+	now := sampleClock()
+	key := shard + "\x00" + channel
+	if last, ok := sampler.last[key]; ok && now.Sub(last) < time.Hour {
+		return false
+	}
+	sampler.last[key] = now
+	return true
+}
+
+// filterItem decodes values as raw JSON and writes members in their original order.
+func filterItem(channel string, entry []byte) ([]byte, error) {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(entry, &values); err != nil || values == nil {
+		return nil, fmt.Errorf("invalid item")
+	}
+	d := json.NewDecoder(bytes.NewReader(entry))
+	if _, err := d.Token(); err != nil {
+		return nil, err
+	}
+	var b bytes.Buffer
+	b.WriteByte('{')
+	first := true
+	rule := fieldRules[channel]
+	for d.More() {
+		tok, err := d.Token()
+		if err != nil {
+			return nil, err
+		}
+		key := tok.(string)
+		var value json.RawMessage
+		if err := d.Decode(&value); err != nil {
+			return nil, err
+		}
+		if rule.drop[key] {
+			continue
+		}
+		if !rule.keep[key] {
+			unknownFields.Add(1)
+		}
+		if !first {
+			b.WriteByte(',')
+		}
+		first = false
+		name, _ := json.Marshal(key)
+		b.Write(name)
+		b.WriteByte(':')
+		b.Write(value)
+	}
+	b.WriteByte('}')
+	return b.Bytes(), nil
+}
 
 const (
 	PublicURL      = "wss://ws.okx.com:8443/ws/v5/public"
@@ -175,18 +260,22 @@ func gap(msg []byte) []rawlog.Record {
 	b, _ := json.Marshal(map[string]any{"event": "unrecognized_frame", "bytes": len(msg), "head": string(msg[:min(len(msg), 200)])})
 	return []rawlog.Record{{Channel: "gap", Payload: b}}
 }
-func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
+func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	if string(msg) == "pong" {
 		return nil
 	}
 	var e struct {
-		Event string          `json:"event"`
-		Arg   arg             `json:"arg"`
-		Data  json.RawMessage `json:"data"`
+		Event  string          `json:"event"`
+		Arg    arg             `json:"arg"`
+		Data   json.RawMessage `json:"data"`
+		RawArg json.RawMessage `json:"-"`
 	}
 	if json.Unmarshal(msg, &e) != nil {
 		return gap(msg)
 	}
+	var envelope map[string]json.RawMessage
+	_ = json.Unmarshal(msg, &envelope)
+	e.RawArg = envelope["arg"]
 	if len(e.Data) == 0 {
 		if e.Event != "" {
 			return nil
@@ -231,15 +320,21 @@ func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 			out = append(out, gap(msg)...)
 			continue
 		}
-		payload, err := json.Marshal(struct {
-			Arg  arg               `json:"arg"`
-			Data []json.RawMessage `json:"data"`
-		}{e.Arg, []json.RawMessage{entry}})
+		filtered, err := filterItem(e.Arg.Channel, entry)
 		if err != nil {
 			out = append(out, gap(msg)...)
 			continue
 		}
+		payload := append([]byte(`{"arg":`), e.RawArg...)
+		payload = append(payload, `,"data":[`...)
+		payload = append(payload, filtered...)
+		payload = append(payload, ']', '}')
 		out = append(out, rawlog.Record{Channel: ch, Symbol: sym, Payload: payload})
+		if sampleDue(sh.Name, ch) {
+			sample := append([]byte(`{"sample":`), msg...)
+			sample = append(sample, '}')
+			out = append(out, rawlog.Record{Channel: ch, Symbol: sym, Payload: sample})
+		}
 	}
 	return out
 }
