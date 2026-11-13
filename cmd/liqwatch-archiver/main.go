@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -53,26 +54,35 @@ func run(ctx context.Context, cfg config.Config) error {
 	defer s.Close()
 	dav := webdav.New(cfg.Archive.RemoteRoot, os.Getenv(config.EnvWebDAVUser), os.Getenv(config.EnvWebDAVPass))
 	dav.MaxKBps = cfg.Archive.MaxKBps
-	for _, st := range []manifest.State{manifest.StateClosed, manifest.StateUploading} {
+	var pending []manifest.Pack
+	for _, st := range []manifest.State{manifest.StateUploading, manifest.StateClosed} {
 		ps, err := s.ListByState(st)
 		if err != nil {
 			return err
 		}
-		for _, p := range ps {
-			if st == manifest.StateClosed {
-				if err = s.SetState(p.ID, manifest.StateUploading); err != nil {
-					return err
-				}
-			}
-			if err = archiveOne(ctx, cfg, s, dav, p); err != nil {
-				return err
+		pending = append(pending, ps...)
+	}
+	failures := 0
+	for _, p := range pending {
+		if p.State == manifest.StateClosed {
+			if err = s.SetState(p.ID, manifest.StateUploading); err != nil {
+				log.Printf("upload %s: %v", p.Path, err)
+				failures++
+				continue
 			}
 		}
+		if err = archiveOne(ctx, cfg, s, dav, p); err != nil {
+			log.Printf("upload %s: %v", p.Path, err)
+			failures++
+		}
 	}
-	if err = verifyFiles(ctx, cfg, s, dav); err != nil {
-		return err
+	verificationFailures, verifyErr := verifyFiles(ctx, cfg, s, dav)
+	deletionFailures, deleteErr := deleteFiles(cfg, s)
+	failures += verificationFailures + deletionFailures
+	if failures > 0 || verifyErr != nil || deleteErr != nil {
+		return fmt.Errorf("archiver: %d pack failures; verification: %v; deletion: %v", failures, verifyErr, deleteErr)
 	}
-	return deleteFiles(cfg, s)
+	return nil
 }
 func remotePath(p manifest.Pack) string {
 	return path.Join("raw", p.Venue, p.Symbol, path.Base(filepath.ToSlash(p.Path)))
@@ -88,11 +98,9 @@ func metadata(cfg config.Config, s manifest.Store, p manifest.Pack) ([]byte, err
 	if members == nil {
 		members = []manifest.Member{}
 	}
-	unit := cfg.Pack.Unit
+	unit := pack.ZstdThenTar
 	if strings.HasSuffix(p.Path, ".tar.zst") {
 		unit = pack.TarThenZstd
-	} else {
-		unit = pack.ZstdThenTar
 	}
 	level := cfg.Pack.Level
 	return json.Marshal(meta{Size: p.Bytes, SHA256: p.SHA256, Members: members, Unit: unit, Level: level})
@@ -195,25 +203,29 @@ func ensureMeta(ctx context.Context, cfg config.Config, s manifest.Store, dav *w
 	}
 	return putVerified(ctx, dav, metaPath(p), want)
 }
-func verifyFiles(ctx context.Context, cfg config.Config, s *manifest.SQLiteStore, dav *webdav.Client) error {
+func verifyFiles(ctx context.Context, cfg config.Config, s *manifest.SQLiteStore, dav *webdav.Client) (int, error) {
 	ps, err := s.ListByState(manifest.StateUploaded)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	first, err := s.FirstVerifiedDate()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	full := first.IsZero() || time.Now().Before(first.AddDate(0, 0, cfg.Archive.FullVerifyDays))
+	failures := 0
 	for _, p := range ps {
 		if err = verifyOne(ctx, cfg, s, dav, p, full); err != nil {
-			return err
+			log.Printf("verify %s: %v", p.Path, err)
+			failures++
+			continue
 		}
 		if err = s.MarkVerified(p.ID, time.Now().UTC()); err != nil {
-			return err
+			log.Printf("verify %s: %v", p.Path, err)
+			failures++
 		}
 	}
-	return nil
+	return failures, nil
 }
 func verifyOne(ctx context.Context, cfg config.Config, s manifest.Store, dav *webdav.Client, p manifest.Pack, full bool) error {
 	if err := ensureMeta(ctx, cfg, s, dav, p); err != nil {
@@ -229,7 +241,11 @@ func verifyOne(ctx context.Context, cfg config.Config, s manifest.Store, dav *we
 	}
 	if size != p.Bytes {
 		return errors.New("remote pack size mismatch")
-	} // The previous sampler read the first chunk; a pack has one chunk, so verify its full hash.
+	}
+	hash := sha256.Sum256([]byte(filepath.ToSlash(p.Path)))
+	if !full && binary.BigEndian.Uint64(hash[:8])%100 >= uint64(cfg.Archive.VerifySamplePercent) {
+		return nil
+	}
 	r, _, err := dav.Get(ctx, remote)
 	if err != nil {
 		return err
@@ -245,24 +261,29 @@ func verifyOne(ctx context.Context, cfg config.Config, s manifest.Store, dav *we
 	}
 	return nil
 }
-func deleteFiles(cfg config.Config, s manifest.Store) error {
+func deleteFiles(cfg config.Config, s manifest.Store) (int, error) {
 	ps, err := s.ListByState(manifest.StateVerified)
 	if err != nil {
+		return 0, err
+	}
+	failures := 0
+	for _, p := range ps {
+		if err = deleteOne(cfg, s, p); err != nil {
+			log.Printf("delete %s: %v", p.Path, err)
+			failures++
+		}
+	}
+	return failures, nil
+}
+func deleteOne(cfg config.Config, s manifest.Store, p manifest.Pack) error {
+	if p.VerifiedAt.IsZero() {
+		return errors.New("missing verification time")
+	}
+	if err := pack.RemoveRaw(filepath.Join(cfg.DataDir, "raw"), p.Venue, p.Symbol, fmt.Sprintf("%08d", p.Day)); err != nil {
 		return err
 	}
-	for _, p := range ps {
-		if p.VerifiedAt.IsZero() {
-			return errors.New("missing verification time")
-		}
-		if err = pack.RemoveRaw(filepath.Join(cfg.DataDir, "raw"), p.Venue, p.Symbol, fmt.Sprintf("%08d", p.Day)); err != nil {
-			return err
-		}
-		if err = os.Remove(filepath.Join(cfg.DataDir, "packs", filepath.FromSlash(p.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		if err = s.SetState(p.ID, manifest.StateDeleted); err != nil {
-			return err
-		}
+	if err := os.Remove(filepath.Join(cfg.DataDir, "packs", filepath.FromSlash(p.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
-	return nil
+	return s.SetState(p.ID, manifest.StateDeleted)
 }
