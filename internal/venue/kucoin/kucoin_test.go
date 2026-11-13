@@ -69,6 +69,44 @@ func TestDiscoveryAndShards(t *testing.T) {
 	}
 }
 
+func TestClassicRefresh(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/bullet-public" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		calls++
+		fmt.Fprintf(w, `{"code":"200000","data":{"token":"token%d","instanceServers":[{"endpoint":"wss://example.com/ws","pingInterval":18000}]}}`, calls)
+	}))
+	defer srv.Close()
+	a := &Adapter{BaseURL: srv.URL}
+	shards, err := a.Shards(context.Background(), []venue.Symbol{"X"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shards[0].Refresh == nil || shards[1].Refresh != nil {
+		t.Fatal("unexpected refresh functions")
+	}
+	ids := map[string]bool{}
+	initial, _ := url.Parse(shards[0].URL)
+	ids[initial.Query().Get("connectId")] = true
+	for i := 2; i <= 3; i++ {
+		raw, err := shards[0].Refresh(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := u.Query().Get("connectId")
+		if id == "" || ids[id] || u.Query().Get("token") != fmt.Sprintf("token%d", i) {
+			t.Fatalf("invalid refreshed URL: %s", raw)
+		}
+		ids[id] = true
+	}
+}
+
 func TestFixtures(t *testing.T) {
 	a := &Adapter{}
 	counts := map[string]int{}

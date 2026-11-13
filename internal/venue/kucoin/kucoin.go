@@ -87,46 +87,71 @@ func (a *Adapter) Symbols(ctx context.Context) ([]venue.Symbol, error) {
 	return syms, nil
 }
 
+type publicToken struct {
+	Token   string `json:"token"`
+	Servers []struct {
+		Endpoint     string `json:"endpoint"`
+		PingInterval int64  `json:"pingInterval"`
+		PingTimeout  int64  `json:"pingTimeout"`
+	} `json:"instanceServers"`
+}
+
+func (a *Adapter) publicToken(ctx context.Context) (publicToken, error) {
+	var token publicToken
+	if err := a.request(ctx, http.MethodPost, "/api/v1/bullet-public", &token); err != nil {
+		return token, err
+	}
+	if token.Token == "" || len(token.Servers) == 0 || token.Servers[0].PingInterval <= 0 {
+		return token, fmt.Errorf("kucoin: invalid public token response")
+	}
+	return token, nil
+}
+
+func tokenURL(token publicToken) (string, error) {
+	id := make([]byte, 16)
+	if _, err := rand.Read(id); err != nil {
+		return "", err
+	}
+	u, err := url.Parse(token.Servers[0].Endpoint)
+	if err != nil || u.Host == "" || (u.Scheme != "wss" && u.Scheme != "ws") {
+		return "", fmt.Errorf("kucoin: invalid websocket endpoint")
+	}
+	q := u.Query()
+	q.Set("token", token.Token)
+	q.Set("connectId", hex.EncodeToString(id))
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
 func (a *Adapter) Shards(ctx context.Context, syms []venue.Symbol) ([]venue.Shard, error) {
 	if len(syms) == 0 {
 		return nil, nil
 	}
-	var token struct {
-		Token   string `json:"token"`
-		Servers []struct {
-			Endpoint     string `json:"endpoint"`
-			PingInterval int64  `json:"pingInterval"`
-			PingTimeout  int64  `json:"pingTimeout"`
-		} `json:"instanceServers"`
-	}
-	if err := a.request(ctx, http.MethodPost, "/api/v1/bullet-public", &token); err != nil {
+	token, err := a.publicToken(ctx)
+	if err != nil {
 		return nil, err
-	}
-	if token.Token == "" || len(token.Servers) == 0 || token.Servers[0].PingInterval <= 0 {
-		return nil, fmt.Errorf("kucoin: invalid public token response")
 	}
 	server := token.Servers[0]
 	interval := time.Duration(server.PingInterval) * time.Millisecond / 2
 	var shards []venue.Shard
 	intervals := map[string]time.Duration{}
 	for i := 0; i < len(syms); i += classicSymbols {
-		id := make([]byte, 16)
-		if _, err := rand.Read(id); err != nil {
+		u, err := tokenURL(token)
+		if err != nil {
 			return nil, err
 		}
-		u, err := url.Parse(server.Endpoint)
-		if err != nil || u.Host == "" || (u.Scheme != "wss" && u.Scheme != "ws") {
-			return nil, fmt.Errorf("kucoin: invalid websocket endpoint")
-		}
-		q := u.Query()
-		q.Set("token", token.Token)
-		q.Set("connectId", hex.EncodeToString(id))
-		u.RawQuery = q.Encode()
 		var streams []string
 		for _, s := range syms[i:min(i+classicSymbols, len(syms))] {
 			streams = append(streams, "/contractMarket/execution:"+s, "/contract/instrument:"+s)
 		}
-		sh := venue.Shard{Name: fmt.Sprintf("classic%03d", i/classicSymbols), URL: u.String(), Streams: streams, Stall: 60 * time.Second, MaxAge: 12 * time.Hour, MaxSubsPerConn: 50, SubscribeSpacing: 200 * time.Millisecond}
+		sh := venue.Shard{Name: fmt.Sprintf("classic%03d", i/classicSymbols), URL: u, Streams: streams, Stall: 60 * time.Second, MaxAge: 12 * time.Hour, MaxSubsPerConn: 50, SubscribeSpacing: 200 * time.Millisecond}
+		sh.Refresh = func(ctx context.Context) (string, error) {
+			token, err := a.publicToken(ctx)
+			if err != nil {
+				return "", err
+			}
+			return tokenURL(token)
+		}
 		shards = append(shards, sh)
 		intervals[sh.URL] = interval
 	}
