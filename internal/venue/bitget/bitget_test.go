@@ -90,7 +90,7 @@ func TestUnknownAndGlobal(t *testing.T) {
 	a.Shards(context.Background(), []string{"BTCUSDT", "龙虾USDT"})
 	msg := []byte(`{"action":"update","arg":{"topic":"liquidation"},"data":[{"symbol":"BTCUSDT","price":"1"},{"symbol":"龙虾USDT","price":"2"},{"symbol":"OTHER","price":"3"}]}`)
 	records := a.Split(venue.Shard{}, msg)
-	if len(records) != 2 || records[1].Symbol != "龙虾USDT" || bytes.Contains(records[0].Payload, []byte("OTHER")) {
+	if len(records) < 2 || records[1].Symbol != "龙虾USDT" || bytes.Contains(records[0].Payload, []byte("OTHER")) {
 		t.Fatalf("records %+v", records)
 	}
 	if got := a.Split(venue.Shard{}, []byte(`{"arg":{"topic":"new"},"data":[{}]}`)); len(got) != 1 || got[0].Channel != "gap" {
@@ -105,16 +105,14 @@ func TestUnknownAndGlobal(t *testing.T) {
 func TestConcurrentSplit(t *testing.T) {
 	a := &Adapter{}
 	a.Shards(context.Background(), []string{"BTCUSDT"})
-	frame := []byte(`{"arg":{"topic":"ticker","symbol":"BTCUSDT"},"data":[{}]}`)
+	frame := []byte(`{"arg":{"topic":"ticker","symbol":"BTCUSDT"},"data":[{"markPrice":"1"}]}`)
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 100; j++ {
-				if len(a.Split(venue.Shard{}, frame)) != 1 {
-					t.Error("split")
-				}
+				a.Split(venue.Shard{}, frame)
 			}
 		}()
 	}
@@ -139,7 +137,7 @@ func TestWebsocket(t *testing.T) {
 				return
 			}
 		}
-		c.Send(websocket.MessageText, []byte(`{"arg":{"topic":"ticker","symbol":"BTCUSDT"},"data":[{}]}`))
+		c.Send(websocket.MessageText, []byte(`{"arg":{"topic":"ticker","symbol":"BTCUSDT"},"data":[{"markPrice":"1"}]}`))
 	})
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -163,7 +161,7 @@ func TestWebsocket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := a.Split(sh, p); len(r) != 1 || r[0].Channel != "ticker" {
+	if r := a.Split(sh, p); len(r) < 1 || r[0].Channel != "ticker" {
 		t.Fatalf("result %+v", r)
 	}
 }
@@ -177,5 +175,33 @@ func TestClasses(t *testing.T) {
 		if c != x.cl || ok != x.ok {
 			t.Errorf("%s %s %t", x.ch, c, ok)
 		}
+	}
+}
+
+func TestFilterDedupSample(t *testing.T) {
+	now := time.Unix(100000, 0)
+	a := &Adapter{clock: func() time.Time { return now }}
+	sh := venue.Shard{Name: "test-filter-unique"}
+	frame := []byte(`{"action":"snapshot","arg":{"topic":"ticker","symbol":"BTCUSDT"},"data":[{"lastPrice":"9","markPrice":"1.000","mystery":"x","ts":"1"}],"ts":1}`)
+	r := a.Split(sh, frame)
+	if len(r) != 2 || !bytes.Contains(r[0].Payload, []byte(`"markPrice":"1.000"`)) || bytes.Contains(r[0].Payload, []byte(`lastPrice`)) || !bytes.Contains(r[0].Payload, []byte(`"mystery":"x"`)) || !bytes.Equal(r[1].Payload, append(append([]byte(`{"sample":`), frame...), '}')) {
+		t.Fatalf("records %+v", r)
+	}
+	if a.UnknownFields() != 1 {
+		t.Fatal(a.UnknownFields())
+	}
+	if r = a.Split(sh, frame); len(r) != 0 || a.Deduplicated() != 1 {
+		t.Fatalf("dedup %+v %d", r, a.Deduplicated())
+	}
+	now = now.Add(time.Minute)
+	if r = a.Split(sh, frame); len(r) != 1 {
+		t.Fatalf("forced %+v", r)
+	}
+	now = now.Add(time.Hour)
+	if r = a.Split(sh, frame); len(r) != 2 {
+		t.Fatalf("sample %+v", r)
+	}
+	if r = a.Split(sh, []byte(`{"arg":{"topic":"ticker","symbol":"BTCUSDT"},"data":[{"lastPrice":"2","ts":"3"}]}`)); len(r) != 0 {
+		t.Fatalf("empty %+v", r)
 	}
 }

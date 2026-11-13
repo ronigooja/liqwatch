@@ -10,12 +10,36 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/ronigooja/liqwatch/internal/rawlog"
 	"github.com/ronigooja/liqwatch/internal/venue"
 )
+
+// Fields are grouped by recorded item; unlisted fields are retained and counted.
+var keepFields = map[string]map[string]bool{
+	"trade":       {"i": true, "p": true, "v": true, "S": true, "T": true, "L": true, "isRPI": true},                                                       // trades
+	"ticker":      {"symbol": true, "ts": true, "indexPrice": true, "markPrice": true, "fundingRate": true, "openInterest": true, "nextFundingTime": true}, // prices, funding, OI
+	"funding":     {"symbol": true, "ts": true, "fundingRate": true, "nextUpdate": true},                                                                   // funding
+	"tier":        {"symbol": true, "ts": true, "list": true, "leverage": true, "maxTierValue": true, "minTierValue": true, "mmr": true, "tier": true},     // leverage tiers
+	"liquidation": {"symbol": true, "side": true, "price": true, "amount": true, "ts": true},                                                               // liquidations
+}
+var dropFields = map[string]map[string]bool{
+	"ticker":  {"highPrice24h": true, "lowPrice24h": true, "openPrice24h": true, "lastPrice": true, "turnover24h": true, "volume24h": true, "bid1Price": true, "ask1Price": true, "bid1Size": true, "ask1Size": true, "price24hPcnt": true, "deliveryTime": true, "deliveryStartTime": true, "deliveryStatus": true}, // quotes, statistics, delivery
+	"funding": {"baseInterestRate": true, "cashDividend": true, "cashDividendNextUpdate": true, "fundingRateInterval": true, "impactMarginNotional": true, "lastFundingRate": true, "maxFundingRate": true, "minFundingRate": true, "nextFundingRate": true},                                                         // funding inputs and estimates
+}
+
+var samples = struct {
+	sync.Mutex
+	last map[string]time.Time
+}{last: make(map[string]time.Time)}
+
+type lastTicker struct {
+	payload string
+	emitted time.Time
+}
 
 const (
 	wsURL            = "wss://ws.bitget.com/v3/ws/public"
@@ -29,6 +53,20 @@ type Adapter struct {
 	ContractsURL string
 	mu           sync.RWMutex
 	universe     map[string]struct{}
+	clock        func() time.Time
+	tickerMu     sync.Mutex
+	tickers      map[string]lastTicker
+	unknown      atomic.Uint64
+	skipped      atomic.Uint64
+}
+
+func (a *Adapter) UnknownFields() uint64 { return a.unknown.Load() }
+func (a *Adapter) Deduplicated() uint64  { return a.skipped.Load() }
+func (a *Adapter) now() time.Time {
+	if a.clock != nil {
+		return a.clock()
+	}
+	return time.Now()
 }
 
 func init()                   { venue.Register("bitget", func() venue.Adapter { return &Adapter{} }) }
@@ -178,13 +216,68 @@ func gap(msg []byte) []rawlog.Record {
 	p, _ := json.Marshal(map[string]any{"event": "unrecognized_frame", "bytes": len(msg), "head": string(msg[:min(len(msg), 200)])})
 	return []rawlog.Record{{Channel: "gap", Payload: p}}
 }
-func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
+
+// filterObject preserves field order and raw value representations.
+func (a *Adapter) filterObject(channel string, data []byte, noTime bool) ([]byte, bool, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
+		return nil, false, fmt.Errorf("invalid object")
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if _, err := dec.Token(); err != nil {
+		return nil, false, err
+	}
+	var out bytes.Buffer
+	out.WriteByte('{')
+	meaningful := false
+	for dec.More() {
+		token, err := dec.Token()
+		if err != nil {
+			return nil, false, err
+		}
+		key := token.(string)
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return nil, false, err
+		}
+		if dropFields[channel][key] || (noTime && (key == "ts" || key == "T")) {
+			continue
+		}
+		if !keepFields[channel][key] {
+			a.unknown.Add(1)
+		}
+		if channel == "tier" && key == "list" {
+			var items []json.RawMessage
+			if json.Unmarshal(value, &items) == nil {
+				for i, item := range items {
+					if filtered, _, err := a.filterObject(channel, item, false); err == nil {
+						items[i] = filtered
+					}
+				}
+				value, _ = json.Marshal(items)
+			}
+		}
+		if key != "symbol" && key != "ts" && key != "T" {
+			meaningful = true
+		}
+		if out.Len() > 1 {
+			out.WriteByte(',')
+		}
+		k, _ := json.Marshal(key)
+		out.Write(k)
+		out.WriteByte(':')
+		out.Write(value)
+	}
+	out.WriteByte('}')
+	return out.Bytes(), meaningful, nil
+}
+
+func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	if bytes.Equal(bytes.TrimSpace(msg), []byte("pong")) {
 		return nil
 	}
 	var v struct {
-		Event string `json:"event"`
-		Arg   struct {
+		Arg struct {
 			Topic  string `json:"topic"`
 			Symbol string `json:"symbol"`
 		} `json:"arg"`
@@ -203,11 +296,9 @@ func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 	if channel == "" {
 		return gap(msg)
 	}
-	if v.Arg.Symbol != "" {
-		return []rawlog.Record{{Channel: channel, Symbol: v.Arg.Symbol, Payload: msg}}
-	}
+	array := len(v.Data) > 0 && v.Data[0] == '['
 	var elements []json.RawMessage
-	if len(v.Data) > 0 && v.Data[0] == '[' {
+	if array {
 		if json.Unmarshal(v.Data, &elements) != nil {
 			return gap(msg)
 		}
@@ -219,35 +310,101 @@ func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 		var fields struct {
 			Symbol string `json:"symbol"`
 		}
-		if json.Unmarshal(element, &fields) != nil || fields.Symbol == "" {
+		if json.Unmarshal(element, &fields) != nil {
+			out = append(out, gap(element)...)
+			continue
+		}
+		symbol := fields.Symbol
+		if symbol == "" {
+			symbol = v.Arg.Symbol
+		}
+		if symbol == "" {
 			out = append(out, gap(element)...)
 			continue
 		}
 		if channel == "liquidation" {
 			a.mu.RLock()
-			_, ok := a.universe[fields.Symbol]
+			_, ok := a.universe[symbol]
 			a.mu.RUnlock()
 			if !ok {
 				continue
 			}
 		}
-		var envelope map[string]json.RawMessage
-		if json.Unmarshal(msg, &envelope) != nil {
-			out = append(out, gap(msg)...)
-			continue
-		}
-		if len(v.Data) > 0 && v.Data[0] == '[' {
-			p, _ := json.Marshal([]json.RawMessage{element})
-			envelope["data"] = p
-		} else {
-			envelope["data"] = element
-		}
-		p, err := json.Marshal(envelope)
+		filtered, meaningful, err := a.filterObject(channel, element, false)
 		if err != nil {
-			out = append(out, gap(msg)...)
+			out = append(out, gap(element)...)
 			continue
 		}
-		out = append(out, rawlog.Record{Channel: channel, Symbol: fields.Symbol, Payload: p})
+		if channel == "ticker" {
+			if !meaningful {
+				continue
+			}
+			// Bitget repeats snapshots; emit unchanged values at least once per minute.
+			// Ignore exchange timestamps, but compare all other retained fields exactly.
+			var filteredMap map[string]json.RawMessage
+			_ = json.Unmarshal(filtered, &filteredMap)
+			delete(filteredMap, "ts")
+			delete(filteredMap, "T")
+			identity, _ := json.Marshal(filteredMap)
+			now := a.now()
+			key := sh.Name + "\x00" + channel + "\x00" + symbol
+			a.tickerMu.Lock()
+			if a.tickers == nil {
+				a.tickers = make(map[string]lastTicker)
+			}
+			prev, ok := a.tickers[key]
+			if ok && prev.payload == string(identity) && now.Sub(prev.emitted) < time.Minute {
+				a.skipped.Add(1)
+				a.tickerMu.Unlock()
+				continue
+			}
+			a.tickers[key] = lastTicker{string(identity), now}
+			a.tickerMu.Unlock()
+		}
+		dec := json.NewDecoder(bytes.NewReader(msg))
+		_, _ = dec.Token()
+		var payload bytes.Buffer
+		payload.WriteByte('{')
+		for dec.More() {
+			tok, err := dec.Token()
+			if err != nil {
+				return gap(msg)
+			}
+			key := tok.(string)
+			var value json.RawMessage
+			if dec.Decode(&value) != nil {
+				return gap(msg)
+			}
+			if key == "data" {
+				if array {
+					value = append(append([]byte{'['}, filtered...), ']')
+				} else {
+					value = filtered
+				}
+			}
+			if payload.Len() > 1 {
+				payload.WriteByte(',')
+			}
+			name, _ := json.Marshal(key)
+			payload.Write(name)
+			payload.WriteByte(':')
+			payload.Write(value)
+		}
+		payload.WriteByte('}')
+		out = append(out, rawlog.Record{Channel: channel, Symbol: symbol, Payload: payload.Bytes()})
+	}
+	if len(out) > 0 {
+		now := a.now()
+		key := sh.Name + "\x00" + channel
+		samples.Lock()
+		last, ok := samples.last[key]
+		if !ok || now.Sub(last) >= time.Hour {
+			samples.last[key] = now
+			sample := append([]byte(`{"sample":`), msg...)
+			sample = append(sample, '}')
+			out = append(out, rawlog.Record{Channel: channel, Symbol: out[0].Symbol, Payload: sample})
+		}
+		samples.Unlock()
 	}
 	return out
 }
