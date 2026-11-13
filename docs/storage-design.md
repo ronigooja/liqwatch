@@ -1,6 +1,6 @@
 # Storage Design (multi-venue recording)
 
-Design of how recorded market data is written, packed, uploaded and kept. Status: designed, not built. Governing records: [0009](decisions/0009-zero-gap-handoff.md) (slots, handoff), [0011](decisions/0011-no-alert-narrower-recording.md) (scope, retention), [0013](decisions/0013-no-dex-recording.md) (no DEX). Replaces the hourly files, 128 MB chunks and 6-hour local deletion of [0008](decisions/0008-hourly-archive-and-retention.md) and the Archiver and Raw Log Writer text of [p0-support-design.md](p0-support-design.md) and [p0-core-design.md](p0-core-design.md); the superseding decision record is not written yet. Venue facts: [venue-apis.md](venue-apis.md).
+Design of how recorded market data is written, packed, uploaded and kept. Status: designed, not built. Governing records: [0009](decisions/0009-zero-gap-handoff.md) (slots, handoff), [0011](decisions/0011-no-alert-narrower-recording.md) (scope, retention), [0013](decisions/0013-no-dex-recording.md) (no DEX). Replaces the hourly files, 128 MB chunks and 6-hour local deletion of [0008](decisions/0008-hourly-archive-and-retention.md) and the Archiver and Raw Log Writer text of [p0-support-design.md](p0-support-design.md) and [p0-core-design.md](p0-core-design.md); decision record: [0014](decisions/0014-daily-pack-storage.md). Venue facts: [venue-apis.md](venue-apis.md).
 
 ## Scope
 

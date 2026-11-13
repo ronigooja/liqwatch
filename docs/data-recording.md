@@ -45,6 +45,7 @@ venue, symbol, channel, connection id, local sequence, `recv_wall_time`, `recv_m
 
 ## Storage
 
+- Multi-venue design (not built): [storage-design.md](storage-design.md), [decision 0014](decisions/0014-daily-pack-storage.md). The two lines below describe the built Binance recorder.
 - Hot: hourly append-only files by channel/date/symbol, zstd.
 - Archive: the recorder uploads the closed hourly `jsonl.zst` files in chunks and verifies them; Parquet conversion happens on the research side, not on the recorder ([p0-support-design.md](p0-support-design.md)). Local retention: [decision 0008](decisions/0008-hourly-archive-and-retention.md).
 - Manifest table (DuckDB or SQLite): per file start/end time, message count, checksum, reconnect count.
