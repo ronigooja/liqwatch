@@ -4,7 +4,18 @@ import (
 	"testing"
 
 	"github.com/ronigooja/liqwatch/internal/collector"
+	"github.com/ronigooja/liqwatch/internal/config"
+	"github.com/ronigooja/liqwatch/internal/venue"
 )
+
+func TestVenueSelection(t *testing.T) {
+	if a := venue.Get("binance"); a == nil || a.Name() != "binance" {
+		t.Fatal("Binance adapter not registered")
+	}
+	if err := run(&config.Config{DataDir: t.TempDir(), Collect: config.Collect{Venue: "not-a-venue"}}, ""); err == nil {
+		t.Fatal("unknown venue accepted")
+	}
+}
 
 func TestLockInstanceIsExclusive(t *testing.T) {
 	dir := t.TempDir()
