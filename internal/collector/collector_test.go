@@ -36,7 +36,7 @@ func TestOnReconnectOnlyAfterUnplannedDrop(t *testing.T) {
 	defer srv.Close()
 
 	base := "ws" + strings.TrimPrefix(srv.URL, "http") + "/?streams="
-	c := New(nopSink{}, []Shard{{Name: "depth", Base: base, Streams: []string{"btcusdt@depth@100ms"}}})
+	c := New(nopSink{}, []Shard{{Name: "trade00", Base: base, Streams: []string{"btcusdt@aggTrade"}}})
 	var mu sync.Mutex
 	var got []string
 	called := make(chan struct{}, 4)
@@ -62,11 +62,18 @@ func TestOnReconnectOnlyAfterUnplannedDrop(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if len(got) != 1 || got[0] != "depth" {
-		t.Fatalf("OnReconnect calls = %v, want exactly one for depth", got)
+	if len(got) != 1 || got[0] != "trade00" {
+		t.Fatalf("OnReconnect calls = %v, want exactly one for trade00", got)
 	}
 	if conns.Load() < 2 {
 		t.Fatalf("server saw %d connections", conns.Load())
+	}
+}
+
+func TestBuildShards(t *testing.T) {
+	shards := BuildShards([]string{"BTCUSDT", "ETHUSDT", "SOLUSDT"}, 2)
+	if len(shards) != 3 || len(shards[0].Streams) != 2 || len(shards[1].Streams) != 1 || shards[2].Name != "misc" || len(shards[2].Streams) != 2 {
+		t.Fatalf("shards: %+v", shards)
 	}
 }
 

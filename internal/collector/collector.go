@@ -36,8 +36,10 @@ type Shard struct {
 }
 
 type Collector struct {
-	sink   rawlog.Sink
-	shards []Shard
+	sink     rawlog.Sink
+	shards   []Shard
+	Venue    string
+	Universe map[string]struct{}
 
 	// OnReconnect is called after a shard reopens following an unplanned disconnect, once the
 	// new connection is open. Planned 23 h replacements overlap and do not call it.
@@ -58,11 +60,19 @@ type Collector struct {
 }
 
 func New(sink rawlog.Sink, shards []Shard) *Collector {
-	return &Collector{sink: sink, shards: shards, OpenSpacing: openSpacing}
+	universe := make(map[string]struct{})
+	for _, sh := range shards {
+		for _, stream := range sh.Streams {
+			if strings.HasSuffix(stream, "@aggTrade") {
+				universe[strings.ToUpper(strings.TrimSuffix(stream, "@aggTrade"))] = struct{}{}
+			}
+		}
+	}
+	return &Collector{sink: sink, shards: shards, OpenSpacing: openSpacing, Venue: "binance", Universe: universe}
 }
 
-// BuildShards lays out the tier A streams plus depth, per decision 0007.
-func BuildShards(all, quotes, depth []string, depthSpeed string, perWS int) []Shard {
+// BuildShards lays out trade and all-market streams.
+func BuildShards(all []string, perWS int) []Shard {
 	if perWS <= 0 {
 		perWS = 100
 	}
@@ -77,20 +87,6 @@ func BuildShards(all, quotes, depth []string, depthSpeed string, perWS int) []Sh
 	}
 	// forceOrder is sparse; markPrice@1s on the same connection provides liveness.
 	out = append(out, Shard{Name: "misc", Base: WSMarket, Streams: []string{"!markPrice@arr@1s", "!forceOrder@arr"}, Stall: 30 * time.Second})
-	var q []string
-	for _, s := range quotes {
-		q = append(q, strings.ToLower(s)+"@bookTicker")
-	}
-	if len(q) > 0 {
-		out = append(out, Shard{Name: "quote", Base: WSPublic, Streams: q, Stall: 30 * time.Second})
-	}
-	var d []string
-	for _, s := range depth {
-		d = append(d, strings.ToLower(s)+"@depth@"+depthSpeed)
-	}
-	if len(d) > 0 {
-		out = append(out, Shard{Name: "depth", Base: WSPublic, Streams: d, Stall: 30 * time.Second})
-	}
 	return out
 }
 
@@ -271,8 +267,15 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		cseq++
 		c.Messages.Add(1)
 		ch, sym := classify(data)
+		if ch == "markPrice_all" || ch == "forceOrder_all" {
+			for _, rec := range SplitAllMarket(data, c.Universe) {
+				rec.Venue, rec.Conn, rec.CSeq, rec.RecvWal, rec.RecvMon = c.Venue, k.id, cseq, rw.UnixNano(), rawlog.Mono()
+				c.sink.Write(groupOf(rec.Channel), rec)
+			}
+			continue
+		}
 		c.sink.Write(groupOf(ch), rawlog.Record{
-			Conn: k.id, CSeq: cseq, RecvWal: rw.UnixNano(), RecvMon: rawlog.Mono(),
+			Venue: c.Venue, Conn: k.id, CSeq: cseq, RecvWal: rw.UnixNano(), RecvMon: rawlog.Mono(),
 			Channel: ch, Symbol: sym, Payload: data,
 		})
 	}
@@ -286,16 +289,12 @@ func (c *Collector) gap(sh Shard, k *conn, cause string) {
 	p, _ := json.Marshal(map[string]any{"event": "conn_closed", "cause": cause, "err": e, "shard": sh.Name, "streams": sh.Streams})
 	now := time.Now()
 	c.sink.Write(rawlog.GroupGap, rawlog.Record{
-		Conn: k.id, RecvWal: now.UnixNano(), RecvMon: rawlog.Mono(), Channel: "gap", Payload: p,
+		Venue: c.Venue, Conn: k.id, RecvWal: now.UnixNano(), RecvMon: rawlog.Mono(), Channel: "gap", Payload: p,
 	})
 }
 
 func groupOf(ch string) string {
 	switch {
-	case ch == "depth":
-		return rawlog.GroupDepth
-	case ch == "bookTicker":
-		return rawlog.GroupQuote
 	case strings.HasPrefix(ch, "forceOrder"):
 		return rawlog.GroupLiq
 	default:
