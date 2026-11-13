@@ -111,16 +111,22 @@ const (
 )
 
 type Adapter struct {
-	HTTPClient     *http.Client
-	InstrumentsURL string
-	mu             sync.RWMutex
-	indexes        map[string]string // swap ID -> index ID from instFamily
-	universe       map[string]bool
-	indexSymbols   map[string]string
+	HTTPClient      *http.Client
+	InstrumentsURL  string
+	mu              sync.RWMutex
+	indexes         map[string]string // swap ID -> index ID from instFamily
+	universe        map[string]bool
+	indexSymbols    map[string]string
+	subscribeAcks   atomic.Uint64
+	subscribeErrors atomic.Uint64
 }
 
 func init()                   { venue.Register("okx", func() venue.Adapter { return &Adapter{} }) }
 func (*Adapter) Name() string { return "okx" }
+
+// SubscribeAcks and SubscribeErrors report control frames observed by this adapter.
+func (a *Adapter) SubscribeAcks() uint64   { return a.subscribeAcks.Load() }
+func (a *Adapter) SubscribeErrors() uint64 { return a.subscribeErrors.Load() }
 
 type instrument struct {
 	InstID     string `json:"instId"`
@@ -272,6 +278,19 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	}
 	if json.Unmarshal(msg, &e) != nil {
 		return gap(msg)
+	}
+	switch e.Event {
+	case "subscribe":
+		a.subscribeAcks.Add(1)
+		return nil
+	case "error", "channel-conn-count-error", "notice":
+		a.subscribeErrors.Add(1)
+		var frame any = json.RawMessage(msg)
+		if len(msg) > 4096 {
+			frame = string(msg[:4096])
+		}
+		b, _ := json.Marshal(map[string]any{"event": "subscribe_error", "frame": frame})
+		return []rawlog.Record{{Channel: "gap", Payload: b}}
 	}
 	var envelope map[string]json.RawMessage
 	_ = json.Unmarshal(msg, &envelope)
