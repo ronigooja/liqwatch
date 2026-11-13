@@ -21,6 +21,7 @@ type Collect struct {
 	MetricsAddr     string   `toml:"metrics_addr"`        // e.g. 127.0.0.1:9101
 	ExtraMetrics    []string `toml:"extra_metrics_addrs"` // other slots checked too, e.g. 127.0.0.1:9102
 	Venue           string   `toml:"venue"`
+	MapPath         string   `toml:"map_path"`
 	MaxStreamsPerWS int      `toml:"max_streams_per_ws"` // 100
 	QueueSize       int      `toml:"queue_size"`
 	OpenSpacingMS   int      `toml:"open_spacing_ms"` // gap between opening shard connections; 500
@@ -55,7 +56,7 @@ const (
 func Load(path string) (*Config, error) {
 	c := Config{
 		DataDir: "/var/lib/liqwatch",
-		Collect: Collect{Venue: "binance", MetricsAddr: "127.0.0.1:9101", MaxStreamsPerWS: 100, QueueSize: 10000, OpenSpacingMS: 500},
+		Collect: Collect{Venue: "binance", MapPath: "/etc/liqwatch/venue-map.toml", MetricsAddr: "127.0.0.1:9101", MaxStreamsPerWS: 100, QueueSize: 10000, OpenSpacingMS: 500},
 		Archive: Archive{MaxPackMB: 400, FullVerifyDays: 7, VerifySamplePercent: 10},
 		Pack:    Pack{Unit: "tar_then_zstd", Level: 3, QuietMinutes: 10},
 		Checks:  Checks{DiskWarnPct: 80, StaleSec: map[string]int{"aggTrade": 120, "markPrice_all": 60, "forceOrder_all": 0}, UnverifiedHours: 3},

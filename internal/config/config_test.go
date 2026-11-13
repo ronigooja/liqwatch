@@ -23,6 +23,16 @@ func TestLoadDefaultsAndValidation(t *testing.T) {
 	if c.Collect.Venue != "binance" || c.Checks.StaleSec["aggTrade"] != 120 || c.Checks.StaleSec["markPrice_all"] != 60 || c.Checks.StaleSec["forceOrder_all"] != 0 {
 		t.Fatalf("bad defaults: %+v", c)
 	}
+	if c.Collect.MapPath != "/etc/liqwatch/venue-map.toml" {
+		t.Fatal(c.Collect.MapPath)
+	}
+	if err := os.WriteFile(path, []byte("[collect]\nmap_path = \"/tmp/map.toml\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, err = Load(path)
+	if err != nil || c.Collect.MapPath != "/tmp/map.toml" {
+		t.Fatalf("map override: %+v %v", c, err)
+	}
 	bad := filepath.Join(dir, "bad.toml")
 	if err := os.WriteFile(bad, []byte("[pack]\nlevel=23\n"), 0600); err != nil {
 		t.Fatal(err)

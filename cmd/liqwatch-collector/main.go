@@ -22,6 +22,7 @@ import (
 	"github.com/ronigooja/liqwatch/internal/rawlog"
 	"github.com/ronigooja/liqwatch/internal/venue"
 	"github.com/ronigooja/liqwatch/internal/venue/binance"
+	"github.com/ronigooja/liqwatch/internal/venuemap"
 )
 
 func main() {
@@ -79,6 +80,19 @@ func run(cfg *config.Config, instance string) error {
 	syms, err := adapter.Symbols(ctx)
 	if err != nil {
 		return fmt.Errorf("symbols: %w", err)
+	}
+	if name != "binance" {
+		m, err := venuemap.Load(cfg.Collect.MapPath)
+		if err != nil {
+			return fmt.Errorf("venue map %q: %w", cfg.Collect.MapPath, err)
+		}
+		if len(m.Symbols(name)) == 0 {
+			return fmt.Errorf("venue map %q has no usable symbols for %s", cfg.Collect.MapPath, name)
+		}
+		syms = venue.Filter(syms, m, name)
+		if len(syms) == 0 {
+			return fmt.Errorf("venue map %q has no usable discovered symbols for %s", cfg.Collect.MapPath, name)
+		}
 	}
 	shards, err := adapter.Shards(ctx, syms)
 	if err != nil {
