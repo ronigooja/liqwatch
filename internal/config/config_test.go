@@ -26,12 +26,18 @@ func TestLoadDefaultsAndValidation(t *testing.T) {
 	if c.Collect.MapPath != "/etc/liqwatch/venue-map.toml" {
 		t.Fatal(c.Collect.MapPath)
 	}
-	if err := os.WriteFile(path, []byte("[collect]\nmap_path = \"/tmp/map.toml\"\n"), 0600); err != nil {
+	if c.Collect.PprofAddr != "" {
+		t.Fatalf("pprof enabled by default: %q", c.Collect.PprofAddr)
+	}
+	if err := os.WriteFile(path, []byte("[collect]\nmap_path = \"/tmp/map.toml\"\npprof_addr = \"127.0.0.1:6060\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	c, err = Load(path)
 	if err != nil || c.Collect.MapPath != "/tmp/map.toml" {
 		t.Fatalf("map override: %+v %v", c, err)
+	}
+	if c.Collect.PprofAddr != "127.0.0.1:6060" {
+		t.Fatalf("pprof override: %q", c.Collect.PprofAddr)
 	}
 	bad := filepath.Join(dir, "bad.toml")
 	if err := os.WriteFile(bad, []byte("[pack]\nlevel=23\n"), 0600); err != nil {

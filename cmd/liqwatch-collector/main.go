@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -151,6 +152,7 @@ func run(cfg *config.Config, instance string) error {
 	}
 
 	go serveMetrics(cfg.Collect.MetricsAddr, w, col, ready)
+	go servePprof(cfg.Collect.PprofAddr)
 
 	<-ctx.Done()
 	log.Printf("shutting down")
@@ -158,6 +160,21 @@ func run(cfg *config.Config, instance string) error {
 	writerStop()
 	writerDone.Wait()
 	return nil
+}
+
+func servePprof(addr string) {
+	if addr == "" {
+		return
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Printf("pprof: %v", err)
+	}
 }
 
 func serveMetrics(addr string, w *rawlog.Writer, col *collector.Collector, ready *readiness) {

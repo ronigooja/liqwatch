@@ -19,6 +19,7 @@ type Config struct {
 
 type Collect struct {
 	MetricsAddr     string   `toml:"metrics_addr"`        // e.g. 127.0.0.1:9101
+	PprofAddr       string   `toml:"pprof_addr"`          // empty disables profiling
 	ExtraMetrics    []string `toml:"extra_metrics_addrs"` // other slots checked too, e.g. 127.0.0.1:9102
 	Venue           string   `toml:"venue"`
 	MapPath         string   `toml:"map_path"`
