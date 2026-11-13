@@ -247,6 +247,26 @@ func FuzzSplitDifferential(f *testing.F) {
 	f.Fuzz(func(t *testing.T, frame []byte) { compareSplit(t, frame) })
 }
 
+func TestScannerFallbacks(t *testing.T) {
+	for _, tc := range []struct {
+		frame string
+		fast  bool
+	}{
+		{`{"arg":{"channel":"trades-all","instId":"BTC-USDT-SWAP"},"data":[{"instId":"BTC-USDT-SWAP","px":"1"}]}`, true},
+		{`{"arg":{"channel":"trades-all"},"data":[{"instId":"BTC-USDT-SWAP","INSTID":"other"}]}`, false},
+		{`{"arg":{"channel":"trades-all"},"arg":null,"data":[]}`, false},
+		{`{"arg":{"channel":"trades-all"},"data":[{"instId":null}]}`, false},
+		{`{"arg":{"channel":"trades-all"},"data":[{"\u0069nstId":"BTC-USDT-SWAP"}]}`, false},
+		{`{"arg":{"channel":"trades-all"},"data":[{"px":1,}]}`, false},
+	} {
+		_, fast := scanFrame([]byte(tc.frame))
+		if fast != tc.fast {
+			t.Fatalf("fast=%v for %s", fast, tc.frame)
+		}
+		compareSplit(t, []byte(tc.frame))
+	}
+}
+
 func BenchmarkSplit(b *testing.B) {
 	frames := map[string]string{
 		"trade":       `{"arg":{"channel":"trades-all","instId":"BTC-USDT-SWAP"},"data":[{"instId":"BTC-USDT-SWAP","tradeId":"1","px":"123","sz":"1","side":"buy","ts":"123"}]}`,

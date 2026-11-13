@@ -174,6 +174,8 @@ type Adapter struct {
 	indexSymbols    map[string]string
 	subscribeAcks   atomic.Uint64
 	subscribeErrors atomic.Uint64
+	scanFallbacks   atomic.Uint64
+	scanFrames      atomic.Uint64
 }
 
 func init()                   { venue.Register("okx", func() venue.Adapter { return &Adapter{} }) }
@@ -182,6 +184,9 @@ func (*Adapter) Name() string { return "okx" }
 // SubscribeAcks and SubscribeErrors report control frames observed by this adapter.
 func (a *Adapter) SubscribeAcks() uint64   { return a.subscribeAcks.Load() }
 func (a *Adapter) SubscribeErrors() uint64 { return a.subscribeErrors.Load() }
+
+// ScanStats reports frames examined by the scanner and frames sent to the decoder.
+func (a *Adapter) ScanStats() (uint64, uint64) { return a.scanFrames.Load(), a.scanFallbacks.Load() }
 
 type instrument struct {
 	InstID     string `json:"instId"`
@@ -325,6 +330,66 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	if string(msg) == "pong" {
 		return nil
 	}
+	a.scanFrames.Add(1)
+	f, ok := scanFrame(msg)
+	if !ok {
+		a.scanFallbacks.Add(1)
+		return a.splitFallback(sh, msg)
+	}
+	var ch string
+	switch f.channel {
+	case "trades-all":
+		ch = "trade"
+	case "mark-price":
+		ch = "mark"
+	case "index-tickers":
+		ch = "index"
+	case "funding-rate":
+		ch = "funding"
+	case "open-interest":
+		ch = "oi"
+	case "liquidation-orders":
+		ch = "liquidation"
+	default:
+		return gap(msg)
+	}
+	var out []rawlog.Record
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, item := range f.items {
+		sym := item.symbol
+		if sym == "" {
+			sym = f.symbol
+		}
+		if f.channel == "index-tickers" {
+			sym = a.indexSymbols[sym]
+		}
+		if sym == "" {
+			out = append(out, gap(msg)...)
+			continue
+		}
+		if !a.universe[sym] {
+			if f.channel != "liquidation-orders" {
+				out = append(out, gap(msg)...)
+			}
+			continue
+		}
+		filtered := filterScannedItem(f.channel, item)
+		payload := append([]byte(`{"arg":`), f.arg...)
+		payload = append(payload, `,"data":[`...)
+		payload = append(payload, filtered...)
+		payload = append(payload, ']', '}')
+		out = append(out, rawlog.Record{Channel: ch, Symbol: sym, Payload: payload})
+		if sampleDue(sh.Name, ch) {
+			sample := append([]byte(`{"sample":`), msg...)
+			sample = append(sample, '}')
+			out = append(out, rawlog.Record{Channel: ch, Symbol: sym, Payload: sample})
+		}
+	}
+	return out
+}
+
+func (a *Adapter) splitFallback(sh venue.Shard, msg []byte) []rawlog.Record {
 	var e struct {
 		Event  string          `json:"event"`
 		Arg    arg             `json:"arg"`
