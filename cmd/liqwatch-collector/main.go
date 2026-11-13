@@ -20,7 +20,8 @@ import (
 	"github.com/ronigooja/liqwatch/internal/collector"
 	"github.com/ronigooja/liqwatch/internal/config"
 	"github.com/ronigooja/liqwatch/internal/rawlog"
-	"github.com/ronigooja/liqwatch/internal/symbols"
+	"github.com/ronigooja/liqwatch/internal/venue"
+	"github.com/ronigooja/liqwatch/internal/venue/binance"
 )
 
 func main() {
@@ -48,6 +49,18 @@ func run(cfg *config.Config, instance string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	name := cfg.Collect.Venue
+	if name == "" {
+		name = "binance"
+	}
+	adapter := venue.Get(name)
+	if adapter == nil {
+		return fmt.Errorf("unknown venue %q", name)
+	}
+	if a, ok := adapter.(*binance.Adapter); ok {
+		a.StateDir = filepath.Join(cfg.DataDir, "state")
+		a.MaxStreamsPerWS = cfg.Collect.MaxStreamsPerWS
+	}
 	rawDir := filepath.Join(cfg.DataDir, "raw")
 	if instance != "" {
 		unlock, err := lockInstance(cfg.DataDir, instance)
@@ -57,42 +70,53 @@ func run(cfg *config.Config, instance string) error {
 		defer unlock()
 	}
 	w, err := rawlog.NewWriter(rawlog.Options{
-		Dir: rawDir, QueueSize: cfg.Collect.QueueSize, MaxDiskPct: 92, Instance: instance,
+		Dir: rawDir, QueueSize: cfg.Collect.QueueSize, MaxDiskPct: 92, Instance: instance, DropClass: adapter.Classes(),
 	})
 	if err != nil {
 		return err
 	}
 	ready := &readiness{}
-	uni, err := symbols.Load(ctx, filepath.Join(cfg.DataDir, "state"))
+	syms, err := adapter.Symbols(ctx)
 	if err != nil {
 		return fmt.Errorf("symbols: %w", err)
 	}
-	log.Printf("universe=%d weight_limit=%d", len(uni.All), uni.WeightPerMinLimit)
-	shards := collector.BuildShards(uni.All, cfg.Collect.MaxStreamsPerWS)
-	tap := backfill.NewTap(w)
-	col := collector.New(tap, shards)
-	col.Venue = cfg.Collect.Venue
+	shards, err := adapter.Shards(ctx, syms)
+	if err != nil {
+		return fmt.Errorf("shards: %w", err)
+	}
+	log.Printf("universe=%d", len(syms))
+	var sink rawlog.Sink = w
+	var bf *backfill.Backfiller
+	var tap *backfill.Tap
+	if a, ok := adapter.(*binance.Adapter); ok {
+		log.Printf("weight_limit=%d", a.WeightPerMinLimit)
+		tap = backfill.NewTap(w)
+		sink = tap
+		bf = backfill.New(tap, tap, &http.Client{Timeout: 20 * time.Second}, a.WeightPerMinLimit, 0.10)
+	}
+	col := collector.New(sink, adapter, shards)
 	col.OpenSpacing = time.Duration(cfg.Collect.OpenSpacingMS) * time.Millisecond
-	bf := backfill.New(tap, tap, &http.Client{Timeout: 20 * time.Second}, uni.WeightPerMinLimit, 0.10)
-	shardSyms := map[string][]string{}
-	for _, sh := range shards {
-		if !strings.HasPrefix(sh.Name, "trade") {
-			continue
+	if bf != nil {
+		shardSyms := map[string][]string{}
+		for _, sh := range shards {
+			if !strings.HasPrefix(sh.Name, "trade") {
+				continue
+			}
+			for _, st := range sh.Streams {
+				shardSyms[sh.Name] = append(shardSyms[sh.Name], strings.ToUpper(strings.TrimSuffix(st, "@aggTrade")))
+			}
 		}
-		for _, st := range sh.Streams {
-			shardSyms[sh.Name] = append(shardSyms[sh.Name], strings.ToUpper(strings.TrimSuffix(st, "@aggTrade")))
+		col.OnDisconnect = func(sh collector.Shard) uint64 {
+			if _, ok := shardSyms[sh.Name]; !ok {
+				return 0
+			}
+			return tap.Mark()
 		}
-	}
-	col.OnDisconnect = func(sh collector.Shard) uint64 {
-		if _, ok := shardSyms[sh.Name]; !ok {
-			return 0
-		}
-		return tap.Mark()
-	}
-	col.OnReconnectToken = func(sh collector.Shard, marker uint64) {
-		if syms, ok := shardSyms[sh.Name]; ok && marker != 0 {
-			log.Printf("trade shard %s reconnected, backfilling %d symbols", sh.Name, len(syms))
-			bf.RequestShardAfter(syms, marker)
+		col.OnReconnectToken = func(sh collector.Shard, marker uint64) {
+			if syms, ok := shardSyms[sh.Name]; ok && marker != 0 {
+				log.Printf("trade shard %s reconnected, backfilling %d symbols", sh.Name, len(syms))
+				bf.RequestShardAfter(syms, marker)
+			}
 		}
 	}
 	col.OnOpen = ready.shardOpened
@@ -105,9 +129,12 @@ func run(cfg *config.Config, instance string) error {
 	go func() { defer writerDone.Done(); w.Run(writerCtx) }()
 
 	var prod sync.WaitGroup
-	prod.Add(2)
+	prod.Add(1)
 	go func() { defer prod.Done(); col.Run(ctx) }()
-	go func() { defer prod.Done(); bf.Run(ctx) }()
+	if bf != nil {
+		prod.Add(1)
+		go func() { defer prod.Done(); bf.Run(ctx) }()
+	}
 
 	go serveMetrics(cfg.Collect.MetricsAddr, w, col, ready)
 
