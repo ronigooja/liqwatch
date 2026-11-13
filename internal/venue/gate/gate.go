@@ -43,7 +43,7 @@ var policies = map[string]fieldPolicy{
 	// Open interest and long/short ratios: retain unclassified statistics.
 	"contract_stats": {fields("contract", "time", "time_ms", "t", "open_interest"), fields()},
 	// Contract units, leverage tiers, funding, mark, index, and open interest.
-	"contract_info": {fields("contract", "time", "time_ms", "t", "quanto_multiplier", "mark_price", "index_price", "funding_rate", "funding_next_apply", "total_size", "leverage_min", "leverage_max", "leverage_tiers"), fields("last", "change_percentage", "volume_24h", "volume_24h_base", "volume_24h_quote", "volume_24h_settle", "quanto_base_rate", "low_24h", "high_24h", "highest_bid", "highest_size", "lowest_ask", "lowest_size", "bid", "ask", "bid_size", "ask_size")},
+	"contract_info": {fields("contract", "time", "time_ms", "t", "quanto_multiplier", "order_price_round", "mark_price_round", "risk_limit_tiers", "mark_price", "index_price", "funding_rate", "funding_next_apply", "total_size", "leverage_min", "leverage_max", "leverage_tiers"), fields("last", "change_percentage", "volume_24h", "volume_24h_base", "volume_24h_quote", "volume_24h_settle", "quanto_base_rate", "low_24h", "high_24h", "highest_bid", "highest_size", "lowest_ask", "lowest_size", "bid", "ask", "bid_size", "ask_size")},
 }
 
 var envelopePolicy = fieldPolicy{fields("channel", "event", "time", "time_ms", "result"), fields("conn_id", "trace_id")}
