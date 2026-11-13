@@ -1,9 +1,8 @@
-// Package collector reads Binance futures combined streams and hands raw bytes to a rawlog.Sink.
+// Package collector reads venue WebSocket streams and hands records to a rawlog.Sink.
 // Design: docs/p0-core-design.md (Component 2).
 package collector
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,30 +15,22 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/ronigooja/liqwatch/internal/rawlog"
+	"github.com/ronigooja/liqwatch/internal/venue"
 )
 
 const (
-	WSPublic = "wss://fstream.binance.com/public/stream?streams="
-	WSMarket = "wss://fstream.binance.com/market/stream?streams="
-
 	connMaxAge  = 23 * time.Hour // replace before the 24 h server limit
 	overlap     = 10 * time.Second
 	openSpacing = 500 * time.Millisecond
 )
 
-// Shard is one combined-stream connection (replaced over time).
-type Shard struct {
-	Name    string
-	Base    string
-	Streams []string
-	Stall   time.Duration // 0 disables stall detection
-}
+// Shard describes a venue connection.
+type Shard = venue.Shard
 
 type Collector struct {
-	sink     rawlog.Sink
-	shards   []Shard
-	Venue    string
-	Universe map[string]struct{}
+	sink    rawlog.Sink
+	shards  []Shard
+	adapter venue.Adapter
 
 	// OnReconnect is called after a shard reopens following an unplanned disconnect, once the
 	// new connection is open. Planned 23 h replacements overlap and do not call it.
@@ -61,35 +52,8 @@ type Collector struct {
 	Messages   atomic.Int64
 }
 
-func New(sink rawlog.Sink, shards []Shard) *Collector {
-	universe := make(map[string]struct{})
-	for _, sh := range shards {
-		for _, stream := range sh.Streams {
-			if strings.HasSuffix(stream, "@aggTrade") {
-				universe[strings.ToUpper(strings.TrimSuffix(stream, "@aggTrade"))] = struct{}{}
-			}
-		}
-	}
-	return &Collector{sink: sink, shards: shards, OpenSpacing: openSpacing, Venue: "binance", Universe: universe}
-}
-
-// BuildShards lays out trade and all-market streams.
-func BuildShards(all []string, perWS int) []Shard {
-	if perWS <= 0 {
-		perWS = 100
-	}
-	var out []Shard
-	var agg []string
-	for _, s := range all {
-		agg = append(agg, strings.ToLower(s)+"@aggTrade")
-	}
-	for i := 0; i*perWS < len(agg); i++ {
-		j := min((i+1)*perWS, len(agg))
-		out = append(out, Shard{Name: fmt.Sprintf("trade%02d", i), Base: WSMarket, Streams: agg[i*perWS : j], Stall: 60 * time.Second})
-	}
-	// forceOrder is sparse; markPrice@1s on the same connection provides liveness.
-	out = append(out, Shard{Name: "misc", Base: WSMarket, Streams: []string{"!markPrice@arr@1s", "!forceOrder@arr"}, Stall: 30 * time.Second})
-	return out
+func New(sink rawlog.Sink, adapter venue.Adapter, shards []Shard) *Collector {
+	return &Collector{sink: sink, adapter: adapter, shards: shards, OpenSpacing: openSpacing}
 }
 
 // Run starts all shards (gradually) and blocks until ctx is cancelled and all connections are closed.
@@ -111,7 +75,11 @@ func (c *Collector) Run(ctx context.Context) {
 }
 
 func (c *Collector) runShard(ctx context.Context, sh Shard) {
-	url := sh.Base + strings.Join(sh.Streams, "/")
+	url := sh.URL
+	maxAge := sh.MaxAge
+	if maxAge <= 0 {
+		maxAge = connMaxAge
+	}
 	backoff := time.Second
 	var gen int
 	var cur *conn
@@ -147,7 +115,7 @@ func (c *Collector) runShard(ctx context.Context, sh Shard) {
 				log.Printf("shard %s conn %s ended after %s: %v", sh.Name, cur.id, time.Since(started).Round(time.Second), cur.err())
 				c.gap(sh, cur, "reconnect")
 				goto retry
-			case <-time.After(time.Until(started.Add(connMaxAge))):
+			case <-time.After(time.Until(started.Add(maxAge))):
 				// planned replacement: new connection first, then retire the old one
 				next := c.start(ctx, sh, url, gen+1)
 				select {
@@ -235,6 +203,39 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 	}
 	log.Printf("shard %s conn %s open (%d streams)", sh.Name, k.id, len(sh.Streams))
 
+	for i, msg := range c.adapter.Subscribe(sh) {
+		if i > 0 && sh.SubscribeSpacing > 0 {
+			t := time.NewTimer(sh.SubscribeSpacing)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return ctx.Err()
+			case <-t.C:
+			}
+		}
+		if err := ws.Write(ctx, websocket.MessageText, msg); err != nil {
+			return err
+		}
+	}
+	if every, frame := c.adapter.Heartbeat(sh); every > 0 && frame != nil {
+		go func() {
+			t := time.NewTicker(every)
+			defer t.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					typ, payload := frame()
+					if ws.Write(ctx, websocket.MessageType(typ), payload) != nil {
+						k.cancel()
+						return
+					}
+				}
+			}
+		}()
+	}
+
 	var last atomic.Int64
 	last.Store(time.Now().UnixNano())
 	if sh.Stall > 0 {
@@ -271,18 +272,14 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		last.Store(rw.UnixNano())
 		cseq++
 		c.Messages.Add(1)
-		ch, sym := classify(data)
-		if ch == "markPrice_all" || ch == "forceOrder_all" {
-			for _, rec := range SplitAllMarket(data, c.Universe) {
-				rec.Venue, rec.Conn, rec.CSeq, rec.RecvWal, rec.RecvMon = c.Venue, k.id, cseq, rw.UnixNano(), rawlog.Mono()
-				c.sink.Write(groupOf(rec.Channel), rec)
+		for _, rec := range c.adapter.Split(sh, data) {
+			rec.Venue, rec.Conn, rec.CSeq, rec.RecvWal, rec.RecvMon = c.adapter.Name(), k.id, cseq, rw.UnixNano(), rawlog.Mono()
+			group := rawlog.GroupTrade
+			if strings.HasPrefix(rec.Channel, "forceOrder") || strings.Contains(strings.ToLower(rec.Channel), "liquidation") {
+				group = rawlog.GroupLiq
 			}
-			continue
+			c.sink.Write(group, rec)
 		}
-		c.sink.Write(groupOf(ch), rawlog.Record{
-			Venue: c.Venue, Conn: k.id, CSeq: cseq, RecvWal: rw.UnixNano(), RecvMon: rawlog.Mono(),
-			Channel: ch, Symbol: sym, Payload: data,
-		})
 	}
 }
 
@@ -294,42 +291,6 @@ func (c *Collector) gap(sh Shard, k *conn, cause string) {
 	p, _ := json.Marshal(map[string]any{"event": "conn_closed", "cause": cause, "err": e, "shard": sh.Name, "streams": sh.Streams})
 	now := time.Now()
 	c.sink.Write(rawlog.GroupGap, rawlog.Record{
-		Venue: c.Venue, Conn: k.id, RecvWal: now.UnixNano(), RecvMon: rawlog.Mono(), Channel: "gap", Payload: p,
+		Venue: c.adapter.Name(), Conn: k.id, RecvWal: now.UnixNano(), RecvMon: rawlog.Mono(), Channel: "gap", Payload: p,
 	})
-}
-
-func groupOf(ch string) string {
-	switch {
-	case strings.HasPrefix(ch, "forceOrder"):
-		return rawlog.GroupLiq
-	default:
-		return rawlog.GroupTrade
-	}
-}
-
-// classify extracts channel and symbol from a combined-stream message without full parsing.
-func classify(data []byte) (ch, sym string) {
-	i := bytes.Index(data, []byte(`"stream":"`))
-	if i < 0 {
-		return "unknown", ""
-	}
-	rest := data[i+10:]
-	j := bytes.IndexByte(rest, '"')
-	if j < 0 {
-		return "unknown", ""
-	}
-	name := string(rest[:j])
-	k := strings.IndexByte(name, '@')
-	if k < 0 {
-		return name, ""
-	}
-	sym = strings.ToUpper(name[:k])
-	ch = name[k+1:]
-	if m := strings.IndexByte(ch, '@'); m >= 0 {
-		ch = ch[:m]
-	}
-	if sym != "" && sym[0] == '!' {
-		return strings.TrimPrefix(name[:k], "!") + "_all", ""
-	}
-	return ch, sym
 }
