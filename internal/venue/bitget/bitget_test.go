@@ -96,10 +96,55 @@ func TestUnknownAndGlobal(t *testing.T) {
 	if got := a.Split(venue.Shard{}, []byte(`{"arg":{"topic":"new"},"data":[{}]}`)); len(got) != 1 || got[0].Channel != "gap" {
 		t.Fatalf("unknown %+v", got)
 	}
-	for _, m := range []string{"pong", `{"event":"subscribe"}`, `{"event":"error","code":30001}`} {
+	for _, m := range []string{"pong", `{"event":"subscribe"}`} {
 		if got := a.Split(venue.Shard{}, []byte(m)); len(got) != 0 {
 			t.Fatalf("control %s %+v", m, got)
 		}
+	}
+}
+
+func TestSubscriptionControl(t *testing.T) {
+	a := &Adapter{}
+	frames := venuetest.Fixture(t, "testdata/frames.jsonl")
+	errorFrame := frames[22]
+	records := a.Split(venue.Shard{}, errorFrame)
+	if len(records) != 1 || records[0].Channel != "gap" || records[0].Symbol != "" {
+		t.Fatalf("error records: %+v", records)
+	}
+	var payload struct {
+		Event string `json:"event"`
+		Frame string `json:"frame"`
+	}
+	if err := json.Unmarshal(records[0].Payload, &payload); err != nil || payload.Event != "subscribe_error" || payload.Frame != string(errorFrame) {
+		t.Fatalf("payload %s: %v", records[0].Payload, err)
+	}
+	long := []byte(`{"event":"error","msg":"` + string(bytes.Repeat([]byte("x"), 5000)) + `"}`)
+	records = a.Split(venue.Shard{}, long)
+	if err := json.Unmarshal(records[0].Payload, &payload); err != nil || payload.Frame != string(long[:4096]) {
+		t.Fatalf("truncated frame: %v", err)
+	}
+	if len(a.Split(venue.Shard{}, frames[0])) != 0 || len(a.Split(venue.Shard{}, []byte("pong"))) != 0 {
+		t.Fatal("ack or pong recorded")
+	}
+	if len(a.Split(venue.Shard{}, []byte(`{"event":"subscribe","code":30001}`))) != 1 {
+		t.Fatal("error marked as subscribe was dropped")
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				a.Split(venue.Shard{}, frames[0])
+				a.Split(venue.Shard{}, errorFrame)
+				_ = a.SubscribeAcks()
+				_ = a.SubscribeErrors()
+			}
+		}()
+	}
+	wg.Wait()
+	if a.SubscribeAcks() != 2001 || a.SubscribeErrors() != 2003 {
+		t.Fatalf("acks=%d errors=%d", a.SubscribeAcks(), a.SubscribeErrors())
 	}
 }
 func TestConcurrentSplit(t *testing.T) {

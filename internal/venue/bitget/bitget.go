@@ -58,10 +58,14 @@ type Adapter struct {
 	tickers      map[string]lastTicker
 	unknown      atomic.Uint64
 	skipped      atomic.Uint64
+	acks         atomic.Uint64
+	errors       atomic.Uint64
 }
 
-func (a *Adapter) UnknownFields() uint64 { return a.unknown.Load() }
-func (a *Adapter) Deduplicated() uint64  { return a.skipped.Load() }
+func (a *Adapter) UnknownFields() uint64   { return a.unknown.Load() }
+func (a *Adapter) Deduplicated() uint64    { return a.skipped.Load() }
+func (a *Adapter) SubscribeAcks() uint64   { return a.acks.Load() }
+func (a *Adapter) SubscribeErrors() uint64 { return a.errors.Load() }
 func (a *Adapter) now() time.Time {
 	if a.clock != nil {
 		return a.clock()
@@ -277,7 +281,10 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 		return nil
 	}
 	var v struct {
-		Arg struct {
+		Event string          `json:"event"`
+		Error json.RawMessage `json:"error"`
+		Code  json.RawMessage `json:"code"`
+		Arg   struct {
 			Topic  string `json:"topic"`
 			Symbol string `json:"symbol"`
 		} `json:"arg"`
@@ -287,6 +294,16 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 		if bytes.Contains(msg, []byte(`"data"`)) {
 			return gap(msg)
 		}
+		return nil
+	}
+	code := string(v.Code)
+	if v.Event == "error" || (len(v.Error) > 0 && string(v.Error) != "null" && string(v.Error) != "false") || (code != "" && code != "null" && code != "0" && code != `"0"` && code != `"00000"`) {
+		a.errors.Add(1)
+		p, _ := json.Marshal(map[string]any{"event": "subscribe_error", "frame": string(msg[:min(len(msg), 4096)])})
+		return []rawlog.Record{{Channel: "gap", Payload: p}}
+	}
+	if v.Event == "subscribe" {
+		a.acks.Add(1)
 		return nil
 	}
 	if len(v.Data) == 0 {
