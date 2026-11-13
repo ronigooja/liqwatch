@@ -10,8 +10,8 @@ The fixture includes snapshots, deltas, pongs, an acknowledgement and error.
 
 Measured: tickers carry markPrice, indexPrice, fundingRate, openInterest and
 singleOpenInterest as well as best bid/ask; deltas omit unchanged fields.
-For the first three saved deltas, intervals were 99-100 ms for five symbols,
-and 100-900 ms for 0GUSDT (two intervals per symbol). Trades are event-driven;
+For the first three saved deltas, intervals were 99-101 ms for four symbols,
+100-200 ms for 0GUSDT and 200-300 ms for DOGEUSDT (two intervals per symbol). Trades are event-driven;
 liquidations were intermittent, not sufficient to measure 500 ms batching.
 One BTC snapshot had both-sides openInterest 69827.276 and singleOpenInterest
 34913.638. Completeness and units are not established by these observations.
