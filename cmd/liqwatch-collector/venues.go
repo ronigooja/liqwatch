@@ -3,6 +3,7 @@ package main
 // New venue packages register by import; Binance is imported in main.go for configuration.
 import (
 	_ "github.com/ronigooja/liqwatch/internal/venue/bitget"
+	_ "github.com/ronigooja/liqwatch/internal/venue/bybit"
 	_ "github.com/ronigooja/liqwatch/internal/venue/gate"
 	_ "github.com/ronigooja/liqwatch/internal/venue/kucoin"
 	_ "github.com/ronigooja/liqwatch/internal/venue/mexc"
