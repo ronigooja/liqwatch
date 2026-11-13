@@ -132,6 +132,8 @@ func (s *FileSink) flush() {
 
 func (s *FileSink) Err() error { s.mu.Lock(); defer s.mu.Unlock(); return s.err }
 
+func (s *FileSink) Flush() error { s.flush(); return s.Err() }
+
 func (s *FileSink) Close() error {
 	s.mu.Lock()
 	if s.closed {

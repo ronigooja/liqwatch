@@ -1,0 +1,394 @@
+package poller
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"time"
+)
+
+type Symbol = string
+
+type Channel struct {
+	Venue, Name string
+	PerSymbol   bool
+	Period      time.Duration
+	Daily       bool
+	Weight      float64
+	RPS         float64
+	Fetch       func(context.Context, Symbol) ([]Record, error)
+}
+
+type Clock interface {
+	Now() time.Time
+	Sleep(context.Context, time.Duration) error
+}
+type RealClock struct{}
+
+func (RealClock) Now() time.Time { return time.Now() }
+func (RealClock) Sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+type RetryError struct {
+	Err   error
+	After time.Duration
+}
+
+func (e *RetryError) Error() string { return e.Err.Error() }
+
+type PermanentError struct {
+	Err     error
+	Payload []byte
+}
+
+func (e *PermanentError) Error() string { return e.Err.Error() }
+
+type jobState struct {
+	LastSuccess  int64 `json:"last_success"`
+	RowTimestamp int64 `json:"row_timestamp,omitempty"`
+}
+type state struct {
+	Jobs    map[string]jobState `json:"jobs"`
+	Symbols []string            `json:"symbols,omitempty"`
+}
+type bucket struct {
+	tokens  float64
+	updated time.Time
+}
+type failure struct {
+	attempts int
+	since    time.Time
+	next     time.Time
+}
+
+type Scheduler struct {
+	Channels             []Channel
+	Sink                 Sink
+	Clock                Clock
+	StatePath            string
+	WeightPerMinute      float64
+	Universe             func() []string
+	state                state
+	buckets              map[string]*bucket
+	blocked, lastRequest map[string]time.Time
+	failures             map[string]*failure
+	stopped              map[string]bool
+}
+
+func NewScheduler(channels []Channel, sink Sink, clock Clock, path string, weight float64) (*Scheduler, error) {
+	if clock == nil {
+		clock = RealClock{}
+	}
+	if weight <= 0 {
+		weight = 240
+	}
+	s := &Scheduler{Channels: channels, Sink: sink, Clock: clock, StatePath: path, WeightPerMinute: weight, state: state{Jobs: map[string]jobState{}}, buckets: map[string]*bucket{}, blocked: map[string]time.Time{}, lastRequest: map[string]time.Time{}, failures: map[string]*failure{}, stopped: map[string]bool{}}
+	if path != "" {
+		b, err := os.ReadFile(path)
+		if err == nil {
+			if err = json.Unmarshal(b, &s.state); err != nil {
+				return nil, err
+			}
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+	if s.state.Jobs == nil {
+		s.state.Jobs = map[string]jobState{}
+	}
+	return s, nil
+}
+func jobKey(c Channel, sym string) string { return c.Venue + "/" + c.Name + "/" + sym }
+func (s *Scheduler) RowTimestamp(venue, channel, symbol string) int64 {
+	return s.state.Jobs[venue+"/"+channel+"/"+symbol].RowTimestamp
+}
+func (s *Scheduler) Symbols() []string           { return append([]string(nil), s.state.Symbols...) }
+func (s *Scheduler) SetSymbols(symbols []string) { s.state.Symbols = append([]string(nil), symbols...) }
+func (s *Scheduler) save() error {
+	if s.StatePath == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(s.StatePath), 0755); err != nil {
+		return err
+	}
+	b, err := json.Marshal(s.state)
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(s.StatePath), ".poll-state-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	defer os.Remove(name)
+	if _, err = f.Write(b); err == nil {
+		err = f.Sync()
+	}
+	if e := f.Close(); err == nil {
+		err = e
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(name, s.StatePath)
+}
+func due(c Channel, last int64, now time.Time) bool {
+	if last == 0 {
+		return true
+	}
+	t := time.Unix(0, last).UTC()
+	now = now.UTC()
+	if c.Daily {
+		boundary := time.Date(now.Year(), now.Month(), now.Day(), 0, 5, 0, 0, time.UTC)
+		if now.Before(boundary) {
+			boundary = boundary.Add(-24 * time.Hour)
+		}
+		return t.Before(boundary)
+	}
+	if c.Period <= 0 {
+		return false
+	}
+	return now.Truncate(c.Period).After(t.Truncate(c.Period))
+}
+func (s *Scheduler) available(c Channel, now time.Time) time.Duration {
+	endpoint := c.Venue + "/" + c.Name
+	wait := s.blocked[endpoint].Sub(now)
+	if c.RPS > 0 {
+		if d := s.lastRequest[endpoint].Add(time.Duration(float64(time.Second) / c.RPS)).Sub(now); d > wait {
+			wait = d
+		}
+	}
+	b := s.buckets[c.Venue]
+	if b == nil {
+		b = &bucket{tokens: s.WeightPerMinute, updated: now}
+		s.buckets[c.Venue] = b
+	}
+	if now.After(b.updated) {
+		b.tokens += now.Sub(b.updated).Minutes() * s.WeightPerMinute
+		if b.tokens > s.WeightPerMinute {
+			b.tokens = s.WeightPerMinute
+		}
+		b.updated = now
+	}
+	w := c.Weight
+	if w <= 0 {
+		w = 1
+	}
+	if w > s.WeightPerMinute {
+		return 24 * time.Hour
+	}
+	if b.tokens < w {
+		d := time.Duration((w - b.tokens) / s.WeightPerMinute * float64(time.Minute))
+		if d > wait {
+			wait = d
+		}
+	}
+	if wait < 0 {
+		return 0
+	}
+	return wait
+}
+func (s *Scheduler) gap(c Channel, sym, event, msg string, f *failure) {
+	now := s.Clock.Now()
+	p, _ := json.Marshal(map[string]any{"event": event, "channel": c.Name, "symbol": sym, "err": msg, "attempt": f.attempts, "since_ns": f.since.UnixNano()})
+	s.Sink.Write(Record{Venue: c.Venue, Symbol: sym, Channel: "gap", RecvWall: now.UnixNano(), RecvMono: time.Since(monoOrigin).Nanoseconds(), Payload: p})
+}
+
+// Step runs at most one due request and returns a suggested delay until another step.
+func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
+	now := s.Clock.Now()
+	wait := time.Second
+	symbols := s.Symbols()
+	if s.Universe != nil {
+		symbols = s.Universe()
+	}
+	sort.Strings(symbols)
+	for _, c := range s.Channels {
+		syms := []string{""}
+		if c.PerSymbol {
+			syms = symbols
+		}
+		for _, sym := range syms {
+			key := jobKey(c, sym)
+			if s.stopped[key] || !due(c, s.state.Jobs[key].LastSuccess, now) {
+				continue
+			}
+			if f := s.failures[key]; f != nil && now.Before(f.next) {
+				if d := f.next.Sub(now); d < wait {
+					wait = d
+				}
+				continue
+			}
+			if d := s.available(c, now); d > 0 {
+				if d < wait {
+					wait = d
+				}
+				continue
+			}
+			w := c.Weight
+			if w <= 0 {
+				w = 1
+			}
+			s.buckets[c.Venue].tokens -= w
+			endpoint := c.Venue + "/" + c.Name
+			s.lastRequest[endpoint] = now
+			records, err := c.Fetch(ctx, sym)
+			if err != nil {
+				f := s.failures[key]
+				if f == nil {
+					f = &failure{since: now}
+					s.failures[key] = f
+				}
+				f.attempts++
+				s.gap(c, sym, "poll_failed", err.Error(), f)
+				var permanent *PermanentError
+				if errors.As(err, &permanent) {
+					p := permanent.Payload
+					if !json.Valid(p) {
+						p, _ = json.Marshal(string(p))
+					}
+					s.Sink.Write(Record{Venue: c.Venue, Symbol: sym, Channel: "brackets_error", RecvWall: now.UnixNano(), RecvMono: time.Since(monoOrigin).Nanoseconds(), Payload: p})
+					s.stopped[key] = true
+					return 0, nil
+				}
+				d := time.Second << min(f.attempts-1, 8)
+				if d > 300*time.Second {
+					d = 300 * time.Second
+				}
+				var retry *RetryError
+				if errors.As(err, &retry) {
+					if retry.After > d {
+						d = retry.After
+					}
+					s.blocked[endpoint] = now.Add(retry.After)
+				}
+				f.next = now.Add(d)
+				return 0, nil
+			}
+			for _, r := range records {
+				s.Sink.Write(r)
+			}
+			if f := s.failures[key]; f != nil {
+				s.gap(c, sym, "poll_recovered", "", f)
+				delete(s.failures, key)
+			}
+			st := s.state.Jobs[key]
+			st.LastSuccess = s.Clock.Now().UnixNano()
+			for _, r := range records {
+				if ts, ok := r.Meta["last_row_timestamp"].(int64); ok && ts > st.RowTimestamp {
+					st.RowTimestamp = ts
+				}
+			}
+			s.state.Jobs[key] = st
+			if x, ok := s.Sink.(interface{ Flush() error }); ok {
+				if err := x.Flush(); err != nil {
+					return 0, err
+				}
+			}
+			if err := s.save(); err != nil {
+				return 0, fmt.Errorf("save poll state: %w", err)
+			}
+			return 0, nil
+		}
+	}
+	return wait, nil
+}
+
+func (s *Scheduler) Run(ctx context.Context) error {
+	for {
+		d, err := s.Step(ctx)
+		if err != nil {
+			return err
+		}
+		if d > 0 {
+			if err = s.Clock.Sleep(ctx, d); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// RunOnce attempts each job due at the start of the sweep at most once.
+func (s *Scheduler) RunOnce(ctx context.Context) error {
+	seen := map[string]bool{}
+	for {
+		original := s.Channels
+		var channels []Channel
+		for _, c := range original {
+			cc := c
+			if !c.PerSymbol && seen[jobKey(c, "")] {
+				continue
+			}
+			fetch := c.Fetch
+			cc.Fetch = func(ctx context.Context, sym string) ([]Record, error) {
+				seen[jobKey(cc, sym)] = true
+				return fetch(ctx, sym)
+			}
+			channels = append(channels, cc)
+		}
+		s.Channels = channels
+		oldUniverse := s.Universe
+		s.Universe = func() []string {
+			var syms []string
+			if oldUniverse != nil {
+				syms = oldUniverse()
+			} else {
+				syms = s.Symbols()
+			}
+			return syms
+		}
+		// Temporarily suppress already attempted per-symbol jobs.
+		added := []string{}
+		for key := range seen {
+			if !s.stopped[key] {
+				s.stopped[key] = true
+				added = append(added, key)
+			}
+		}
+		d, err := s.Step(ctx)
+		s.Channels = original
+		s.Universe = oldUniverse
+		for _, key := range added {
+			delete(s.stopped, key)
+		}
+		if err != nil {
+			return err
+		}
+		if d > 0 {
+			pending := false
+			for _, c := range original {
+				syms := []string{""}
+				if c.PerSymbol {
+					if oldUniverse != nil {
+						syms = oldUniverse()
+					} else {
+						syms = s.Symbols()
+					}
+				}
+				for _, sym := range syms {
+					if !seen[jobKey(c, sym)] && due(c, s.state.Jobs[jobKey(c, sym)].LastSuccess, s.Clock.Now()) {
+						pending = true
+					}
+				}
+			}
+			if !pending {
+				return nil
+			}
+			if err := s.Clock.Sleep(ctx, d); err != nil {
+				return err
+			}
+		}
+	}
+}
