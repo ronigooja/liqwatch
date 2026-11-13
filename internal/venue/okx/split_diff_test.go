@@ -197,6 +197,56 @@ func TestSplitDifferential(t *testing.T) {
 	}
 }
 
+func compareSplit(t *testing.T, frame []byte) {
+	t.Helper()
+	a := &Adapter{universe: map[string]bool{"BTC-USDT-SWAP": true}, indexSymbols: map[string]string{"BTC-USDT": "BTC-USDT-SWAP"}}
+	sh := venue.Shard{Name: "differential"}
+	for _, sampled := range []bool{false, true} {
+		reset := func() {
+			sampler.Lock()
+			sampler.last = make(map[string]time.Time)
+			if sampled {
+				for _, ch := range []string{"trade", "mark", "index", "funding", "oi", "liquidation"} {
+					sampler.last[sh.Name+"\x00"+ch] = time.Now().Add(time.Hour)
+				}
+			}
+			sampler.Unlock()
+		}
+		reset()
+		before, acks, errs := unknownFields.Load(), a.SubscribeAcks(), a.SubscribeErrors()
+		want := legacySplit(a, sh, frame)
+		unknown, ack, errCount := unknownFields.Load()-before, a.SubscribeAcks()-acks, a.SubscribeErrors()-errs
+		reset()
+		before, acks, errs = unknownFields.Load(), a.SubscribeAcks(), a.SubscribeErrors()
+		got := a.Split(sh, frame)
+		if !reflect.DeepEqual(got, want) || unknownFields.Load()-before != unknown || a.SubscribeAcks()-acks != ack || a.SubscribeErrors()-errs != errCount {
+			t.Fatalf("sampled %v frame %q: got %+v want %+v; counters got %d/%d/%d want %d/%d/%d", sampled, frame, got, want, unknownFields.Load()-before, a.SubscribeAcks()-acks, a.SubscribeErrors()-errs, unknown, ack, errCount)
+		}
+	}
+}
+
+func TestSplitFixtureMutations(t *testing.T) {
+	for _, path := range []string{"testdata/public.jsonl", "testdata/business.jsonl"} {
+		for _, frame := range venuetest.Fixture(t, path) {
+			for i := range frame {
+				compareSplit(t, frame[:i])
+				mutated := bytes.Clone(frame)
+				mutated[i] ^= 1
+				compareSplit(t, mutated)
+			}
+		}
+	}
+}
+
+func FuzzSplitDifferential(f *testing.F) {
+	for _, path := range []string{"testdata/public.jsonl", "testdata/business.jsonl"} {
+		for _, frame := range venuetest.Fixture(f, path) {
+			f.Add(frame)
+		}
+	}
+	f.Fuzz(func(t *testing.T, frame []byte) { compareSplit(t, frame) })
+}
+
 func BenchmarkSplit(b *testing.B) {
 	frames := map[string]string{
 		"trade":       `{"arg":{"channel":"trades-all","instId":"BTC-USDT-SWAP"},"data":[{"instId":"BTC-USDT-SWAP","tradeId":"1","px":"123","sz":"1","side":"buy","ts":"123"}]}`,
