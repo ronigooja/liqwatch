@@ -96,9 +96,17 @@ const maxStreams = 90 // Operational cap, not a documented Bybit limit.
 
 // Adapter holds optional overrides for instrument discovery.
 type Adapter struct {
-	HTTPClient     *http.Client
-	InstrumentsURL string
+	HTTPClient      *http.Client
+	InstrumentsURL  string
+	subscribeAcks   atomic.Uint64
+	subscribeErrors atomic.Uint64
 }
+
+// SubscribeAcks returns the number of successful subscription acknowledgements.
+func (a *Adapter) SubscribeAcks() uint64 { return a.subscribeAcks.Load() }
+
+// SubscribeErrors returns the number of subscription failure frames.
+func (a *Adapter) SubscribeErrors() uint64 { return a.subscribeErrors.Load() }
 
 func init()                   { venue.Register("bybit", func() venue.Adapter { return &Adapter{} }) }
 func (*Adapter) Name() string { return "bybit" }
@@ -231,14 +239,31 @@ func (*Adapter) Subscribe(sh venue.Shard) [][]byte {
 func (*Adapter) Heartbeat(venue.Shard) (time.Duration, func() (int, []byte)) {
 	return 20 * time.Second, func() (int, []byte) { return int(websocket.MessageText), []byte(`{"op":"ping"}`) }
 }
-func (*Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
+func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	var x struct {
-		Topic string          `json:"topic"`
-		Type  string          `json:"type"`
-		Data  json.RawMessage `json:"data"`
-		Op    string          `json:"op"`
+		Topic   string          `json:"topic"`
+		Type    string          `json:"type"`
+		Data    json.RawMessage `json:"data"`
+		Op      string          `json:"op"`
+		Success *bool           `json:"success"`
+		RetMsg  string          `json:"ret_msg"`
 	}
 	err := json.Unmarshal(msg, &x)
+	if err == nil && x.Op == "subscribe" {
+		if (x.Success != nil && !*x.Success) || x.RetMsg != "" {
+			a.subscribeErrors.Add(1)
+			var frame any = json.RawMessage(msg)
+			if len(msg) > 4096 {
+				frame = string(msg[:4096])
+			}
+			payload, _ := json.Marshal(map[string]any{"event": "subscribe_error", "frame": frame})
+			return []rawlog.Record{{Channel: "gap", Payload: payload}}
+		}
+		if x.Success != nil && *x.Success {
+			a.subscribeAcks.Add(1)
+		}
+		return nil
+	}
 	if err == nil && len(x.Data) == 0 && x.Topic == "" && x.Op != "" {
 		return nil
 	}

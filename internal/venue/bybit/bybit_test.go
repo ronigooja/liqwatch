@@ -182,15 +182,65 @@ func TestSymbolsErrors(t *testing.T) {
 }
 func TestSplitControlAndUnknown(t *testing.T) {
 	a := Adapter{}
-	for _, s := range []string{`{"op":"subscribe","success":true}`, `{"op":"ping","ret_msg":"pong"}`, `{"op":"subscribe","success":false,"ret_msg":"bad"}`} {
+	for _, s := range []string{`{"op":"subscribe","success":true}`, `{"op":"ping","ret_msg":"pong"}`} {
 		if r := a.Split(venue.Shard{}, []byte(s)); len(r) != 0 {
 			t.Fatal(s, r)
 		}
+	}
+	if a.SubscribeAcks() != 1 || a.SubscribeErrors() != 0 {
+		t.Fatal(a.SubscribeAcks(), a.SubscribeErrors())
 	}
 	for _, s := range []string{`{"data":{},"topic":"other.BTCUSDT"}`, `{"data":{},"topic":"tickers."}`, `{"topic":"tickers.BTCUSDT"}`, `not json`} {
 		if r := a.Split(venue.Shard{}, []byte(s)); len(r) != 1 || r[0].Channel != "gap" {
 			t.Fatal(s, r)
 		}
+	}
+}
+
+func TestSubscribeResponses(t *testing.T) {
+	a := &Adapter{}
+	frames := venuetest.Fixture(t, "testdata/frames.jsonl")
+	frame := frames[len(frames)-1]
+	for _, f := range [][]byte{frame, []byte(`{"op":"subscribe","success":true,"ret_msg":"bad"}`), []byte(`{"op":"subscribe","success":false}`)} {
+		r := a.Split(venue.Shard{}, f)
+		if len(r) != 1 || r[0].Channel != "gap" || r[0].Symbol != "" {
+			t.Fatalf("bad record: %+v", r)
+		}
+		var p struct {
+			Event string          `json:"event"`
+			Frame json.RawMessage `json:"frame"`
+		}
+		if json.Unmarshal(r[0].Payload, &p) != nil || p.Event != "subscribe_error" || string(p.Frame) != string(f) {
+			t.Fatalf("bad payload: %s", r[0].Payload)
+		}
+	}
+	large := []byte(`{"op":"subscribe","success":false,"ret_msg":"` + strings.Repeat("x", 5000) + `"}`)
+	r := a.Split(venue.Shard{}, large)
+	var p struct {
+		Frame string `json:"frame"`
+	}
+	if json.Unmarshal(r[0].Payload, &p) != nil || p.Frame != string(large[:4096]) {
+		t.Fatal("bad truncated frame")
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				a.Split(venue.Shard{}, frame)
+				a.Split(venue.Shard{}, []byte(`{"op":"subscribe","success":true}`))
+				_ = a.SubscribeAcks()
+				_ = a.SubscribeErrors()
+			}
+		}()
+	}
+	wg.Wait()
+	if a.SubscribeAcks() != 2000 || a.SubscribeErrors() != 2004 {
+		t.Fatal(a.SubscribeAcks(), a.SubscribeErrors())
+	}
+	if (&Adapter{}).SubscribeAcks() != 0 || (&Adapter{}).SubscribeErrors() != 0 {
+		t.Fatal("counters are not per adapter")
 	}
 }
 
