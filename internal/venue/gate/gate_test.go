@@ -116,6 +116,7 @@ func TestSplitMultiAndConcurrent(t *testing.T) {
 	a := &Adapter{}
 	sh, _ := a.Shards(context.Background(), []string{"BTC_USDT", "龙虾_USDT"})
 	frame := []byte(`{"channel":"futures.public_liquidates","event":"update","time":123,"result":[{"contract":"BTC_USDT","size":1},{"contract":"龙虾_USDT","size":2},{"contract":"OTHER_USDT","size":3}]}`)
+	a.Split(sh[0], frame) // consume the hourly sample before concurrent checks
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
@@ -184,12 +185,40 @@ func TestClassesAndObject(t *testing.T) {
 	}
 	msg := []byte(`{"channel":"futures.contract_info","event":"all","result":{"contract":"BTC_USDT","quanto_multiplier":"0.001"}}`)
 	r := a.Split(sh[0], msg)
-	if len(r) != 1 || r[0].Channel != "contract_info" || string(r[0].Payload) != string(msg) {
+	if len(r) < 1 || r[0].Channel != "contract_info" || string(r[0].Payload) != string(msg) {
 		t.Fatal(r)
 	}
 	msg = []byte(`{"channel":"futures.contract_stats","event":"update","result":[{"contract":"BTC_USDT","open_interest":123}]}`)
 	r = a.Split(sh[0], msg)
-	if len(r) != 1 || r[0].Channel != "contract_stats" {
+	if len(r) < 1 || r[0].Channel != "contract_stats" {
 		t.Fatal(r)
+	}
+}
+
+func TestFilterAndHourlySample(t *testing.T) {
+	frameSampler.Lock()
+	oldNow, oldLast := frameSampler.now, frameSampler.last
+	now := time.Unix(10000, 0)
+	frameSampler.now = func() time.Time { return now }
+	frameSampler.last = make(map[string]time.Time)
+	frameSampler.Unlock()
+	defer func() {
+		frameSampler.Lock()
+		frameSampler.now, frameSampler.last = oldNow, oldLast
+		frameSampler.Unlock()
+	}()
+	a := &Adapter{}
+	sh, _ := a.Shards(context.Background(), []string{"BTC_USDT"})
+	msg := []byte(`{"time":123,"channel":"futures.tickers","event":"update","result":[{"contract":"BTC_USDT","last":"1","mark_price":"1.0000","mystery":1.2300},{"contract":"BTC_USDT","volume_24h":"5","index_price":"2.00"}]}`)
+	r := a.Split(sh[0], msg)
+	if len(r) != 3 || string(r[0].Payload) != `{"time":123,"channel":"futures.tickers","event":"update","result":[{"contract":"BTC_USDT","mark_price":"1.0000","mystery":1.2300}]}` || strings.Contains(string(r[1].Payload), "volume_24h") || string(r[2].Payload) != `{"sample":`+string(msg)+`}` || a.UnknownFields() != 1 {
+		t.Fatalf("records=%+v unknown=%d", r, a.UnknownFields())
+	}
+	if len(a.Split(sh[0], msg)) != 2 {
+		t.Fatal("sample repeated")
+	}
+	now = now.Add(time.Hour)
+	if len(a.Split(sh[0], msg)) != 3 {
+		t.Fatal("sample missing after hour")
 	}
 }
