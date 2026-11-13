@@ -37,6 +37,8 @@ The validator reads the written log, not the live queue, so it can lag or crash 
 
 ## Component 4: Raw Log Writer
 
+Superseded in design (not built) by [storage-design.md](storage-design.md): append-only per venue, symbol and channel, day-boundary rotation, no zstd in the collector. The text below describes the built Binance writer.
+
 Record envelope (one record per message, one record per line):
 
 ```

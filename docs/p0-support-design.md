@@ -27,6 +27,8 @@ The trial decision was narrowed by [0011](decisions/0011-no-alert-narrower-recor
 
 ## Component 6: Archiver
 
+Superseded in design (not built) by [storage-design.md](storage-design.md): packs per venue, symbol and day, no chunking. The text below describes the built Binance archiver.
+
 Recorder-side job is packing, upload, and verification only. Parquet conversion is **not** done on the recorder (CPU is scarce); it moves to the research side. This replaces the earlier Parquet-on-recorder idea in [data-recording.md](data-recording.md).
 
 Hourly run (timer, a few minutes after each UTC hour boundary), per [decision 0008](decisions/0008-hourly-archive-and-retention.md):

@@ -22,6 +22,7 @@ Read only what the task needs.
 | [docs/p0-core-design.md](docs/p0-core-design.md) | Design | Design of collector, snapshot scheduler, log writer, validator, replay | Building or reviewing P0 components |
 | [docs/p0-support-design.md](docs/p0-support-design.md) | Design | Design of symbol manager, archiver, manifest, monitoring, quality report, deployment | Building or reviewing P0 support components |
 | [docs/infrastructure.md](docs/infrastructure.md) | Operations | Hosts, storage, constraints | Deploying or sizing |
+| [docs/storage-design.md](docs/storage-design.md) | Design | Multi-venue storage: layout, packing, upload, retention, disk size | Building or changing recording, archiving or storage |
 | [docs/data-recording.md](docs/data-recording.md) | Design | P0 recording design | Working on data capture or storage |
 | [docs/universe.md](docs/universe.md) | Design | Instrument tiers and selection rules | Choosing symbols or tiers |
 | [docs/labels-and-evaluation.md](docs/labels-and-evaluation.md) | Design | Labels, leakage rules, metrics, trading-cost evaluation | Building labels, backtests, or metrics |
