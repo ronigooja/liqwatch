@@ -2,6 +2,7 @@
 package kucoin
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ronigooja/liqwatch/internal/rawlog"
@@ -21,6 +23,111 @@ const api = "https://api-futures.kucoin.com"
 const utaURL = "wss://x-push-futures.kucoin.com"
 const classicSymbols = 25
 const utaSymbols = 50
+
+// Trade item, envelope and timestamps; order metadata is not recorded.
+var tradeKeep = fields("topic type subject data symbol side size price tradeId ts timestamp")
+var tradeDrop = fields("sn sequence takerOrderId makerOrderId")
+
+// Mark, index and funding items; delivery cadence is not recorded.
+var markKeep = fields("topic type subject data symbol markPrice indexPrice fundingRate nextFundingTime timestamp ts")
+var markDrop = fields("granularity period")
+
+// UTA mark, index, open interest and funding items; ticker statistics are not recorded.
+var utaKeep = fields("T d s symbol mp ip oi ts fundingRate nextFundingTime fr nft")
+var utaDrop = fields("bp bq ap aq bidPrice bidSize askPrice askSize bestBid bestAsk bestBidSize bestAskSize vol volume turnover high low priceChange priceChangePercent lastPrice last p v h l")
+
+func fields(s string) map[string]bool {
+	m := make(map[string]bool)
+	for _, k := range strings.Fields(s) {
+		m[k] = true
+	}
+	return m
+}
+
+var samples = struct {
+	sync.Mutex
+	last map[string]time.Time
+	now  func() time.Time
+}{last: make(map[string]time.Time), now: time.Now}
+
+var unknownFields atomic.Uint64
+
+// UnknownFields returns the number of retained fields not classified by the tables.
+func (*Adapter) UnknownFields() uint64 { return unknownFields.Load() }
+
+func sample(shard, channel string, msg []byte) []byte {
+	samples.Lock()
+	defer samples.Unlock()
+	now := samples.now()
+	key := shard + "\x00" + channel
+	if last, ok := samples.last[key]; ok && now.Sub(last) < time.Hour {
+		return nil
+	}
+	samples.last[key] = now
+	out := append([]byte(`{"sample":`), msg...)
+	return append(out, '}')
+}
+
+// filterObject uses the decoder's input offsets to retain source order and raw values.
+func filterObject(src []byte, keep, drop map[string]bool) ([]byte, error) {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(src, &values); err != nil || values == nil {
+		return nil, fmt.Errorf("invalid object")
+	}
+	dec := json.NewDecoder(bytes.NewReader(src))
+	if _, err := dec.Token(); err != nil {
+		return nil, err
+	}
+	out := []byte{'{'}
+	for dec.More() {
+		start := dec.InputOffset()
+		keyToken, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid key")
+		}
+		keyEnd := dec.InputOffset()
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return nil, err
+		}
+		if drop[key] {
+			continue
+		}
+		if !keep[key] {
+			unknownFields.Add(1)
+		}
+		if key == "data" || key == "d" {
+			value, err = filterObject(value, keep, drop)
+			if err != nil {
+				return nil, err
+			}
+		}
+		keyBytes := bytes.TrimLeft(src[start:keyEnd], " \t\r\n,:")
+		if len(out) > 1 {
+			out = append(out, ',')
+		}
+		out = append(out, keyBytes...)
+		out = append(out, ':')
+		out = append(out, value...)
+	}
+	return append(out, '}'), nil
+}
+
+func filtered(sh venue.Shard, channel, symbol string, msg []byte, keep, drop map[string]bool) []rawlog.Record {
+	p, err := filterObject(msg, keep, drop)
+	if err != nil {
+		return gap(msg)
+	}
+	out := []rawlog.Record{{Channel: channel, Symbol: symbol, Payload: p}}
+	if p := sample(sh.Name, channel, msg); p != nil {
+		out = append(out, rawlog.Record{Channel: channel, Symbol: symbol, Payload: p})
+	}
+	return out
+}
 
 // Adapter discovers classic futures and subscribes to classic and UTA public feeds.
 type Adapter struct {
@@ -200,7 +307,7 @@ func (a *Adapter) Heartbeat(sh venue.Shard) (time.Duration, func() (int, []byte)
 	}
 }
 
-func (*Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
+func (*Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	var f struct {
 		Type    string          `json:"type"`
 		Topic   string          `json:"topic"`
@@ -215,7 +322,7 @@ func (*Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 		return gap(msg)
 	}
 	if f.T == "mark-price" && f.D.Symbol != "" {
-		return []rawlog.Record{{Channel: "openinterest", Symbol: f.D.Symbol, Payload: msg}}
+		return filtered(sh, "utamark", f.D.Symbol, msg, utaKeep, utaDrop)
 	}
 	if f.Type == "message" {
 		parts := strings.SplitN(f.Topic, ":", 2)
@@ -232,7 +339,10 @@ func (*Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 				}
 			}
 			if ch != "" {
-				return []rawlog.Record{{Channel: ch, Symbol: parts[1], Payload: msg}}
+				if ch == "trade" {
+					return filtered(sh, ch, parts[1], msg, tradeKeep, tradeDrop)
+				}
+				return filtered(sh, ch, parts[1], msg, markKeep, markDrop)
 			}
 		}
 		return gap(msg)
@@ -251,7 +361,7 @@ func (*Adapter) Classes() func(string) (string, bool) {
 		switch ch {
 		case "trade":
 			return "trade", true
-		case "mark", "openinterest":
+		case "mark", "utamark":
 			return "mark", true
 		}
 		return "", false

@@ -120,7 +120,7 @@ func TestFixtures(t *testing.T) {
 		}
 		r := a.Split(venue.Shard{}, f)
 		if x.Type == "message" {
-			if len(r) != 1 || r[0].Symbol == "" || string(r[0].Payload) != string(f) {
+			if len(r) < 1 || r[0].Symbol == "" || !json.Valid(r[0].Payload) {
 				t.Fatalf("bad split %s", f)
 			}
 			counts[r[0].Channel]++
@@ -137,7 +137,7 @@ func TestFixtures(t *testing.T) {
 		}
 	}
 	r := a.Split(venue.Shard{}, []byte(`{"T":"mark-price","d":{"s":"XBTUSDTM","oi":"123"}}`))
-	if len(r) != 1 || r[0].Channel != "openinterest" {
+	if len(r) < 1 || r[0].Channel != "utamark" {
 		t.Fatal(r)
 	}
 	var wg sync.WaitGroup
@@ -151,6 +151,38 @@ func TestFixtures(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestFilteringAndSampling(t *testing.T) {
+	samples.Lock()
+	oldNow, oldLast := samples.now, samples.last
+	now := time.Unix(10000, 0)
+	samples.now = func() time.Time { return now }
+	samples.last = make(map[string]time.Time)
+	samples.Unlock()
+	defer func() { samples.Lock(); samples.now, samples.last = oldNow, oldLast; samples.Unlock() }()
+	a := &Adapter{}
+	sh := venue.Shard{Name: "test-filter"}
+	frame := `{"T":"mark-price","d":{"s":"X","mp":1.2300,"ip":"2.00","oi":"3","bp":"4","ts":1,"newField":"\\u0061"}}`
+	before := a.UnknownFields()
+	r := a.Split(sh, []byte(frame))
+	want := `{"T":"mark-price","d":{"s":"X","mp":1.2300,"ip":"2.00","oi":"3","ts":1,"newField":"\\u0061"}}`
+	if len(r) != 2 || string(r[0].Payload) != want || string(r[1].Payload) != `{"sample":`+frame+`}` || a.UnknownFields() != before+1 {
+		t.Fatalf("records %v unknown %d", r, a.UnknownFields()-before)
+	}
+	r = a.Split(sh, []byte(frame))
+	if len(r) != 1 || string(r[0].Payload) != want {
+		t.Fatal(r)
+	}
+	now = now.Add(time.Hour)
+	if r = a.Split(sh, []byte(frame)); len(r) != 2 {
+		t.Fatal(r)
+	}
+	trade := `{"topic":"/contractMarket/execution:X","type":"message","subject":"match","sn":5,"data":{"symbol":"X","sequence":5,"side":"buy","size":1,"price":"1.00","takerOrderId":"a","makerOrderId":"b","tradeId":"5","ts":123}}`
+	r = a.Split(sh, []byte(trade))
+	if string(r[0].Payload) != `{"topic":"/contractMarket/execution:X","type":"message","subject":"match","data":{"symbol":"X","side":"buy","size":1,"price":"1.00","tradeId":"5","ts":123}}` {
+		t.Fatal(string(r[0].Payload))
+	}
 }
 
 func TestWebsocketFrames(t *testing.T) {
