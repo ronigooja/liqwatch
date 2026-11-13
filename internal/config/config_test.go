@@ -9,7 +9,7 @@ import (
 func TestLoadDefaultsAndValidation(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	contents := "data_dir = \"/tmp/liqwatch\"\n[collect]\ndepth_symbols = [\"BTCUSDT\"]\n"
+	contents := "data_dir = \"/tmp/liqwatch\"\n"
 	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -20,8 +20,11 @@ func TestLoadDefaultsAndValidation(t *testing.T) {
 	if c.Archive.MaxPackMB != 400 || c.Archive.VerifySamplePercent != 10 || c.Pack.Unit != "tar_then_zstd" || c.Pack.Level != 3 || c.Pack.QuietMinutes != 10 || c.Checks.DiskWarnPct != 80 {
 		t.Fatalf("defaults not applied: %+v", c)
 	}
+	if c.Collect.Venue != "binance" || c.Checks.StaleSec["aggTrade"] != 120 || c.Checks.StaleSec["markPrice_all"] != 60 || c.Checks.StaleSec["forceOrder_all"] != 0 {
+		t.Fatalf("bad defaults: %+v", c)
+	}
 	bad := filepath.Join(dir, "bad.toml")
-	if err := os.WriteFile(bad, []byte("[collect]\ndepth_symbols=[\"BTCUSDT\"]\n[pack]\nlevel=23\n"), 0600); err != nil {
+	if err := os.WriteFile(bad, []byte("[pack]\nlevel=23\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Load(bad); err == nil {
@@ -36,7 +39,7 @@ func TestVerifySamplePercent(t *testing.T) {
 	}{{"-1", false}, {"0", true}, {"100", true}, {"101", false}} {
 		t.Run(tc.value, func(t *testing.T) {
 			p := filepath.Join(t.TempDir(), "config.toml")
-			if err := os.WriteFile(p, []byte("[collect]\ndepth_symbols=[\"BTCUSDT\"]\n[archive]\nverify_sample_percent="+tc.value+"\n"), 0600); err != nil {
+			if err := os.WriteFile(p, []byte("[archive]\nverify_sample_percent="+tc.value+"\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			_, err := Load(p)
