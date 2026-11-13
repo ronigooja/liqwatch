@@ -2,6 +2,7 @@
 package gate
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ronigooja/liqwatch/internal/rawlog"
@@ -19,11 +21,111 @@ const contractsURL = "https://api.gateio.ws/api/v4/futures/usdt/contracts"
 const wsURL = "wss://fx-ws.gateio.ws/v4/ws/usdt"
 const shardSize = 100
 
+// Each table describes fields belonging to the named recordable items. Unknown
+// fields are retained until classified; drop lists are deliberately explicit.
+type fieldPolicy struct{ keep, drop map[string]bool }
+
+func fields(names ...string) map[string]bool {
+	m := make(map[string]bool, len(names))
+	for _, name := range names {
+		m[name] = true
+	}
+	return m
+}
+
+var policies = map[string]fieldPolicy{
+	// Trades: execution and contract-unit metadata.
+	"trades": {fields("contract", "id", "size", "price", "create_time", "create_time_ms", "time", "time_ms", "t", "quanto_multiplier"), fields()},
+	// Liquidations: execution and contract-unit metadata.
+	"liquidations": {fields("contract", "size", "price", "time", "time_ms", "t", "create_time", "create_time_ms", "id", "quanto_multiplier"), fields()},
+	// Mark, index, funding, and open interest; ticker statistics are excluded.
+	"tickers": {fields("contract", "mark_price", "index_price", "funding_rate", "funding_rate_indicative", "funding_interval", "funding_offset", "funding_next_apply", "total_size", "time", "time_ms", "t", "quanto_multiplier"), fields("last", "change_percentage", "volume_24h", "volume_24h_base", "volume_24h_quote", "volume_24h_settle", "quanto_base_rate", "low_24h", "high_24h", "price_type", "change_from", "change_price", "highest_bid", "highest_size", "lowest_ask", "lowest_size", "bid", "ask", "bid_size", "ask_size")},
+	// Open interest and long/short ratios: retain unclassified statistics.
+	"contract_stats": {fields("contract", "time", "time_ms", "t", "open_interest"), fields()},
+	// Contract units, leverage tiers, funding, mark, index, and open interest.
+	"contract_info": {fields("contract", "time", "time_ms", "t", "quanto_multiplier", "mark_price", "index_price", "funding_rate", "funding_next_apply", "total_size", "leverage_min", "leverage_max", "leverage_tiers"), fields("last", "change_percentage", "volume_24h", "volume_24h_base", "volume_24h_quote", "volume_24h_settle", "quanto_base_rate", "low_24h", "high_24h", "highest_bid", "highest_size", "lowest_ask", "lowest_size", "bid", "ask", "bid_size", "ask_size")},
+}
+
+var envelopePolicy = fieldPolicy{fields("channel", "event", "time", "time_ms", "result"), fields("conn_id", "trace_id")}
+
+var frameSampler = struct {
+	sync.Mutex
+	last map[string]time.Time
+	now  func() time.Time
+}{last: make(map[string]time.Time), now: time.Now}
+
+func sampleDue(shard, channel string) bool {
+	frameSampler.Lock()
+	defer frameSampler.Unlock()
+	now := frameSampler.now()
+	key := shard + "\x00" + channel
+	last, ok := frameSampler.last[key]
+	if ok && now.Sub(last) < time.Hour {
+		return false
+	}
+	frameSampler.last[key] = now
+	return true
+}
+
 type Adapter struct {
-	HTTPClient   *http.Client
-	ContractsURL string
-	mu           sync.RWMutex
-	universe     map[string]struct{}
+	HTTPClient    *http.Client
+	ContractsURL  string
+	mu            sync.RWMutex
+	universe      map[string]struct{}
+	unknownFields atomic.Uint64
+}
+
+// UnknownFields returns the number of unclassified field occurrences retained.
+func (a *Adapter) UnknownFields() uint64 { return a.unknownFields.Load() }
+
+// filterObject uses RawMessage for values and a decoder for original key order.
+func (a *Adapter) filterObject(src []byte, policy fieldPolicy, result []byte) ([]byte, error) {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(src, &values); err != nil || values == nil {
+		return nil, fmt.Errorf("invalid object")
+	}
+	d := json.NewDecoder(bytes.NewReader(src))
+	if _, err := d.Token(); err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	out.WriteByte('{')
+	first := true
+	for d.More() {
+		tok, err := d.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, ok := tok.(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid key")
+		}
+		var value json.RawMessage
+		if err := d.Decode(&value); err != nil {
+			return nil, err
+		}
+		if policy.drop[key] {
+			continue
+		}
+		if !policy.keep[key] {
+			a.unknownFields.Add(1)
+		}
+		if key == "result" && result != nil {
+			value = result
+		}
+		if !first {
+			out.WriteByte(',')
+		}
+		first = false
+		name, _ := json.Marshal(key)
+		out.Write(name)
+		out.WriteByte(':')
+		if err := json.Compact(&out, value); err != nil {
+			return nil, err
+		}
+	}
+	out.WriteByte('}')
+	return out.Bytes(), nil
 }
 
 func init()                   { venue.Register("gate", func() venue.Adapter { return &Adapter{} }) }
@@ -122,7 +224,7 @@ func gap(msg []byte) []rawlog.Record {
 	b, _ := json.Marshal(map[string]any{"event": "unrecognized_frame", "bytes": len(msg), "head": string(msg[:min(len(msg), 200)])})
 	return []rawlog.Record{{Channel: "gap", Payload: b}}
 }
-func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
+func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	var env struct {
 		Channel string          `json:"channel"`
 		Event   string          `json:"event"`
@@ -168,20 +270,26 @@ func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 		if _, ok := a.universe[v.Contract]; !ok {
 			continue
 		}
-		if !array {
-			out = append(out, rawlog.Record{Channel: ch, Symbol: v.Contract, Payload: msg})
+		filtered, err := a.filterObject(item, policies[ch], nil)
+		if err != nil {
+			out = append(out, gap(msg)...)
 			continue
 		}
-		var original map[string]json.RawMessage
-		if json.Unmarshal(msg, &original) != nil {
-			return gap(msg)
+		if array {
+			filtered = append(append([]byte{'['}, filtered...), ']')
 		}
-		original["result"], _ = json.Marshal([]json.RawMessage{item})
-		payload, err := json.Marshal(original)
+		payload, err := a.filterObject(msg, envelopePolicy, filtered)
 		if err != nil {
 			return gap(msg)
 		}
 		out = append(out, rawlog.Record{Channel: ch, Symbol: v.Contract, Payload: payload})
+	}
+	if len(out) > 0 && out[0].Channel == ch && sampleDue(sh.Name, ch) {
+		payload := make([]byte, 0, len(msg)+11)
+		payload = append(payload, `{"sample":`...)
+		payload = append(payload, msg...)
+		payload = append(payload, '}')
+		out = append(out, rawlog.Record{Channel: ch, Symbol: out[0].Symbol, Payload: payload})
 	}
 	return out
 }
