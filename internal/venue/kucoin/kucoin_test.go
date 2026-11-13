@@ -185,6 +185,41 @@ func TestFilteringAndSampling(t *testing.T) {
 	}
 }
 
+func TestSubscriptionControls(t *testing.T) {
+	a := &Adapter{}
+	for _, frame := range []string{`{"type":"ack"}`, `{"id":"1","result":true}`, `{"op":"subscribe","code":"200000"}`} {
+		if r := a.Split(venue.Shard{}, []byte(frame)); len(r) != 0 {
+			t.Fatal(r)
+		}
+	}
+	for _, frame := range []string{`{"type":"welcome","data":{}}`, `{"type":"pong","data":{}}`, `{"op":"pong"}`} {
+		if r := a.Split(venue.Shard{}, []byte(frame)); len(r) != 0 {
+			t.Fatal(r)
+		}
+	}
+	for _, frame := range []string{`{"type":"error","code":400,"data":"bad symbol"}`, `{"op":"subscribe","code":"400100","msg":"bad"}`, `{"id":"1","result":false,"message":"bad"}`} {
+		r := a.Split(venue.Shard{}, []byte(frame))
+		var payload struct {
+			Event string          `json:"event"`
+			Frame json.RawMessage `json:"frame"`
+		}
+		if len(r) != 1 || r[0].Channel != "gap" || r[0].Symbol != "" || json.Unmarshal(r[0].Payload, &payload) != nil || payload.Event != "subscribe_error" || string(payload.Frame) != frame {
+			t.Fatalf("frame %s: %v", frame, r)
+		}
+	}
+	large := `{"type":"error","data":"` + strings.Repeat("x", 5000) + `"}`
+	r := a.Split(venue.Shard{}, []byte(large))
+	var p struct {
+		Frame string `json:"frame"`
+	}
+	if json.Unmarshal(r[0].Payload, &p) != nil || p.Frame != large[:4096] {
+		t.Fatal("oversized frame not bounded")
+	}
+	if a.SubscribeAcks() != 3 || a.SubscribeErrors() != 4 {
+		t.Fatalf("acks %d errors %d", a.SubscribeAcks(), a.SubscribeErrors())
+	}
+}
+
 func TestWebsocketFrames(t *testing.T) {
 	server := venuetest.NewServer(t, func(c *venuetest.Conn) {
 		for i := 0; i < 2; i++ {

@@ -133,12 +133,20 @@ func filtered(sh venue.Shard, channel, symbol string, msg []byte, keep, drop map
 type Adapter struct {
 	BaseURL   string
 	Client    *http.Client
+	acks      atomic.Uint64
+	errors    atomic.Uint64
 	mu        sync.RWMutex
 	intervals map[string]time.Duration
 }
 
 func init()                   { venue.Register("kucoin", func() venue.Adapter { return &Adapter{} }) }
 func (*Adapter) Name() string { return "kucoin" }
+
+// SubscribeAcks returns the number of successful subscription acknowledgements.
+func (a *Adapter) SubscribeAcks() uint64 { return a.acks.Load() }
+
+// SubscribeErrors returns the number of subscription error frames.
+func (a *Adapter) SubscribeErrors() uint64 { return a.errors.Load() }
 
 func (a *Adapter) request(ctx context.Context, method, path string, dst any) error {
 	base := a.BaseURL
@@ -307,9 +315,12 @@ func (a *Adapter) Heartbeat(sh venue.Shard) (time.Duration, func() (int, []byte)
 	}
 }
 
-func (*Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
+func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	var f struct {
 		Type    string          `json:"type"`
+		Op      string          `json:"op"`
+		Code    json.RawMessage `json:"code"`
+		Result  json.RawMessage `json:"result"`
 		Topic   string          `json:"topic"`
 		Subject string          `json:"subject"`
 		Data    json.RawMessage `json:"data"`
@@ -320,6 +331,24 @@ func (*Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	}
 	if json.Unmarshal(msg, &f) != nil {
 		return gap(msg)
+	}
+	code := strings.Trim(string(f.Code), `"`)
+	result := strings.Trim(string(f.Result), `"`)
+	if f.Type == "error" || (len(f.Code) > 0 && code != "200000" && code != "0" && code != "null") || result == "false" {
+		a.errors.Add(1)
+		var frame any = json.RawMessage(msg)
+		if len(msg) > 4096 {
+			frame = string(msg[:4096])
+		}
+		p, _ := json.Marshal(map[string]any{"event": "subscribe_error", "frame": frame})
+		return []rawlog.Record{{Channel: "gap", Payload: p}}
+	}
+	if f.Type == "ack" || result == "true" || (f.Op != "" && f.Op != "pong" && (code == "200000" || code == "0")) {
+		a.acks.Add(1)
+		return nil
+	}
+	if f.Type == "welcome" || f.Type == "pong" || f.Op == "pong" {
+		return nil
 	}
 	if f.T == "mark-price" && f.D.Symbol != "" {
 		return filtered(sh, "utamark", f.D.Symbol, msg, utaKeep, utaDrop)
