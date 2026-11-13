@@ -1,8 +1,8 @@
 // Package rawlog defines the raw log record and the sink other packages write to.
-// Envelope and file layout: docs/p0-core-design.md (Component 4); layout follows the trial recorder.
+// Envelope and file layout: docs/storage-design.md.
 package rawlog
 
-// Channel groups; one file per hour per group: raw/<YYYYMMDD>/<group>-<YYYYMMDDHH>.jsonl.zst
+// Channel groups retained for compatibility with existing producers.
 const (
 	GroupTrade = "trade"
 	GroupQuote = "quote"
@@ -11,9 +11,10 @@ const (
 	GroupGap   = "gap"
 )
 
-// Record is one envelope line: {"v":1,"wseq","conn","cseq","rw","rm","ch","sym","p"}.
+// Record is one envelope line, including venue and the original payload.
 // Payload is embedded exactly as received. The writer assigns wseq.
 type Record struct {
+	Venue   string
 	Conn    string
 	CSeq    uint64
 	RecvWal int64 // wall clock, unix ns
