@@ -17,6 +17,6 @@ Date: 2026-11-11. Supersedes items 2 (first use) and 6 (retention) of [0010](001
 
 ## Consequences
 
-- Collector configuration change (quote off, depth off or reduced) is a code and deploy change; it needs the next collector upgrade and the owner's confirmation of the traffic limit, which is not recorded anywhere.
+- Verified in code: quote, depth and snapshot recording have been removed. Deployment and the owner's traffic limit remain open ([rollout](../p0-rollout.md)).
 - The earlier evaluation framing (alert recall, false alarms per hour) is not a goal. A prediction test remains useful only as a check of whether the map carries information, see [liquidation-model.md](../liquidation-model.md).
 - Open: owner traffic quota and reset date; which host resumes recording.

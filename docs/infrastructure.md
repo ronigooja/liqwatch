@@ -7,7 +7,7 @@ Hosts and storage. Credentials are never written in this repo. Provider choice i
 | Role | Address | Spec (probed 2026-11-01) | Notes |
 |---|---|---|---|
 | Recorder (P0) | 136.0.11.159, Japan, hostname EV02OK | 2 vCPU, ~3.9 GB RAM, 30 GB disk (~25 GB free), Debian 12, 2 GB swap | [Down; outage and open recovery questions](p0-rollout.md#recorder-outage). Reinstalled clean by the owner on 2026-11-01 and confirmed as the recorder. Still to do: timezone is Asia/Shanghai, uses systemd-timesyncd (no chrony), open-file limit 1024, no Go. Docker, python3, curl, zstd present |
-| REST poller | 154.19.187.117 | Shared host | `liqwatchpoll.service` stopped, disabled and deleted by the owner on 2026-11-12; other services untouched. Its 55 data files (11-11 to 11-12) are kept only on the Mac outside the repo. Poller code remains in `research/liqwatch_research/poll/`; open-interest history after 2026-11-11 can be fetched from public archive `metrics` files ([verified](open-questions.md#verified)). |
+| REST poller | 154.19.187.117 | Shared host | `liqwatchpoll.service` stopped, disabled and deleted by the owner on 2026-11-12; other services untouched. Its 55 data files are kept only on the Mac outside the repo. Verified in code: current poller is Go ([poller](poller.md)); its deployment is not established. |
 | Storage gateway | 45.45.217.235 | 2 vCPU, ~3.9 GB RAM, 19 GB disk (~6 GB free), Debian 12 | Runs OpenList (127.0.0.1:5244, behind nginx), Docker services (including a MySQL port), and other processes; shared host |
 | Processing and training | Vultr, on demand. `liq-proc` (LA, 4 vCPU, 16 GB) was used 2026-11-09 to 2026-11-12 for Parquet conversion and the liquidation-model runs, and deleted on 2026-11-12 (owner). Nothing is running there. Results and the liquidation Parquet (about 15 MB) are kept on the Mac in `$HOME/Agents/liqwatch-results/liqproc/` (not in the repo); trades, mark and depth Parquet and the raw files were not kept and can be rebuilt from the archive (raw hourly files for 2026-11-04..10, now on the unreachable recorder and WebDAV). The block storage `liq-data` (100 GB) was deleted the same day (owner); Vultr holds no instance and no storage | Full conversion to Parquet, labels, LightGBM. Until a new instance is opened the Mac runs small samples |
 
@@ -20,13 +20,13 @@ Network from the recorder to Binance (3 curl probes on 2026-11-02, not a benchma
 - Clock sync running (chrony preferred); offset is monitored.
 - Open-file limit for the recorder service raised above the default 1024 (systemd `LimitNOFILE`).
 - Swap enabled as a safety margin, not as working memory.
-- Disk: hot buffer for raw logs until upload is verified. Size is fixed from the trial; with 2 vCPU and 4 GB RAM, the first stage is the light tier plus 10–20 depth symbols and may need reduction after the trial.
-- Outbound access to Binance REST and WebSocket, and to the storage WebDAV endpoint.
+- Disk: hot buffer until upload is verified; size for daily packs ([storage design](storage-design.md#local-disk-size)).
+- Outbound access to configured venue REST and WebSocket endpoints and storage WebDAV.
 - SSH key access for the owner and the working agent; no credentials stored in this repo.
 
 ## Storage design
 
-- OpenList exposes WebDAV; the recorder uploads finished archives hourly ([decision 0008](decisions/0008-hourly-archive-and-retention.md)). WebDAV is unsuitable for appends or many small files.
+- OpenList exposes WebDAV; daily packs replace hourly archives ([decision 0014](decisions/0014-daily-pack-storage.md)). WebDAV is unsuitable for appends or many small files.
 - Local disk on the recorder is the hot buffer. Its free space bounds how long uploads can be delayed; size this from the trial.
 - The storage gateway's own free disk is small. Real capacity must come from an added storage server or a mounted cloud drive.
 - Sustained throughput of a multi-GB file remains to be tested before relying on it.
@@ -60,10 +60,10 @@ Upload speed investigation:
 - During the slow 100 MB run the storage host's free disk stayed at ~6.1 GB; with buffering on, nginx may stage request bodies in its temp directory, so re-check free disk during large uploads.
 - Download of 100 MB: ~12 MB/s.
 
-Guidance: keep request buffering on. Upload large archives in chunks (suggested 64–128 MB) with per-chunk checksums and retry; confirm after upload before deleting local files. Re-measure sustained throughput over several days.
+Guidance: keep request buffering on. Verify packs before deleting local files ([storage design](storage-design.md)); re-measure sustained throughput over several days.
 
 ## Constraints from the current hosts
 
-- First stage records 10–20 depth symbols plus the light tier on 2 vCPU / 4 GB; upgrade only if the trial shows it is needed ([universe.md](universe.md)).
+- Verified in code: current recording excludes depth and quotes; capacity for seven venues remains unmeasured ([storage design](storage-design.md)).
 - The recorder and the storage gateway are single points of failure. Recorded raw files must not be deleted until the upload is verified ([data-recording.md](data-recording.md)).
 - The storage gateway runs unrelated services; do not change them without the owner's approval.

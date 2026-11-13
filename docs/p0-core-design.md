@@ -2,6 +2,8 @@
 
 Components 2, 3, 4, 5, 8 from [components.md](components.md). Recording scope and tiers: [data-recording.md](data-recording.md). Hosts: [infrastructure.md](infrastructure.md).
 
+Verified in code: the collector no longer records depth, quotes or snapshots. Book-specific sections below describe historical data/research only; the current writer and archiver are defined in [storage-design.md](storage-design.md).
+
 Fact status markers: **[V]** verified from a cited source in [open-questions.md](open-questions.md); **[U]** unverified, check against official futures docs before implementation.
 
 ## Process model
@@ -20,12 +22,12 @@ The validator reads the written log, not the live queue, so it can lag or crash 
 ## Component 2: Stream Collector
 
 - Futures endpoints are routed by data type [V, official]: `wss://fstream.binance.com/public` (book ticker, depth) and `/market` (aggTrade, markPrice, forceOrder). The legacy unrouted paths were to be decommissioned after 2026-04-23; unrouted connections receive only public streams. Therefore shard by endpoint first.
-- Combined-stream connections, sharded by channel group and symbol group (tier A trade streams, tier A quote streams, tier B depth, liquidation, spot). Futures limits [V, official]: max 1024 streams per connection; 10 incoming messages per second per connection (the futures page does not say which message types count; the spot doc counts ping, pong, and JSON subscribe/unsubscribe, so budget as if they all count); 24 h connection life; server ping every 3 minutes, disconnect if no pong within 10 minutes. No new-connection rate limit or per-IP concurrent-connection limit is documented for futures [V, absent from the Connect and general-info pages]; do not assume none exists. Open connections gradually and back off on errors. Keep per-connection stream counts low (suggested ≤ 100) and open connections gradually. Use `stream` mode (`?streams=`) for combined subscriptions.
+- Verified in code: connections are sharded by venue adapter and symbol group; see [adapter interface](../internal/venue/adapter.go). Exchange limits: [open questions](open-questions.md).
 - On read, before any parsing, take `recv_wall_ns` and `recv_mono_ns` and hand the raw bytes to the writer queue. Parsing for routing is limited to extracting the stream name.
 - Answer server ping frames promptly; do not rely on the exchange for liveness: a connection with no message for a per-channel timeout is treated as stalled and replaced.
 - Replacement connection: open the new connection and subscribe first, run both in parallel for a short overlap, then close the old one. Duplicates are kept in the log (tagged by connection id) and removed by the replay reader.
 - Reconnect or stall emits a `gap` marker record for every affected stream.
-- Planned restarts use an overlapping handoff between two slots ([0009](decisions/0009-zero-gap-handoff.md)). An unplanned depth reconnect triggers a fresh snapshot for every depth symbol.
+- Planned restarts use an overlapping handoff between two slots ([0009](decisions/0009-zero-gap-handoff.md)).
 - Futures docs do not describe a shutdown event; treat any close as a reconnect.
 
 ## Component 3: Snapshot Scheduler
@@ -37,7 +39,7 @@ The validator reads the written log, not the live queue, so it can lag or crash 
 
 ## Component 4: Raw Log Writer
 
-Superseded in design (not built) by [storage-design.md](storage-design.md): append-only per venue, symbol and channel, day-boundary rotation, no zstd in the collector. The text below describes the built Binance writer.
+Verified in code: the current writer uses [storage-design.md](storage-design.md), not the historical hourly layout below.
 
 Record envelope (one record per message, one record per line):
 
@@ -47,10 +49,7 @@ Record envelope (one record per message, one record per line):
 
 - The payload is embedded without re-serialization, so the original bytes are preserved. Source of truth for order: `(rm, wseq)`.
 - Exchange event time is not copied into the envelope; it stays in the payload and is read at parse time.
-- Files: one per hour per channel group, `raw/<date>/<group>-<YYYYMMDDHH>[.<slot>][.rN].jsonl.zst` (slot names and recovery rules in [0009](decisions/0009-zero-gap-handoff.md)). zstd frames are closed every few seconds so a crash loses at most the last few seconds. Files are written as `.part` and renamed on close.
-- Bounded queue between reader and disk. When full, drop in this order and write a `drop` marker with counts: tier A mark price, tier A best bid/ask, tier A trades. Never drop depth, snapshots, gap markers, or liquidations.
-- fsync policy and compression level are chosen from the trial; measure CPU on the 2 vCPU host before fixing them.
-- Every file gets a manifest entry on close (component 7).
+- Verified in code: daily files are grouped by venue, symbol and channel; see [storage design](storage-design.md#writing) for the current envelope and layout.
 
 ## Component 5: Book Validator
 

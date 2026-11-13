@@ -2,6 +2,8 @@
 
 How the production collector goes live and when it counts as stable. Component designs: [p0-core-design.md](p0-core-design.md), [p0-support-design.md](p0-support-design.md). Scope decision: [0007](decisions/0007-trial-outcome.md). Measured load: [trial-plan.md](trial-plan.md). Hosts: [infrastructure.md](infrastructure.md).
 
+Verified: the recorder is down ([outage](#recorder-outage)). The first-release setup and observation criteria below are historical, not the deployment status of the current daily-pack code ([0014](decisions/0014-daily-pack-storage.md)).
+
 ## Stage 1 scope (first release)
 
 | In | Out (later stages) |
@@ -13,7 +15,7 @@ How the production collector goes live and when it counts as stable. Component d
 
 Why the archiver is in stage 1: expected raw growth is ~18 GB/day compressed ([trial-plan.md](trial-plan.md)) against ~21 GB free, so unattended recording without upload and cleanup fills the disk in about a day. It runs hourly so local use stays near 5–8 GB ([decision 0008](decisions/0008-hourly-archive-and-retention.md)).
 
-Historical first-release configuration; the narrower scope in [decision 0011](decisions/0011-no-alert-narrower-recording.md) needs a collector upgrade. Subscriptions: `@aggTrade` all 522 symbols, `!markPrice@arr@1s`, `!forceOrder@arr`, `@bookTicker` top 50 by volume, `@depth@100ms` for the tier B list (10 trial symbols to start; final list is an owner input in [open-questions.md](open-questions.md)). Top 50 is fixed at startup and refreshed daily with the symbol list; every change is logged.
+Historical first-release subscriptions included trades, mark, liquidations, top-50 quotes and depth. Verified in code: current scope excludes quotes and depth ([decision 0011](decisions/0011-no-alert-narrower-recording.md)); deployment has not been established.
 
 ## Release and service setup
 

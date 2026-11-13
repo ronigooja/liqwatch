@@ -2,6 +2,8 @@
 
 Components 1, 6, 7, 9, 10, 11 from [components.md](components.md). Core components: [p0-core-design.md](p0-core-design.md). Hosts and storage facts: [infrastructure.md](infrastructure.md).
 
+Verified in code: the current recorder excludes depth and quotes. Book- and tier-specific designs below concern historical data or are not built; current storage is [storage-design.md](storage-design.md).
+
 Markers as in [p0-core-design.md](p0-core-design.md): **[V]** verified in [open-questions.md](open-questions.md); **[U]** unverified.
 
 ## Historical tier A quote options
@@ -27,7 +29,7 @@ The trial decision was narrowed by [0011](decisions/0011-no-alert-narrower-recor
 
 ## Component 6: Archiver
 
-Superseded in design (not built) by [storage-design.md](storage-design.md): packs per venue, symbol and day, no chunking. The text below describes the built Binance archiver.
+Verified in code: [storage-design.md](storage-design.md) replaces the historical hourly archiver described below with daily packs and unchunked upload.
 
 Recorder-side job is packing, upload, and verification only. Parquet conversion is **not** done on the recorder (CPU is scarce); it moves to the research side. This replaces the earlier Parquet-on-recorder idea in [data-recording.md](data-recording.md).
 
@@ -46,7 +48,7 @@ Storage host free disk is small (~6 GB) and nginx buffers request bodies [measur
 
 ## Component 7: Manifest
 
-SQLite file on the recorder (single writer per table, WAL mode), copied to remote storage daily.
+Historical hourly manifest design below; current pack-level implementation is in [internal/manifest](../internal/manifest/).
 
 | Table | Key columns |
 |---|---|
@@ -125,4 +127,4 @@ Contents: per channel message counts and rates; coverage (valid seconds over tot
 | Item | Where |
 |---|---|
 | First consumer: none yet, generic interface first | Owner |
-| Local retention: decided, 6 h after verification | [decision 0008](decisions/0008-hourly-archive-and-retention.md) |
+| Local retention: after verification | [decision 0014](decisions/0014-daily-pack-storage.md) |

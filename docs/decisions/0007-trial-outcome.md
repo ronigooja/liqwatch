@@ -1,6 +1,6 @@
 # 0007 Trial outcome: tier A quotes and soak test
 
-The quote decision was narrowed by [0011](0011-no-alert-narrower-recording.md).
+The quote and saved-depth decisions were superseded by [0011](0011-no-alert-narrower-recording.md); this record is historical.
 
 Date: 2026-11-03. Evidence: Results in [trial-plan.md](../trial-plan.md).
 
