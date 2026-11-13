@@ -2,6 +2,7 @@
 package bybit
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -17,6 +20,74 @@ import (
 	"github.com/ronigooja/liqwatch/internal/rawlog"
 	"github.com/ronigooja/liqwatch/internal/venue"
 )
+
+// keepFields identifies recordable data items and their interpretation metadata.
+var keepFields = map[string]map[string]bool{
+	"mark":        {"symbol": true, "markPrice": true, "indexPrice": true, "openInterest": true, "openInterestValue": true, "singleOpenInterest": true, "singleOpenInterestValue": true, "fundingIntervalHour": true, "fundingCap": true, "nextFundingTime": true, "fundingRate": true},
+	"trade":       {"T": true, "s": true, "S": true, "v": true, "p": true, "i": true, "BT": true, "RPI": true, "seq": true},
+	"liquidation": {"T": true, "s": true, "S": true, "v": true, "p": true},
+}
+
+// dropFields identifies ticker statistics and trade tick-direction statistics outside recorded items.
+var dropFields = map[string]map[string]bool{
+	"mark":        {"tickDirection": true, "price24hPcnt": true, "lastPrice": true, "prevPrice24h": true, "highPrice24h": true, "lowPrice24h": true, "prevPrice1h": true, "turnover24h": true, "volume24h": true, "bid1Price": true, "bid1Size": true, "ask1Price": true, "ask1Size": true, "preOpenPrice": true, "preQty": true, "curPreListingPhase": true},
+	"trade":       {"L": true},
+	"liquidation": {},
+}
+var unknownFields atomic.Uint64
+var droppedDeltas atomic.Uint64
+var sampleMu sync.Mutex
+var sampleTimes = map[string]time.Time{}
+var sampleNow = time.Now
+
+// UnknownFieldsSeen returns the number of unclassified fields retained.
+func (*Adapter) UnknownFieldsSeen() uint64 { return unknownFields.Load() }
+
+// DroppedDeltas returns the number of ticker deltas containing no recordable data.
+func (*Adapter) DroppedDeltas() uint64 { return droppedDeltas.Load() }
+
+// orderedObject preserves original value bytes and field order.
+func orderedObject(b []byte, f func(string, json.RawMessage) (json.RawMessage, bool)) ([]byte, error) {
+	d := json.NewDecoder(bytes.NewReader(b))
+	tok, err := d.Token()
+	if err != nil || tok != json.Delim('{') {
+		return nil, fmt.Errorf("expected object")
+	}
+	var out bytes.Buffer
+	out.WriteByte('{')
+	first := true
+	for d.More() {
+		t, err := d.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, ok := t.(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid key")
+		}
+		var value json.RawMessage
+		if err := d.Decode(&value); err != nil {
+			return nil, err
+		}
+		value, ok = f(key, value)
+		if !ok {
+			continue
+		}
+		if !first {
+			out.WriteByte(',')
+		}
+		first = false
+		k, _ := json.Marshal(key)
+		out.Write(k)
+		out.WriteByte(':')
+		out.Write(value)
+	}
+	if _, err := d.Token(); err != nil {
+		return nil, err
+	}
+	out.WriteByte('}')
+	return out.Bytes(), nil
+}
 
 // WSLinear is Bybit's public linear derivatives endpoint.
 const WSLinear = "wss://stream.bybit.com/v5/public/linear"
@@ -160,9 +231,10 @@ func (*Adapter) Subscribe(sh venue.Shard) [][]byte {
 func (*Adapter) Heartbeat(venue.Shard) (time.Duration, func() (int, []byte)) {
 	return 20 * time.Second, func() (int, []byte) { return int(websocket.MessageText), []byte(`{"op":"ping"}`) }
 }
-func (*Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
+func (*Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	var x struct {
 		Topic string          `json:"topic"`
+		Type  string          `json:"type"`
 		Data  json.RawMessage `json:"data"`
 		Op    string          `json:"op"`
 	}
@@ -173,17 +245,78 @@ func (*Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 	if err == nil && len(x.Data) > 0 && string(x.Data) != "null" {
 		p := strings.SplitN(x.Topic, ".", 2)
 		if len(p) == 2 && p[1] != "" {
-			var ch string
-			switch p[0] {
-			case "publicTrade":
-				ch = "trade"
-			case "tickers":
-				ch = "mark"
-			case "allLiquidation":
-				ch = "liquidation"
-			}
+			ch := map[string]string{"publicTrade": "trade", "tickers": "mark", "allLiquidation": "liquidation"}[p[0]]
 			if ch != "" {
-				return []rawlog.Record{{Channel: ch, Symbol: p[1], Payload: msg}}
+				var items []json.RawMessage
+				batch := x.Data[0] == '['
+				if batch {
+					err = json.Unmarshal(x.Data, &items)
+				} else {
+					items = []json.RawMessage{x.Data}
+				}
+				if err == nil {
+					var out []rawlog.Record
+					valid := true
+					for _, item := range items {
+						meaningful := false
+						filtered, e := orderedObject(item, func(k string, v json.RawMessage) (json.RawMessage, bool) {
+							if batch && k == "s" {
+								var symbol string
+								if json.Unmarshal(v, &symbol) == nil && symbol == p[1] {
+									return nil, false
+								}
+							}
+							if dropFields[ch][k] {
+								return nil, false
+							}
+							if !keepFields[ch][k] {
+								unknownFields.Add(1)
+							}
+							if k != "symbol" && k != "s" && k != "ts" {
+								meaningful = true
+							}
+							return v, true
+						})
+						if e != nil {
+							valid = false
+							break
+						}
+						if ch == "mark" && x.Type == "delta" && !meaningful {
+							droppedDeltas.Add(1)
+							continue
+						}
+						if batch {
+							filtered = append(append([]byte{'['}, filtered...), ']')
+						}
+						payload, e := orderedObject(msg, func(k string, v json.RawMessage) (json.RawMessage, bool) {
+							if k == "data" {
+								return filtered, true
+							}
+							return v, true
+						})
+						if e != nil {
+							valid = false
+							break
+						}
+						out = append(out, rawlog.Record{Channel: ch, Symbol: p[1], Payload: payload})
+					}
+					if valid {
+						sampleMu.Lock()
+						now := sampleNow()
+						key := sh.Name + "\x00" + ch
+						last, exists := sampleTimes[key]
+						sample := !exists || now.Sub(last) >= time.Hour
+						if sample {
+							sampleTimes[key] = now
+						}
+						sampleMu.Unlock()
+						if sample {
+							payload := append(append([]byte(`{"sample":`), msg...), '}')
+							out = append(out, rawlog.Record{Channel: ch, Symbol: p[1], Payload: payload})
+						}
+						return out
+					}
+				}
 			}
 		}
 	}
