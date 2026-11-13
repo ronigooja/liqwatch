@@ -94,7 +94,7 @@ func propose(bn, vs []instrument, venue string) []venuemap.Pair {
 					continue
 				}
 				p.Status = "auto"
-				if bnNames[vn] || venueNames[vn] > 1 || venueNames[n] > 0 || strings.Contains(n, "LUNA2") && vn == "LUNA" || n == "XAUT" && vn == "XAU" {
+				if bnNames[vn] || venueNames[vn] > 1 || venueNames[n] > 0 || strings.Contains(n, "LUNA2") && vn == "LUNA" || n == "XAUT" && vn == "XAU" || n == "DATAIP" && vn == "DATA" {
 					p.Status = "review"
 				}
 			}
