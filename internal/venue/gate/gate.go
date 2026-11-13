@@ -68,15 +68,23 @@ func sampleDue(shard, channel string) bool {
 }
 
 type Adapter struct {
-	HTTPClient    *http.Client
-	ContractsURL  string
-	mu            sync.RWMutex
-	universe      map[string]struct{}
-	unknownFields atomic.Uint64
+	HTTPClient      *http.Client
+	ContractsURL    string
+	mu              sync.RWMutex
+	universe        map[string]struct{}
+	unknownFields   atomic.Uint64
+	subscribeAcks   atomic.Uint64
+	subscribeErrors atomic.Uint64
 }
 
 // UnknownFields returns the number of unclassified field occurrences retained.
 func (a *Adapter) UnknownFields() uint64 { return a.unknownFields.Load() }
+
+// SubscribeAcks returns successful subscription acknowledgements observed.
+func (a *Adapter) SubscribeAcks() uint64 { return a.subscribeAcks.Load() }
+
+// SubscribeErrors returns error frames observed.
+func (a *Adapter) SubscribeErrors() uint64 { return a.subscribeErrors.Load() }
 
 // filterObject uses RawMessage for values and a decoder for original key order.
 func (a *Adapter) filterObject(src []byte, policy fieldPolicy, result []byte) ([]byte, error) {
@@ -229,11 +237,30 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 		Channel string          `json:"channel"`
 		Event   string          `json:"event"`
 		Result  json.RawMessage `json:"result"`
+		Error   json.RawMessage `json:"error"`
 	}
 	if json.Unmarshal(msg, &env) != nil {
 		return gap(msg)
 	}
-	if env.Event == "subscribe" || env.Event == "unsubscribe" || env.Channel == "futures.pong" {
+	if env.Event == "error" || (len(env.Error) > 0 && string(env.Error) != "null") {
+		a.subscribeErrors.Add(1)
+		var frame any = json.RawMessage(msg)
+		if len(msg) > 4096 {
+			frame = string(msg[:4096])
+		}
+		payload, _ := json.Marshal(map[string]any{"event": "subscribe_error", "frame": frame})
+		return []rawlog.Record{{Channel: "gap", Payload: payload}}
+	}
+	if env.Event == "subscribe" {
+		var result struct {
+			Status string `json:"status"`
+		}
+		if json.Unmarshal(env.Result, &result) == nil && result.Status == "success" {
+			a.subscribeAcks.Add(1)
+		}
+		return nil
+	}
+	if env.Event == "unsubscribe" || env.Channel == "futures.pong" {
 		return nil
 	}
 	if env.Event != "update" && env.Event != "all" {
