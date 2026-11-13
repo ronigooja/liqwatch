@@ -1,0 +1,13 @@
+{"event":"notice","msg":"WebSocket port 8443 will be retired soon. Please migrate to port 443.","code":"64010","connId":"8a0e9b1e"}
+{"arg":{"channel":"trades-all","instId":"BTC-USDT-SWAP"},"data":[{"instId":"BTC-USDT-SWAP","tradeId":"3071358636","px":"69150","sz":"12.43","side":"buy","ts":"1794554432738","source":"0"}]}
+{"event":"subscribe","arg":{"channel":"trades-all","instId":"BTC-USDT-SWAP"},"connId":"8a0e9b1e"}
+{"arg":{"channel":"trades-all","instId":"ETH-USDT-SWAP"},"data":[{"instId":"ETH-USDT-SWAP","tradeId":"4507740104","px":"1945.31","sz":"0.01","side":"buy","ts":"1794554433044","source":"0"}]}
+{"arg":{"channel":"trades-all","instId":"ETH-USDT-SWAP"},"data":[{"instId":"ETH-USDT-SWAP","tradeId":"4507740105","px":"1945.31","sz":"0.01","side":"buy","ts":"1794554433044","source":"0"}]}
+{"arg":{"channel":"trades-all","instId":"ETH-USDT-SWAP"},"data":[{"instId":"ETH-USDT-SWAP","tradeId":"4507740106","px":"1945.31","sz":"57.37","side":"buy","ts":"1794554433044","source":"0"}]}
+{"event":"subscribe","arg":{"channel":"trades-all","instId":"ETH-USDT-SWAP"},"connId":"8a0e9b1e"}
+{"event":"subscribe","arg":{"channel":"trades-all","instId":"SOL-USDT-SWAP"},"connId":"8a0e9b1e"}
+{"event":"subscribe","arg":{"channel":"trades-all","instId":"DOGE-USDT-SWAP"},"connId":"8a0e9b1e"}
+pong
+pong
+pong
+pong
