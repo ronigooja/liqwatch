@@ -27,7 +27,7 @@ func TestUnverifiedHonorsAge(t *testing.T) {
 	defer s.Close()
 	now := time.Now()
 	for path, closed := range map[string]time.Time{"a": now.Add(-time.Minute), "b": now.Add(-4 * time.Hour)} {
-		if err := s.RegisterClosed(manifest.File{Path: path, Group: "g", HourStart: closed, ClosedAt: closed, State: manifest.StateClosed}); err != nil {
+		if err := s.RegisterPack(manifest.Pack{Path: path, Venue: "binance", Symbol: path, Day: 20260101, ClosedAt: closed, State: manifest.StateClosed}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -37,6 +37,35 @@ func TestUnverifiedHonorsAge(t *testing.T) {
 	}
 	if n, _, _ := unverified(dir, 5*time.Hour); n != 0 {
 		t.Fatalf("n=%d, want 0 when nothing is older than 5h", n)
+	}
+}
+
+func TestNewestChannelAge(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now().UTC()
+	dir := filepath.Join(root, "binance", "BTCUSDT", now.Format("20060102"))
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct {
+		name string
+		age  time.Duration
+	}{{"aggTrade.a.jsonl", 3 * time.Minute}, {"aggTrade.b.jsonl", time.Minute}, {"markPrice_all.jsonl", 10 * time.Second}} {
+		p := filepath.Join(dir, item.name)
+		if err := os.WriteFile(p, []byte("x"), 0640); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, now.Add(-item.age), now.Add(-item.age)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	age, ok, err := newestChannelAge(root, "binance", "aggTrade", now)
+	if err != nil || !ok || age != time.Minute {
+		t.Fatalf("age=%v ok=%v err=%v", age, ok, err)
+	}
+	_, ok, err = newestChannelAge(root, "binance", "forceOrder_all", now)
+	if err != nil || ok {
+		t.Fatalf("missing: ok=%v err=%v", ok, err)
 	}
 }
 
@@ -90,7 +119,7 @@ func TestEvaluateUsesAnyReachableMetricsEndpoint(t *testing.T) {
 	addr := func(s *httptest.Server) string { return strings.TrimPrefix(s.URL, "http://") }
 
 	cfg := &config.Config{DataDir: t.TempDir()}
-	cfg.Checks = config.Checks{DiskWarnPct: 100, StaleWriteSec: 120, UnverifiedHours: 3}
+	cfg.Checks = config.Checks{DiskWarnPct: 100, UnverifiedHours: 3}
 
 	cfg.Collect.MetricsAddr = "127.0.0.1:1" // old slot gone
 	cfg.Collect.ExtraMetrics = []string{addr(good)}

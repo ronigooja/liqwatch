@@ -3,7 +3,6 @@ package checks
 import (
 	"bufio"
 	"crypto/rand"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,9 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	_ "modernc.org/sqlite"
-
 	"github.com/ronigooja/liqwatch/internal/config"
+	"github.com/ronigooja/liqwatch/internal/manifest"
 )
 
 type Event struct {
@@ -137,10 +135,17 @@ func evaluate(c *config.Config) ([]finding, error) {
 	} else if pct >= float64(c.Checks.DiskWarnPct) {
 		out = append(out, finding{"disk.high", "warning", "disk.high", "disk usage is high", map[string]any{"percent": pct}})
 	}
-	if age, ok, err := newestPartAge(filepath.Join(c.DataDir, "raw")); err != nil {
-		return nil, err
-	} else if ok && age > time.Duration(c.Checks.StaleWriteSec)*time.Second {
-		out = append(out, finding{"data.stale_write", "critical", "data.stale_write", "raw part file has not been updated", map[string]any{"age_seconds": int(age.Seconds())}})
+	for channel, threshold := range c.Checks.StaleSec {
+		if threshold == 0 {
+			continue
+		}
+		age, ok, err := newestChannelAge(filepath.Join(c.DataDir, "raw"), c.Collect.Venue, channel, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		if !ok || age > time.Duration(threshold)*time.Second {
+			out = append(out, finding{"data.stale_write:" + channel, "critical", "data.stale_write", "raw channel is stale or missing", map[string]any{"channel": channel, "age_seconds": int(age.Seconds()), "missing": !ok}})
+		}
 	}
 	reachable := 0
 	var lastErr error
@@ -185,27 +190,33 @@ func diskPct(path string) (float64, error) {
 	return float64(st.Blocks-st.Bfree) * 100 / float64(st.Blocks), nil
 }
 
-func newestPartAge(root string) (time.Duration, bool, error) {
+func newestChannelAge(root, venue, channel string, now time.Time) (time.Duration, bool, error) {
 	var newest time.Time
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if os.IsNotExist(err) {
-			return nil
-		}
+	if venue == "" {
+		venue = "binance"
+	}
+	for _, name := range []string{channel + ".jsonl", channel + ".*.jsonl"} {
+		paths, err := filepath.Glob(filepath.Join(root, venue, "*", now.UTC().Format("20060102"), name))
 		if err != nil {
-			return err
+			return 0, false, err
 		}
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".part") && info.ModTime().After(newest) {
-			newest = info.ModTime()
+		for _, path := range paths {
+			info, err := os.Stat(path)
+			if os.IsNotExist(err) {
+				continue
+			}
+			if err != nil {
+				return 0, false, err
+			}
+			if info.Mode().IsRegular() && info.ModTime().After(newest) {
+				newest = info.ModTime()
+			}
 		}
-		return nil
-	})
-	if err != nil {
-		return 0, false, err
 	}
 	if newest.IsZero() {
 		return 0, false, nil
 	}
-	return time.Since(newest), true, nil
+	return now.Sub(newest), true, nil
 }
 
 func readMetrics(addr string) (map[string]float64, error) {
@@ -243,22 +254,25 @@ func unverified(dataDir string, age time.Duration) (int, bool, error) {
 	} else if err != nil {
 		return 0, true, err
 	}
-	db, err := sql.Open("sqlite", path+"?mode=ro")
+	db, err := manifest.Open(path)
 	if err != nil {
 		return 0, true, err
 	}
 	defer db.Close()
 	cutoff := time.Now().Add(-age)
-	rows, err := db.Query("SELECT closed_at FROM files WHERE state <> 'verified' AND state <> 'deleted' AND closed_at < ?", cutoff.UnixNano())
-	if err != nil {
-		return 0, true, err
-	}
-	defer rows.Close()
 	n := 0
-	for rows.Next() {
-		n++
+	for _, state := range []manifest.State{manifest.StateClosed, manifest.StateUploading, manifest.StateUploaded} {
+		packs, err := db.ListByState(state)
+		if err != nil {
+			return 0, true, err
+		}
+		for _, pack := range packs {
+			if pack.ClosedAt.Before(cutoff) {
+				n++
+			}
+		}
 	}
-	return n, true, rows.Err()
+	return n, true, nil
 }
 
 func clockOffset() (float64, bool) {
