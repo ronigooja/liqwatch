@@ -1,0 +1,112 @@
+// Package binance implements the Binance futures venue adapter.
+package binance
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/ronigooja/liqwatch/internal/rawlog"
+	"github.com/ronigooja/liqwatch/internal/symbols"
+	"github.com/ronigooja/liqwatch/internal/venue"
+)
+
+const WSMarket = "wss://fstream.binance.com/market/stream?streams="
+
+// Adapter carries Binance configuration and the discovered universe.
+type Adapter struct {
+	StateDir          string
+	MaxStreamsPerWS   int
+	WeightPerMinLimit int
+	universe          map[string]struct{}
+}
+
+func init() { venue.Register("binance", func() venue.Adapter { return &Adapter{} }) }
+
+func (*Adapter) Name() string { return "binance" }
+
+func (a *Adapter) Symbols(ctx context.Context) ([]venue.Symbol, error) {
+	u, err := symbols.Load(ctx, a.StateDir)
+	if err != nil {
+		return nil, err
+	}
+	a.WeightPerMinLimit = u.WeightPerMinLimit
+	return u.All, nil
+}
+
+func (a *Adapter) Shards(_ context.Context, syms []venue.Symbol) ([]venue.Shard, error) {
+	a.universe = make(map[string]struct{}, len(syms))
+	var agg []string
+	for _, s := range syms {
+		a.universe[s] = struct{}{}
+		agg = append(agg, strings.ToLower(s)+"@aggTrade")
+	}
+	perWS := a.MaxStreamsPerWS
+	if perWS <= 0 {
+		perWS = 100
+	}
+	var out []venue.Shard
+	for i := 0; i*perWS < len(agg); i++ {
+		streams := agg[i*perWS : min((i+1)*perWS, len(agg))]
+		out = append(out, venue.Shard{Name: fmt.Sprintf("trade%02d", i), URL: WSMarket + strings.Join(streams, "/"), Streams: streams, Stall: 60 * time.Second})
+	}
+	streams := []string{"!markPrice@arr@1s", "!forceOrder@arr"}
+	out = append(out, venue.Shard{Name: "misc", URL: WSMarket + strings.Join(streams, "/"), Streams: streams, Stall: 30 * time.Second})
+	return out, nil
+}
+
+func (*Adapter) Subscribe(venue.Shard) [][]byte                              { return nil }
+func (*Adapter) Heartbeat(venue.Shard) (time.Duration, func() (int, []byte)) { return 0, nil }
+
+func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
+	ch, sym := classify(msg)
+	if ch == "markPrice_all" || ch == "forceOrder_all" {
+		return SplitAllMarket(msg, a.universe)
+	}
+	if ch == "unknown" || sym == "" {
+		return nil
+	}
+	return []rawlog.Record{{Channel: ch, Symbol: sym, Payload: msg}}
+}
+
+func (*Adapter) Classes() func(string) (string, bool) {
+	return func(ch string) (string, bool) {
+		switch ch {
+		case "markPrice_all":
+			return "mark", true
+		case "aggTrade":
+			return "trade", true
+		case "bookTicker":
+			return "quote", true
+		}
+		return "", false
+	}
+}
+
+func classify(data []byte) (ch, sym string) {
+	i := bytes.Index(data, []byte(`"stream":"`))
+	if i < 0 {
+		return "unknown", ""
+	}
+	rest := data[i+10:]
+	j := bytes.IndexByte(rest, '"')
+	if j < 0 {
+		return "unknown", ""
+	}
+	name := string(rest[:j])
+	k := strings.IndexByte(name, '@')
+	if k < 0 {
+		return name, ""
+	}
+	sym = strings.ToUpper(name[:k])
+	ch = name[k+1:]
+	if m := strings.IndexByte(ch, '@'); m >= 0 {
+		ch = ch[:m]
+	}
+	if sym != "" && sym[0] == '!' {
+		return strings.TrimPrefix(name[:k], "!") + "_all", ""
+	}
+	return ch, sym
+}
