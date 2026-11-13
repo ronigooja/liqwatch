@@ -99,6 +99,16 @@ func TestFixtureSplit(t *testing.T) {
 			t.Fatal(err)
 		}
 		records := a.Split(venue.Shard{}, frame)
+		if v.Channel == "push.contract.extra.update" || v.Channel == "push.contract.marketOrderSetting.update" {
+			var gap struct {
+				Head string `json:"head"`
+			}
+			if len(records) != 1 || records[0].Channel != "gap" || json.Unmarshal(records[0].Payload, &gap) != nil || gap.Head != string(frame) {
+				t.Fatalf("frame %s records %+v", frame, records)
+			}
+			counts[v.Channel]++
+			continue
+		}
 		if strings.HasPrefix(v.Channel, "rs.") || v.Channel == "pong" {
 			if len(records) != 0 {
 				t.Fatal(v.Channel)
@@ -114,6 +124,9 @@ func TestFixtureSplit(t *testing.T) {
 		if counts[ch] == 0 {
 			t.Fatal(ch)
 		}
+	}
+	if counts["push.contract.extra.update"] != 2 || counts["push.contract.marketOrderSetting.update"] != 1 {
+		t.Fatalf("missing observed gap fixtures: %v", counts)
 	}
 	unknown := a.Split(venue.Shard{}, []byte(`{"channel":"push.new","data":{"symbol":"BTC_USDT"}}`))
 	if len(unknown) != 1 || unknown[0].Channel != "gap" {
@@ -134,6 +147,26 @@ func TestFixtureSplit(t *testing.T) {
 	}
 	if _, ok := a.Classes()("ticker"); ok {
 		t.Fatal("ticker must not be dropped as quote")
+	}
+}
+
+func TestGapPayloadAndNotices(t *testing.T) {
+	a := &Adapter{}
+	for _, frame := range []string{`{"channel":"notice","data":null}`, `{"channel":"notice"}`, `{"channel":"rs.error","data":"error"}`} {
+		if got := a.Split(venue.Shard{}, []byte(frame)); len(got) != 0 {
+			t.Fatalf("notice %s: %+v", frame, got)
+		}
+	}
+	for _, n := range []int{300, 4096, 5000} {
+		frame := `{"channel":"push.unknown","data":"` + strings.Repeat("x", n) + `"}`
+		got := a.Split(venue.Shard{}, []byte(frame))
+		var p struct {
+			Head  string `json:"head"`
+			Bytes int    `json:"bytes"`
+		}
+		if len(got) != 1 || got[0].Channel != "gap" || json.Unmarshal(got[0].Payload, &p) != nil || p.Bytes != len(frame) || p.Head != frame[:min(len(frame), 4096)] {
+			t.Fatalf("length %d: %+v", n, got)
+		}
 	}
 }
 

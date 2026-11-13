@@ -154,10 +154,10 @@ func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 		}
 		return []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: msg}}
 	}
-	if len(v.Data) == 0 && !strings.HasPrefix(v.Channel, "push.") {
+	if err == nil && (len(v.Data) == 0 || string(v.Data) == "null") && !strings.HasPrefix(v.Channel, "push.") {
 		return nil
 	}
-	p, _ := json.Marshal(map[string]any{"event": "unrecognized_frame", "bytes": len(msg), "head": string(msg[:min(len(msg), 200)])})
+	p, _ := json.Marshal(map[string]any{"event": "unrecognized_frame", "bytes": len(msg), "head": string(msg[:min(len(msg), 4096)])})
 	return []rawlog.Record{{Channel: "gap", Payload: p}}
 }
 

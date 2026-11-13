@@ -57,4 +57,7 @@
 {"channel":"rs.sub.contract","data":"success","ts":1794554521925}
 {"symbol":"BTC_USDT","data":{"p":69106.4,"v":1,"T":1,"O":3,"M":2,"t":1794554676415,"i":"17006860336","cts":"1794554676415"},"channel":"push.deal","ts":1794554676418}
 {"symbol":"BTC_USDT","data":{"p":69106.6,"v":188,"T":2,"O":3,"M":2,"t":1794554676616,"i":"17006860357","cts":"1794554676616"},"channel":"push.deal","ts":1794554676618}
+{"symbol":"BLKSTOCK_USDT","data":{"symbol":"BLKSTOCK_USDT","triggerProtect":0,"appraisal":0,"showAppraisalCountdown":0,"automaticDelivery":0},"channel":"push.contract.extra.update","ts":1794556389171}
+{"symbol":"HK0700_USDT","data":{"symbol":"HK0700_USDT","triggerProtect":0,"appraisal":0,"showAppraisalCountdown":0,"automaticDelivery":0,"type":2,"stopOnlyFair":false},"channel":"push.contract.extra.update","ts":1794556800976}
+{"symbol":"HK0700_USDT","data":{"symbol":"HK0700_USDT","level":15,"maxLevel":20,"priceLimitRate1":0.2,"priceLimitRate2":0.005,"threshold":0},"channel":"push.contract.marketOrderSetting.update","ts":1794556800975}
 {"symbol":"BTC_USDT","data":{"p":69106.7,"v":9,"T":1,"O":3,"M":1,"t":1794554677235,"i":"17006860470","cts":"1794554677235"},"channel":"push.deal","ts":1794554677238}
