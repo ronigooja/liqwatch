@@ -119,6 +119,12 @@ func TestFixtureSplit(t *testing.T) {
 			}
 			continue
 		}
+		if v.Channel == "rs.error" {
+			if len(records) != 1 || records[0].Channel != "gap" || records[0].Symbol != "" {
+				t.Fatalf("error frame %s: %+v", frame, records)
+			}
+			continue
+		}
 		if strings.HasPrefix(v.Channel, "rs.") || v.Channel == "pong" {
 			if len(records) != 0 {
 				t.Fatal(v.Channel)
@@ -202,7 +208,7 @@ func TestFilteringAndSamples(t *testing.T) {
 
 func TestGapPayloadAndNotices(t *testing.T) {
 	a := &Adapter{}
-	for _, frame := range []string{`{"channel":"notice","data":null}`, `{"channel":"notice"}`, `{"channel":"rs.error","data":"error"}`} {
+	for _, frame := range []string{`{"channel":"notice","data":null}`, `{"channel":"notice"}`} {
 		if got := a.Split(venue.Shard{}, []byte(frame)); len(got) != 0 {
 			t.Fatalf("notice %s: %+v", frame, got)
 		}
@@ -217,6 +223,28 @@ func TestGapPayloadAndNotices(t *testing.T) {
 		if len(got) != 1 || got[0].Channel != "gap" || json.Unmarshal(got[0].Payload, &p) != nil || p.Bytes != len(frame) || p.Head != frame[:min(len(frame), 4096)] {
 			t.Fatalf("length %d: %+v", n, got)
 		}
+	}
+}
+
+func TestSubscribeResponses(t *testing.T) {
+	a := &Adapter{}
+	for _, frame := range []string{`{"channel":"rs.sub.deal","data":"success"}`, `{"channel":"rs.sub.contract","data":"success"}`} {
+		if got := a.Split(venue.Shard{}, []byte(frame)); len(got) != 0 {
+			t.Fatal(got)
+		}
+	}
+	for _, frame := range []string{`{"channel":"rs.error","data":"Contract [X_USDT] not exists"}`, `{"channel":"rs.sub.deal","data":"failed"}`, `{"channel":"rs.sub.deal","data":{"success":false}}`, `{"channel":"rs.sub.deal","data":{"code":1001}}`, `{"channel":"rs.error","data":"` + strings.Repeat("x", 5000) + `"}`} {
+		got := a.Split(venue.Shard{}, []byte(frame))
+		var p struct {
+			Event string `json:"event"`
+			Frame string `json:"frame"`
+		}
+		if len(got) != 1 || got[0].Channel != "gap" || got[0].Symbol != "" || json.Unmarshal(got[0].Payload, &p) != nil || p.Event != "subscribe_error" || p.Frame != frame[:min(len(frame), 4096)] {
+			t.Fatalf("response: %+v", got)
+		}
+	}
+	if a.SubscribeAcks() != 2 || a.SubscribeErrors() != 5 {
+		t.Fatalf("acks %d errors %d", a.SubscribeAcks(), a.SubscribeErrors())
 	}
 }
 
