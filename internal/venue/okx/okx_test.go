@@ -45,7 +45,14 @@ func TestFixtures(t *testing.T) {
 	seen := map[string]bool{}
 	for _, path := range []string{"testdata/public.jsonl", "testdata/business.jsonl"} {
 		for _, frame := range venuetest.Fixture(t, path) {
+			var control struct {
+				Event string `json:"event"`
+			}
+			_ = json.Unmarshal(frame, &control)
 			for _, r := range a.Split(shards[0], frame) {
+				if control.Event == "notice" && r.Channel == "gap" {
+					continue
+				}
 				if r.Channel == "gap" {
 					t.Fatalf("unexpected gap: %s", frame)
 				}
@@ -72,6 +79,55 @@ func TestFixtures(t *testing.T) {
 	}
 	if _, ok := a.Classes()("liquidation"); ok {
 		t.Fatal("liquidations droppable")
+	}
+}
+
+func TestSubscriptionControls(t *testing.T) {
+	a := &Adapter{}
+	sh := venue.Shard{}
+	frames := []string{
+		`{"event":"error","code":"60018","msg":"bad subscription","arg":{"channel":"mark-price","instId":"BAD"}}`,
+		`{"event":"channel-conn-count-error","channel":"orders","connCount":"30","connId":"abc"}`,
+		`{"event":"notice","msg":"maintenance","code":"64010","connId":"abc"}`,
+	}
+	for _, frame := range frames {
+		r := a.Split(sh, []byte(frame))
+		if len(r) != 1 || r[0].Channel != "gap" || r[0].Symbol != "" {
+			t.Fatalf("record: %+v", r)
+		}
+		var payload struct {
+			Event string          `json:"event"`
+			Frame json.RawMessage `json:"frame"`
+		}
+		if err := json.Unmarshal(r[0].Payload, &payload); err != nil || payload.Event != "subscribe_error" || string(payload.Frame) != frame {
+			t.Fatalf("payload: %s", r[0].Payload)
+		}
+	}
+	const workers, iterations = 20, 100
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				if a.Split(sh, []byte(`{"event":"subscribe","arg":{"channel":"mark-price"}}`)) != nil {
+					t.Error("ack recorded")
+				}
+				a.Split(sh, []byte(frames[0]))
+				if a.Split(sh, []byte("pong")) != nil {
+					t.Error("pong recorded")
+				}
+				_ = a.SubscribeAcks()
+				_ = a.SubscribeErrors()
+			}
+		}()
+	}
+	wg.Wait()
+	if a.SubscribeAcks() != workers*iterations || a.SubscribeErrors() != workers*iterations+uint64(len(frames)) {
+		t.Fatalf("counts %d %d", a.SubscribeAcks(), a.SubscribeErrors())
+	}
+	if (&Adapter{}).SubscribeErrors() != 0 {
+		t.Fatal("counters shared between adapters")
 	}
 }
 
