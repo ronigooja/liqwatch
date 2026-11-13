@@ -31,7 +31,7 @@ func merge(current, proposed []venuemap.Pair, selected map[string]bool) ([]venue
 	for _, p := range proposed {
 		k := key(p)
 		if q, ok := old[k]; ok {
-			if q.Status == "reviewed" || q.Status == "rejected" {
+			if q.Status == "reviewed" || q.Status == "rejected" || q.Status == "review" {
 				p = q
 			}
 			if !reflect.DeepEqual(q, p) {

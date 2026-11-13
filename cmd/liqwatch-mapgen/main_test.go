@@ -64,6 +64,13 @@ func TestMergeKeepsAllReviewedFields(t *testing.T) {
 		t.Fatalf("got %+v diff %v", got, diff)
 	}
 }
+
+func TestMergeDoesNotPromoteReview(t *testing.T) {
+	old := []venuemap.Pair{{Binance: "RAY", Venue: "gate", Symbol: "RAY", Status: "review", Note: "ratio=1"}}
+	fresh := []venuemap.Pair{{Binance: "RAY", Venue: "gate", Symbol: "RAY", Status: "auto", Note: "ratio=1.001"}}
+	got, diff := merge(old, fresh, map[string]bool{"gate": true})
+	if len(got) != 1 || got[0] != old[0] || len(diff) != 0 { t.Fatalf("got %+v diff %v", got, diff) }
+}
 func TestMergePreservesDecisions(t *testing.T) {
 	old := []venuemap.Pair{{Binance: "A", Venue: "gate", Symbol: "A", Status: "reviewed", Note: "manual"}, {Binance: "B", Venue: "gate", Symbol: "B", Status: "rejected"}}
 	fresh := []venuemap.Pair{{Binance: "A", Venue: "gate", Symbol: "A", Status: "auto"}}
