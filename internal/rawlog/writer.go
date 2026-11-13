@@ -23,7 +23,20 @@ const (
 	ChTrade     = "aggTrade"
 )
 
-var dropAt = map[string]float64{ChMarkPrice: .50, ChQuote: .75, ChTrade: .90}
+var dropAt = map[string]float64{"mark": .50, "quote": .75, "trade": .90}
+
+func defaultDropClass(channel string) (string, bool) {
+	switch channel {
+	case ChMarkPrice:
+		return "mark", true
+	case ChQuote:
+		return "quote", true
+	case ChTrade:
+		return "trade", true
+	default:
+		return "", false
+	}
+}
 
 type Closed struct {
 	Path, Venue, Symbol, Channel string
@@ -39,6 +52,7 @@ type Options struct {
 	Instance     string
 	MaxOpenFiles int
 	Fsync        bool
+	DropClass    func(channel string) (class string, ok bool)
 }
 type Stats struct {
 	Written              int64
@@ -92,6 +106,9 @@ func NewWriter(opts Options) (*Writer, error) {
 	if opts.MaxOpenFiles <= 0 {
 		opts.MaxOpenFiles = 4096
 	}
+	if opts.DropClass == nil {
+		opts.DropClass = defaultDropClass
+	}
 	if !validInstance(opts.Instance) {
 		return nil, fmt.Errorf("rawlog: invalid instance %q", opts.Instance)
 	}
@@ -99,24 +116,27 @@ func NewWriter(opts Options) (*Writer, error) {
 		return nil, err
 	}
 	w := &Writer{opts: opts, q: make(chan item, opts.QueueSize), done: make(chan struct{}), dropCnt: map[string]*atomic.Int64{}, marked: map[string]int64{}, venues: map[string]string{}}
-	for ch := range dropAt {
-		w.dropCnt[ch] = new(atomic.Int64)
-	}
 	return w, nil
 }
 func (w *Writer) Write(group string, r Record) {
-	if thr, ok := dropAt[r.Channel]; ok {
+	class, classified := w.opts.DropClass(r.Channel)
+	if thr, ok := dropAt[class]; classified && ok {
 		w.venueMu.Lock()
 		w.venues[r.Channel] = venue(r.Venue)
+		counter := w.dropCnt[r.Channel]
+		if counter == nil {
+			counter = new(atomic.Int64)
+			w.dropCnt[r.Channel] = counter
+		}
 		w.venueMu.Unlock()
 		if float64(len(w.q)) >= thr*float64(cap(w.q)) {
-			w.dropCnt[r.Channel].Add(1)
+			counter.Add(1)
 			return
 		}
 		select {
 		case w.q <- item{group, r}:
 		default:
-			w.dropCnt[r.Channel].Add(1)
+			counter.Add(1)
 		}
 		return
 	}
@@ -127,9 +147,11 @@ func (w *Writer) Write(group string, r Record) {
 }
 func (w *Writer) Stats() Stats {
 	s := Stats{Written: w.written.Load(), QueueDepth: len(w.q), QueueCap: cap(w.q), DiskStops: w.stops.Load(), Dropped: map[string]int64{}}
+	w.venueMu.Lock()
 	for ch, c := range w.dropCnt {
 		s.Dropped[ch] = c.Load()
 	}
+	w.venueMu.Unlock()
 	return s
 }
 func day(t time.Time) time.Time {
@@ -326,17 +348,17 @@ func (w *Writer) Run(ctx context.Context) {
 	}
 	markDrops := func() {
 		now := time.Now()
+		w.venueMu.Lock()
 		for ch, c := range w.dropCnt {
 			total := c.Load()
 			if d := total - w.marked[ch]; d > 0 {
 				w.marked[ch] = total
-				w.venueMu.Lock()
 				v := w.venues[ch]
-				w.venueMu.Unlock()
 				p := fmt.Sprintf(`{"event":"drop","channel":%q,"count":%d,"since_ns":%d}`, ch, d, lastMark.UnixNano())
 				emit(GroupGap, Record{Venue: v, Conn: "writer", RecvWal: now.UnixNano(), RecvMon: monoNow(), Channel: "gap", Payload: []byte(p)})
 			}
 		}
+		w.venueMu.Unlock()
 		lastMark = now
 	}
 	for {

@@ -136,6 +136,25 @@ func TestDropOrderAndGap(t *testing.T) {
 		t.Fatal("missing drop gap")
 	}
 }
+func TestCustomDropClass(t *testing.T) {
+	w, err := NewWriter(Options{Dir: t.TempDir(), QueueSize: 2, DropClass: func(ch string) (string, bool) {
+		return "mark", ch == "custom"
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	w.Write(GroupTrade, rec("unclassified", now, `{}`))
+	w.Write(GroupTrade, rec("custom", now, `{}`))
+	if got := w.Stats().Dropped["custom"]; got != 1 {
+		t.Fatalf("custom drops = %d", got)
+	}
+	stop := run(w)
+	stop()
+	if len(readAll(t, filepath.Join(w.opts.Dir, "binance/gap", now.UTC().Format("20060102"), "gap.jsonl"))) != 1 {
+		t.Fatal("missing custom drop gap")
+	}
+}
 func TestDiskStop(t *testing.T) {
 	w, _ := NewWriter(Options{Dir: t.TempDir(), MaxDiskPct: 0.000000001})
 	stop := run(w)
