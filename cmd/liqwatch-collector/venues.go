@@ -4,4 +4,5 @@ package main
 import (
 	_ "github.com/ronigooja/liqwatch/internal/venue/gate"
 	_ "github.com/ronigooja/liqwatch/internal/venue/mexc"
+	_ "github.com/ronigooja/liqwatch/internal/venue/okx"
 )
