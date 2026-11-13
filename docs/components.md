@@ -8,10 +8,10 @@ Per-phase component list. Phase definitions: [roadmap.md](roadmap.md). Recording
 |---|---|---|---|
 | 1 | Symbol Manager | Daily USDT-M perpetual list; per-tier subscription lists; log delistings and tier promotions | List format, change log, promotion rule |
 | 2 | Stream Collector | Sharded WebSocket per channel and symbol group; reconnect and forced-disconnect handling; receive timestamps | Shard rule, reconnect and de-duplication, backpressure |
-| 3 | Snapshot Scheduler | REST snapshots for depth tier: startup sync, resync after gap, periodic verification points | Frequency, rate-limit budget |
-| 4 | Raw Log Writer | Bounded queue, append-only hourly files, compression | Record format, file naming, drop priority when full |
-| 5 | Book Validator | Side-path book rebuild, gap detection, mismatch vs verification snapshot, unavailable intervals | Rebuild algorithm, mismatch definition, interval format |
-| 6 | Archiver | Hourly raw-file upload and verification; Parquet conversion happens on the research side ([archiver](p0-support-design.md), [pipeline](p1-data-pipeline.md)) | Partitioning, retention, checksums |
+| 3 | REST poller | Verified in code: Binance REST data; other venues not built ([poller](poller.md)) | Coverage and gaps |
+| 4 | Raw Log Writer | Verified in code: daily uncompressed files ([storage](storage-design.md)) | Drop priority when full |
+| 5 | Book Validator | Historical book-data validation; current recorder does not record books | Future book availability |
+| 6 | Archiver | Verified in code: daily packs and upload ([storage](storage-design.md)); research-side conversion | Verification and operations |
 | 7 | Manifest | Per-file start/end, message count, checksum, reconnect count | Table schema |
 | 8 | Replay Engine | Replay by receive time; "data received up to t" interface | Interface shape (basis of leakage control) |
 | 9 | Monitoring and Alerting | Latency, disconnects, rates, disk, mismatch rate, clock offset; alert events through an interface (webhook push and HTTP pull) | Metric list, thresholds, alert schema |

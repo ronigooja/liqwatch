@@ -2,6 +2,8 @@
 
 Goal: a complete, auditable, replayable raw market record. No models or features in this phase.
 
+Verified in code: current recording excludes depth, quotes and snapshots ([decision 0011](decisions/0011-no-alert-narrower-recording.md)); book-specific requirements below apply only to historical data or future work, not the current recorder.
+
 ## Why self-record
 
 Binance provides no full historical incremental L2. Verified public-history availability: [open-questions.md](open-questions.md). Purchasable alternatives exist (e.g. Tardis.dev) and may be added later to extend history.
@@ -23,8 +25,7 @@ Tier A exists so that any spike can be reviewed afterwards, including on symbols
 
 ```
 WebSocket shards -> bounded write queue -> append-only raw log
-REST snapshot scheduler -> same queue
-Side-path validator: rebuild book, detect gaps, trigger resync
+REST poller -> daily raw log
 Metrics: latency, reconnects, gaps, queue depth
 ```
 
@@ -45,10 +46,7 @@ venue, symbol, channel, connection id, local sequence, `recv_wall_time`, `recv_m
 
 ## Storage
 
-- Multi-venue design (not built): [storage-design.md](storage-design.md), [decision 0014](decisions/0014-daily-pack-storage.md). The two lines below describe the built Binance recorder.
-- Hot: hourly append-only files by channel/date/symbol, zstd.
-- Archive: the recorder uploads the closed hourly `jsonl.zst` files in chunks and verifies them; Parquet conversion happens on the research side, not on the recorder ([p0-support-design.md](p0-support-design.md)). Local retention: [decision 0008](decisions/0008-hourly-archive-and-retention.md).
-- Manifest table (DuckDB or SQLite): per file start/end time, message count, checksum, reconnect count.
+- Verified in code: daily raw files and daily pack archiving are built; layout and retention: [storage-design.md](storage-design.md), [decision 0014](decisions/0014-daily-pack-storage.md). Parquet conversion is research-side.
 - Size capacity from a 1–2 day trial; do not extrapolate from symbol count.
 
 ## Clock and region

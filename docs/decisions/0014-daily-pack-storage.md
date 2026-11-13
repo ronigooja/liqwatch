@@ -22,4 +22,4 @@ Date: 2026-11-13. Supersedes [0008](0008-hourly-archive-and-retention.md) (hourl
 
 - Local disk must hold about one day of raw plus one day of compressed, up to two days of raw if packing lags. Only Binance is estimated (about 16 to 30 GB, extrapolated from 10 minutes); the other six venues are unmeasured.
 - Open: compression unit and level; upload time and failure rate of about 3,200 packs per day; descriptors and IO for hundreds of open append files per process; OneDrive quota; chart-state snapshot location; recorder host.
-- Code is not built: `rawlog` rewrite, pack step, archiver without chunks, manifest at pack level, per-venue collectors, poller `venue` and gap records. Existing Binance components keep working as described in [p0-core-design.md](../p0-core-design.md) and [p0-support-design.md](../p0-support-design.md) until replaced.
+- Verified in code: the raw writer, packer, pack archiver, venue adapters and Go poller exist. Poll failure gap records remain not built; see [storage design](../storage-design.md).

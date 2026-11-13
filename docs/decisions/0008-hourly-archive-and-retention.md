@@ -1,6 +1,6 @@
 # 0008 Hourly archive and short local retention
 
-Superseded by [0014](0014-daily-pack-storage.md) for the multi-venue design (not built); it still describes the built Binance archiver.
+Superseded by [0014](0014-daily-pack-storage.md); this record describes the historical hourly archiver.
 
 Date: 2026-11-03. Supersedes the daily archive run and the "keep at least 3 days locally" rule in the earlier [p0-support-design.md](../p0-support-design.md) Archiver text.
 

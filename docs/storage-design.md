@@ -1,6 +1,6 @@
 # Storage Design (multi-venue recording)
 
-Design of how recorded market data is written, packed, uploaded and kept. Status: designed, not built. Governing records: [0009](decisions/0009-zero-gap-handoff.md) (slots, handoff), [0011](decisions/0011-no-alert-narrower-recording.md) (scope, retention), [0013](decisions/0013-no-dex-recording.md) (no DEX). Replaces the hourly files, 128 MB chunks and 6-hour local deletion of [0008](decisions/0008-hourly-archive-and-retention.md) and the Archiver and Raw Log Writer text of [p0-support-design.md](p0-support-design.md) and [p0-core-design.md](p0-core-design.md); decision record: [0014](decisions/0014-daily-pack-storage.md). Venue facts: [venue-apis.md](venue-apis.md).
+Design of how recorded market data is written, packed, uploaded and kept. Verified in code: raw writer, packer and archiver are built; deployment is separate ([rollout](p0-rollout.md)). Governing records: [0009](decisions/0009-zero-gap-handoff.md), [0011](decisions/0011-no-alert-narrower-recording.md), [0013](decisions/0013-no-dex-recording.md), [0014](decisions/0014-daily-pack-storage.md). Venue facts: [venue-apis.md](venue-apis.md).
 
 ## Scope
 
@@ -98,14 +98,10 @@ Mark-price A included contracts outside the 522 (TRADIFI and others) and B did n
 | Recorder host | Japan host not chosen; the 2026-11-02 recorder is down ([p0-rollout.md](p0-rollout.md)) |
 | OneDrive quota | Unchecked; the archive is a single copy |
 
-## Code changes (not built)
+## Code status
 
 | Module | Change |
 |---|---|
-| `internal/rawlog` | Append-only writer grouped by venue, symbol, channel; drop the zstd encoder and hourly rotation; day-boundary cut; split all-market streams |
-| New pack step | Pack and compress after the day boundary |
-| `liqwatch-archiver` | Remove chunking; one PUT per pack with size check |
-| `internal/manifest` | Pack-level rows with a member table |
-| `internal/checks` | Stale-write threshold per channel |
-| Collectors | One per venue; the Binance collector moves to the new grouping |
-| Poller | Add `venue`, poll gap records, other venues' polled channels |
+| `internal/rawlog`, `internal/pack`, `cmd/liqwatch-archiver` | Verified in code: daily raw files, packs and unchunked upload |
+| Collectors | Verified in code: venue adapters registered; deployment is separate |
+| Poller | Verified in code: Go poller writes venue; poll gap records and other venues' polled channels are not built |

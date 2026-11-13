@@ -2,6 +2,8 @@
 
 Date: 2026-11-04. Extends the restart behavior in [p0-core-design.md](../p0-core-design.md) (Components 2 and 4).
 
+Verified in code: depth, quote and snapshot recording described below is historical, superseded by [0011](0011-no-alert-narrower-recording.md); storage layout is superseded by [0014](0014-daily-pack-storage.md).
+
 ## Decision
 
 1. The collector runs as a named slot (`a` or `b`) under the template unit `liqwatch-collector@.service`. A planned release or config change starts the idle slot on the new release, waits until it is ready, then stops the old slot. The two slots overlap for about one to two minutes.
