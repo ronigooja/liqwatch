@@ -1,0 +1,9 @@
+[Unit]
+Description=Liqwatch daily packer
+
+[Service]
+Type=oneshot
+User=liqwatch
+ExecStart=/opt/liqwatch/current/liqwatch-packer -config /etc/liqwatch/config.toml
+Nice=15
+IOSchedulingClass=idle

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run liqwatch packer daily
+
+[Timer]
+OnCalendar=*-*-* 00:20:00 UTC
+Persistent=true
+Unit=liqwatch-packer.service
+
+[Install]
+WantedBy=timers.target

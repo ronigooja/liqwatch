@@ -1,8 +1,8 @@
 [Unit]
-Description=Run liqwatch archiver hourly
+Description=Run liqwatch archiver every 15 minutes
 
 [Timer]
-OnCalendar=*-*-* *:05:00
+OnCalendar=*:0/15
 Persistent=true
 Unit=liqwatch-archiver.service
 
