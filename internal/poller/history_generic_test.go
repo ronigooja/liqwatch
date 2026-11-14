@@ -102,7 +102,7 @@ func TestHistoryShortPagesCoverRange(t *testing.T) {
 					got[r.Meta["last_row_timestamp"].(int64)] = true
 				}
 			}
-			for ts := start; ts <= now.UnixMilli(); ts += step5.Milliseconds() {
+			for ts := start; ts <= now.Add(-2*step5).UnixMilli(); ts += step5.Milliseconds() {
 				if got[ts] == f.holes[ts] {
 					t.Fatalf("timestamp %d: present=%v hole=%v", ts, got[ts], f.holes[ts])
 				}
@@ -241,7 +241,7 @@ func TestGenericPagingModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			first := (start + 299999) / 300000 * 300000
-			checkSeries(t, recs, first, nowMS/300000*300000, int((nowMS/300000*300000-first)/300000)+1)
+			checkSeries(t, recs, first, nowMS-2*step5.Milliseconds(), int((nowMS-2*step5.Milliseconds()-first)/300000)+1)
 			if got := f.calls.Load(); got < tc.calls-2 || got > tc.calls+2 {
 				t.Fatalf("calls=%d expected about %d", got, tc.calls)
 			}
@@ -272,7 +272,7 @@ func TestGenericBackwardStopsAtStartAndNeverRepeats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(recs) != 121 { // 10h = 120 steps, inclusive start boundary
+	if len(recs) != 119 { // Exclude the two unfinished tail buckets.
 		t.Fatalf("rows=%d", len(recs))
 	}
 	for i := 1; i < len(requested); i++ {
@@ -310,7 +310,7 @@ func TestGenericSourceGapsBothDirections(t *testing.T) {
 					gaps = append(gaps, r)
 				}
 			}
-			if len(gaps) != 1 || len(recs) != 24+1-2+1 {
+			if len(gaps) != 1 || len(recs) != 24+1-2+1-2 {
 				t.Fatalf("gaps=%d recs=%d", len(gaps), len(recs))
 			}
 			var g struct {
@@ -353,16 +353,16 @@ func TestGenericOverlapDedupAndRevision(t *testing.T) {
 				t.Fatal(err)
 			}
 			first := len(sink.records)
-			if first != 25 {
+			if first != 23 {
 				t.Fatalf("first run wrote %d", first)
 			}
 			cursor := s.RowTimestamp("fake", "oi", "BTCUSDT")
-			if cursor != now.UnixMilli() {
+			if cursor != now.Add(-2*step5).UnixMilli() {
 				t.Fatalf("cursor %d", cursor)
 			}
 			clock.t = clock.t.Add(5 * time.Minute)
 			f.value = func(ts int64) int {
-				if ts == now.UnixMilli() {
+				if ts == now.Add(-2*step5).UnixMilli() {
 					return 2
 				}
 				return 1
@@ -370,18 +370,19 @@ func TestGenericOverlapDedupAndRevision(t *testing.T) {
 			if _, err := s.Step(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			// overlap of 2h (default) re-reads 24 old rows (all duplicates) plus now(revised) and now+5m (new)
-			if s.Duplicates.Load() != 24 || s.Revisions.Load() != 1 {
+			// The earlier cursor extends overlap two rows before the initial lookback; it also
+			// re-reads one deliberately revised row and includes one newly finalized row.
+			if s.Duplicates.Load() != 22 || s.Revisions.Load() != 1 {
 				t.Fatalf("dups=%d revs=%d", s.Duplicates.Load(), s.Revisions.Load())
 			}
-			if len(sink.records) != first+2 {
+			if len(sink.records) != first+4 {
 				t.Fatalf("wrote %d", len(sink.records)-first)
 			}
-			rev := sink.records[first]
-			if rev.Meta["revised"] != true || rev.Meta["last_row_timestamp"].(int64) != now.UnixMilli() {
+			rev := sink.records[first+2]
+			if rev.Meta["revised"] != true || rev.Meta["last_row_timestamp"].(int64) != now.Add(-2*step5).UnixMilli() {
 				t.Fatalf("revision not first appended: %+v", rev.Meta)
 			}
-			if sink.records[first+1].Meta["revised"] != nil {
+			if sink.records[first+3].Meta["revised"] != nil {
 				t.Fatal("new row flagged revised")
 			}
 		})
@@ -478,7 +479,7 @@ func TestGenericRestartReconstruction(t *testing.T) {
 			sink.Close()
 			clock.t = clock.t.Add(5 * time.Minute)
 			f.value = func(ts int64) int {
-				if ts == now.UnixMilli() {
+				if ts == now.Add(-10*time.Minute).UnixMilli() {
 					return 9
 				}
 				return 1
@@ -573,5 +574,99 @@ func TestSnapshotFetch(t *testing.T) {
 	s.Step(context.Background())
 	if len(s.Sink.(*memorySink).records) != 2 {
 		t.Fatal("snapshot was deduplicated")
+	}
+}
+
+func TestHistoryFinalizedBuckets(t *testing.T) {
+	now := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	for _, mode := range []PageMode{PageWindows, PageForward, PageBackward} {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			f := newFakeExchange(now.Add(-20*step5).UnixMilli(), now.UnixMilli(), mode != PageForward, 5)
+			defer f.server.Close()
+			clock := &fakeClock{now}
+			sink := &memorySink{}
+			s, h := fakeJob(f, clock, mode, sink, "")
+			var fetched []int64
+			fetch := h.Fetch
+			h.Fetch = func(ctx context.Context, a, b int64) ([]Row, error) {
+				rows, err := fetch(ctx, a, b)
+				for _, r := range rows {
+					fetched = append(fetched, r.TS)
+				}
+				return rows, err
+			}
+			if _, err := s.Step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if got := s.RowTimestamp("fake", "oi", "BTCUSDT"); got != now.Add(-2*step5).UnixMilli() {
+				t.Fatalf("cursor=%d", got)
+			}
+			for _, r := range sink.records {
+				if r.Channel == "gap" {
+					t.Fatalf("unexpected gap: %s", r.Payload)
+				}
+			}
+			fetched = nil
+			f.value = func(ts int64) int {
+				if ts == now.UnixMilli() {
+					return 2
+				}
+				return 1
+			}
+			clock.t = now.Add(2 * step5)
+			if _, err := s.Step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			foundFetch, count := false, 0
+			for _, ts := range fetched {
+				if ts == now.UnixMilli() {
+					foundFetch = true
+				}
+			}
+			for _, r := range sink.records {
+				if r.Meta["revised"] != nil {
+					t.Fatalf("revised: %+v", r.Meta)
+				}
+				if r.Meta["last_row_timestamp"] == now.UnixMilli() {
+					count++
+					var row struct {
+						V int `json:"v"`
+					}
+					json.Unmarshal(r.Payload, &row)
+					if row.V != 2 {
+						t.Fatalf("value=%d", row.V)
+					}
+				}
+			}
+			if !foundFetch || count != 1 {
+				t.Fatalf("re-fetched=%v count=%d", foundFetch, count)
+			}
+		})
+	}
+}
+
+func TestHistoryOnlyUnfinishedAndSparse(t *testing.T) {
+	now := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	for _, mode := range []PageMode{PageWindows, PageForward, PageBackward} {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			f := newFakeExchange(now.UnixMilli(), now.UnixMilli(), mode != PageForward, 10)
+			defer f.server.Close()
+			clock := &fakeClock{now}
+			sink := &memorySink{}
+			s, h := fakeJob(f, clock, mode, sink, "")
+			if _, err := s.Step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if len(sink.records) != 0 || s.NoDataAt("fake", "oi", "BTCUSDT") != 0 || s.RowTimestamp("fake", "oi", "BTCUSDT") != 0 {
+				t.Fatalf("records=%v state=%+v", sink.records, s.state)
+			}
+			if mode != PageWindows {
+				h.Step = 0
+				recs, err := h.Run(context.Background())
+				if err != nil || len(recs) != 1 {
+					t.Fatalf("sparse=%v err=%v", recs, err)
+				}
+			}
+		})
 	}
 }

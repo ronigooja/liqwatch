@@ -343,6 +343,7 @@ func (e *Env) Channel(name string, s ChannelSpec) Channel {
 // HistorySpec describes a per-symbol history channel; see the package comment.
 type HistorySpec struct {
 	Step        time.Duration // row granularity (5m, 1m); 0 disables source_gap
+	Grace       time.Duration // finalization delay; zero defaults to Step
 	Retention   time.Duration // oldest data the venue serves; 0: unlimited
 	MaxLookback time.Duration
 	Mode        PageMode
@@ -364,7 +365,7 @@ func (e *Env) HistoryChannel(name string, s HistorySpec) Channel {
 		Fetch: func(ctx context.Context, sym string) ([]Record, error) {
 			h := &History{Venue: e.Venue, Channel: name, Symbol: sym, Clock: e.Clock, Sched: e.Scheduler,
 				Overlap: e.Overlap, Lookback: e.Lookback, Retention: s.Retention, MaxLookback: s.MaxLookback,
-				Step: s.Step, Mode: s.Mode, Window: s.Window, PageSize: s.PageSize, SkipNoData: s.SkipNoData,
+				Step: s.Step, Grace: s.Grace, Mode: s.Mode, Window: s.Window, PageSize: s.PageSize, SkipNoData: s.SkipNoData,
 				Fetch: func(ctx context.Context, start, end int64) ([]Row, error) { return s.Fetch(ctx, sym, start, end) }}
 			return h.Run(ctx)
 		}})

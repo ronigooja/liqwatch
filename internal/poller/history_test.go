@@ -40,7 +40,7 @@ func TestHistoryWindowWalkAndDedup(t *testing.T) {
 	s, _ := NewScheduler(channels, sink, clock, "", 240)
 	b.Scheduler = s
 	rows, err := b.request(context.Background(), "openInterestHist", "BTCUSDT")
-	if err != nil || len(rows) != 865 {
+	if err != nil || len(rows) != 863 {
 		t.Fatalf("rows=%d calls=%d err=%v", len(rows), calls, err)
 	}
 	for _, r := range rows {
@@ -54,7 +54,7 @@ func TestHistoryWindowWalkAndDedup(t *testing.T) {
 		}
 	}
 	revised := rows[len(rows)-1]
-	revised.Payload = []byte(fmt.Sprintf(`{"timestamp":%d,"value":1}`, now.UnixMilli()))
+	revised.Payload = []byte(fmt.Sprintf(`{"timestamp":%d,"value":1}`, now.Add(-10*time.Minute).UnixMilli()))
 	if s.dedup(&revised) || revised.Meta["revised"] != true {
 		t.Fatal("revision missed")
 	}
@@ -63,7 +63,7 @@ func TestHistoryWindowWalkAndDedup(t *testing.T) {
 func TestHistorySourceGap(t *testing.T) {
 	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `[{"timestamp":%d},{"timestamp":%d}]`, now.Add(-15*time.Minute).UnixMilli(), now.Add(-5*time.Minute).UnixMilli())
+		fmt.Fprintf(w, `[{"timestamp":%d},{"timestamp":%d}]`, now.Add(-20*time.Minute).UnixMilli(), now.Add(-10*time.Minute).UnixMilli())
 	}))
 	defer server.Close()
 	b := &Binance{Clock: &fakeClock{now}, Doer: server.Client(), Config: PollConfig{BaseURL: server.URL, InitialLookback: "20m"}}
@@ -76,7 +76,7 @@ func TestHistorySourceGap(t *testing.T) {
 		Start                 int64 `json:"start_ms"`
 		End                   int64 `json:"end_ms"`
 	}
-	if err := json.Unmarshal(rows[2].Payload, &gap); err != nil || gap.Kind != "source_gap" || gap.Channel != "takerlongshortRatio" || gap.Symbol != "BTCUSDT" || gap.Start != now.Add(-10*time.Minute).UnixMilli() || gap.End != now.Add(-5*time.Minute).UnixMilli() {
+	if err := json.Unmarshal(rows[2].Payload, &gap); err != nil || gap.Kind != "source_gap" || gap.Channel != "takerlongshortRatio" || gap.Symbol != "BTCUSDT" || gap.Start != now.Add(-15*time.Minute).UnixMilli() || gap.End != now.Add(-10*time.Minute).UnixMilli() {
 		t.Fatalf("gap=%+v err=%v", gap, err)
 	}
 }
@@ -198,9 +198,9 @@ func TestHistoryOutagesAndState(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			expected := days*288 + 25
+			expected := days*288 + 23
 			if days == 35 {
-				expected = 29*288 + 1
+				expected = 29*288 - 1
 			}
 			if len(rows) != expected {
 				t.Fatalf("rows %d expected %d", len(rows), expected)
@@ -284,7 +284,7 @@ func TestRestartForcesDueOverlap(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		fmt.Fprintf(w, `[{"timestamp":%d}]`, now.Add(-5*time.Minute).UnixMilli())
+		fmt.Fprintf(w, `[{"timestamp":%d}]`, now.Add(-10*time.Minute).UnixMilli())
 	}))
 	defer server.Close()
 	for i := 0; i < 2; i++ {

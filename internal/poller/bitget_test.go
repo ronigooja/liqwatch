@@ -83,8 +83,8 @@ func TestBitgetHourlyWindowAndOutage(t *testing.T) {
 	if err := s.RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(sink.records) != 42 {
-		t.Fatalf("hourly records=%d, want 42", len(sink.records))
+	if len(sink.records) != 40 {
+		t.Fatalf("hourly records=%d, want 40", len(sink.records))
 	}
 	if calls != 2 {
 		t.Fatalf("hourly requests=%d", calls)
@@ -106,7 +106,7 @@ func TestBitgetHourlyWindowAndOutage(t *testing.T) {
 	if len(gaps) != 1 || gaps[0]["event"] != "source_gap" {
 		t.Fatalf("gaps=%v", gaps)
 	}
-	wantStart := clock.Now().Add(-4*time.Hour + 5*time.Minute).UnixMilli()
+	wantStart := clock.Now().Add(-4*time.Hour - 5*time.Minute).UnixMilli()
 	wantEnd := clock.Now().Add(-29 * 5 * time.Minute).UnixMilli()
 	if int64(gaps[0]["start_ms"].(float64)) != wantStart || int64(gaps[0]["end_ms"].(float64)) != wantEnd {
 		t.Fatalf("gap bounds=%v", gaps[0])

@@ -56,6 +56,9 @@
 //     Meta["last_row_timestamp"]. The scheduler then drops rows already in the output (rebuilt from the
 //     tail of today's and yesterday's file after a restart) and marks a changed row with the same
 //     timestamp Meta["revised"]=true.
+//   - For Step > 0, a bucket is returned only after its end plus Grace (default one Step):
+//     ts + Step + Grace <= now. Recent buckets can change between reads and otherwise generate
+//     repeated revisions; overlap re-reads them after they finalize. Step 0 and snapshots are unaffected.
 //   - Step > 0: two consecutive rows more than Step apart write a source_gap record {"kind":"source_gap",
 //     "start_ms","end_ms"} on channel "gap". Step 0 disables this (sparse series such as funding).
 //   - no_data: for a symbol without cursor, a walk with zero rows writes one {"event":"no_data"} gap
@@ -109,6 +112,7 @@ type History struct {
 	// MaxLookback clamps Lookback without implying a retention gap (0: use Retention).
 	MaxLookback time.Duration
 	Step        time.Duration // row granularity; 0 disables source_gap
+	Grace       time.Duration // finalization delay; zero defaults to Step
 	Mode        PageMode
 	Window      int // PageWindows: rows per window
 	PageSize    int // PageForward and PageBackward: request limit, not guaranteed page length
@@ -288,6 +292,21 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 		}
 		items = kept
 	}
+	hadRows := len(items) > 0
+	if h.Step > 0 {
+		grace := h.Grace
+		if grace <= 0 {
+			grace = h.Step
+		}
+		cutoff := now.Add(-h.Step - grace).UnixMilli()
+		kept := items[:0]
+		for _, it := range items {
+			if it.ts <= cutoff {
+				kept = append(kept, it)
+			}
+		}
+		items = kept
+	}
 	out := make([]Record, 0, len(items))
 	for _, it := range items {
 		out = append(out, it.rec)
@@ -302,7 +321,7 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 			out = append(out, h.gap(now, map[string]any{"event": "source_gap", "kind": "source_gap", "channel": h.Channel, "symbol": h.Symbol, "start_ms": prev + step, "end_ms": next}))
 		}
 	}
-	if useNoData && cursor == 0 && len(items) == 0 {
+	if useNoData && cursor == 0 && !hadRows {
 		if noData == 0 {
 			rec := h.gap(now, map[string]any{"event": "no_data", "channel": h.Channel, "symbol": h.Symbol})
 			rec.RecvMono = time.Since(monoOrigin).Nanoseconds()
