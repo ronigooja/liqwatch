@@ -105,6 +105,9 @@ func (a *Adapter) Symbols(ctx context.Context) ([]venue.Symbol, error) {
 		if e != nil {
 			return nil, e
 		}
+		if req.Header.Get("User-Agent") == "" {
+			req.Header.Set("User-Agent", "Mozilla/5.0")
+		}
 		resp, e := client.Do(req)
 		if e != nil {
 			return nil, e
