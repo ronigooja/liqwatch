@@ -53,7 +53,7 @@ func compare(t *testing.T, b []byte) {
 	a, b1, c, d, e := run(true)
 	x, y, z, u, v := run(false)
 	if !reflect.DeepEqual(a, x) || b1 != y || c != z || d != u || !reflect.DeepEqual(e, v) {
-		t.Fatalf("frame %q\nold %q %d %d %d %v\nnew %q %d %d %d %v", b, a, b1, c, d, e, x, y, z, u, v)
+		t.Fatalf("frame %q\nold %v %d %d %d %v\nnew %v %d %d %d %v", b, a, b1, c, d, e, x, y, z, u, v)
 	}
 }
 func TestSplitDifferential(t *testing.T) {
