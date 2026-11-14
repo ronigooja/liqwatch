@@ -57,3 +57,24 @@ func TestHistoryWindowWalkAndDedup(t *testing.T) {
 		t.Fatal("revision missed")
 	}
 }
+
+func TestHistorySourceGap(t *testing.T) {
+	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `[{"timestamp":%d},{"timestamp":%d}]`, now.Add(-15*time.Minute).UnixMilli(), now.Add(-5*time.Minute).UnixMilli())
+	}))
+	defer server.Close()
+	b := &Binance{Clock: &fakeClock{now}, Doer: server.Client(), Config: PollConfig{BaseURL: server.URL, InitialLookback: "20m"}}
+	rows, err := b.request(context.Background(), "takerlongshortRatio", "BTCUSDT")
+	if err != nil || len(rows) != 3 || rows[2].Channel != "gap" {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+	var gap struct {
+		Kind, Channel, Symbol string
+		Start                 int64 `json:"start_ms"`
+		End                   int64 `json:"end_ms"`
+	}
+	if err := json.Unmarshal(rows[2].Payload, &gap); err != nil || gap.Kind != "source_gap" || gap.Channel != "takerlongshortRatio" || gap.Symbol != "BTCUSDT" || gap.Start != now.Add(-10*time.Minute).UnixMilli() || gap.End != now.Add(-5*time.Minute).UnixMilli() {
+		t.Fatalf("gap=%+v err=%v", gap, err)
+	}
+}

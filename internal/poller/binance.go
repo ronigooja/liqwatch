@@ -151,6 +151,22 @@ func (b *Binance) history(ctx context.Context, name, sym string) ([]Record, erro
 			start = last + 1
 		}
 	}
+	if isHistory(name) {
+		sort.Slice(all, func(i, j int) bool {
+			return all[i].Meta["last_row_timestamp"].(int64) < all[j].Meta["last_row_timestamp"].(int64)
+		})
+		var gaps []Record
+		for i := 1; i < len(all); i++ {
+			prev := all[i-1].Meta["last_row_timestamp"].(int64)
+			next := all[i].Meta["last_row_timestamp"].(int64)
+			if next-prev <= (5 * time.Minute).Milliseconds() {
+				continue
+			}
+			payload, _ := json.Marshal(map[string]any{"event": "source_gap", "kind": "source_gap", "channel": name, "symbol": sym, "start_ms": prev + (5 * time.Minute).Milliseconds(), "end_ms": next})
+			gaps = append(gaps, Record{Venue: "binance", Symbol: sym, Channel: "gap", RecvWall: now.UnixNano(), Payload: payload})
+		}
+		all = append(all, gaps...)
+	}
 	return all, nil
 }
 func (b *Binance) requestPage(ctx context.Context, name, sym string, start, end int64) ([]Record, error) {
