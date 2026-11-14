@@ -239,6 +239,20 @@ func TestDiscoveryErrors(t *testing.T) {
 	}
 }
 
+func TestDiscoveryUserAgent(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != "Mozilla/5.0" {
+			t.Errorf("User-Agent = %q", got)
+		}
+		fmt.Fprint(w, `{"code":"0","data":[]}`)
+	}))
+	defer s.Close()
+	a := &Adapter{InstrumentsURL: s.URL, HTTPClient: s.Client()}
+	if _, err := a.Symbols(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
