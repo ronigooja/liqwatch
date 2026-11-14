@@ -45,11 +45,12 @@
 //     PageWindows walks forward in windows of Window*Step ms: Fetch(start, start+Window*Step-1), then the
 //     next window. Use it when the venue returns the newest rows of a range and caps rows per request, so
 //     each window must hold at most the cap (Binance: 400 windows of 5m against a 500 row cap).
-//     PageForward asks Fetch(start, now) and, when a page holds PageSize rows, continues from newest
-//     timestamp + 1. Use it for venues that return the oldest rows first (Binance fundingRate).
-//     PageBackward asks Fetch(start, now); when a page holds PageSize rows it continues with
-//     end = earliest timestamp - 1 until start is reached. Use it for venues that return the newest end of
-//     the range (Bybit, OKX, Gate).
+//     PageSize is a request limit, not a guarantee that a page is full: source gaps can make a capped
+//     page short. PageForward advances from newest timestamp + 1; PageBackward advances to earliest - 1.
+//     With Step > 0, a short page is final only within two steps of the range boundary; otherwise another
+//     request confirms coverage. Empty pages and non-advancing pages stop the walk. PageBackward with
+//     Step 0 confirms every short page until start; PageForward with Step 0 retains short-page termination
+//     for sparse funding series. Use PageForward for oldest-first venues, PageBackward for newest-first.
 //     Every request after the first of a walk waits for the venue's rate limit.
 //   - Rows are sorted by time, exact duplicates inside the walk dropped, and each record carries
 //     Meta["last_row_timestamp"]. The scheduler then drops rows already in the output (rebuilt from the
@@ -110,7 +111,7 @@ type History struct {
 	Step        time.Duration // row granularity; 0 disables source_gap
 	Mode        PageMode
 	Window      int // PageWindows: rows per window
-	PageSize    int // PageForward and PageBackward: rows of a full page
+	PageSize    int // PageForward and PageBackward: request limit, not guaranteed page length
 	// SkipNoData disables the no_data rule.
 	SkipNoData bool
 	Fetch      func(ctx context.Context, start, end int64) ([]Row, error)
@@ -231,7 +232,7 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 			if err != nil {
 				return nil, err
 			}
-			if h.PageSize <= 0 || len(rows) < h.PageSize {
+			if len(rows) == 0 || h.PageSize <= 0 || (h.Step <= 0 && len(rows) < h.PageSize) {
 				break
 			}
 			newest := int64(0)
@@ -239,7 +240,13 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 				newest = max(newest, r.TS)
 			}
 			if newest < start {
-				return nil, fmt.Errorf("pagination did not advance")
+				if h.Step <= 0 {
+					return nil, fmt.Errorf("pagination did not advance")
+				}
+				break
+			}
+			if h.Step > 0 && len(rows) < h.PageSize && nowMS-newest <= 2*h.Step.Milliseconds() {
+				break
 			}
 			start = newest + 1
 		}
@@ -250,7 +257,7 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 			if err != nil {
 				return nil, err
 			}
-			if len(rows) == 0 || h.PageSize <= 0 || len(rows) < h.PageSize {
+			if len(rows) == 0 || h.PageSize <= 0 {
 				break
 			}
 			earliest := rows[0].TS
@@ -261,7 +268,10 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 				break
 			}
 			if earliest-1 >= end {
-				return nil, fmt.Errorf("pagination did not advance")
+				break
+			}
+			if h.Step > 0 && len(rows) < h.PageSize && earliest-start <= 2*h.Step.Milliseconds() {
+				break
 			}
 			end = earliest - 1
 		}
