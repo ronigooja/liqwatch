@@ -182,6 +182,26 @@ func TestGateUniverse(t *testing.T) {
 	}
 }
 
+func TestGateRetriesIgnoredEnd(t *testing.T) {
+	now := time.Unix(1800000000, 0).UTC().Truncate(time.Minute)
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		end, _ := strconv.ParseInt(r.URL.Query().Get("to"), 10, 64)
+		if calls == 1 {
+			fmt.Fprintf(w, `[{"time":%d}]`, end+60)
+			return
+		}
+		fmt.Fprintf(w, `[{"time":%d}]`, end-end%60)
+	}))
+	defer srv.Close()
+	e := &Env{Venue: "gate", BaseURL: srv.URL, Doer: uaDoer{srv.Client()}, Clock: gateClock{now}, Lookback: time.Minute, Periods: map[string]time.Duration{}, ChannelRPS: map[string]float64{}, Weights: map[string]float64{}}
+	_, err := gateChannels(e)[0].Fetch(context.Background(), "BTC_USDT")
+	if err != nil || calls != 2 {
+		t.Fatalf("calls=%d err=%v", calls, err)
+	}
+}
+
 type gateClock struct{ now time.Time }
 
 func (c gateClock) Now() time.Time                             { return c.now }
