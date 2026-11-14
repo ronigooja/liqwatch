@@ -151,4 +151,11 @@ func TestBitgetNoDataAndUniverse(t *testing.T) {
 	if calls != 1 || len(sink.records) != 1 || !strings.Contains(string(sink.records[0].Payload), `"event":"no_data"`) {
 		t.Fatalf("calls=%d records=%v", calls, sink.records)
 	}
+	clock.t = clock.t.Add(24 * time.Hour)
+	if err := s.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || len(sink.records) != 1 {
+		t.Fatalf("daily retry calls=%d records=%v", calls, sink.records)
+	}
 }
