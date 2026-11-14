@@ -52,7 +52,11 @@ type Adapter struct {
 	unknown   atomic.Uint64
 	acks      atomic.Uint64
 	errors    atomic.Uint64
+	fallbacks atomic.Uint64
 }
+
+// ScannerFallbacks returns the number of frames sent to the reference decoder.
+func (a *Adapter) ScannerFallbacks() uint64 { return a.fallbacks.Load() }
 
 // UnknownFields returns the number of unrecognized data fields retained.
 func (a *Adapter) UnknownFields() uint64 { return a.unknown.Load() }
@@ -231,6 +235,83 @@ func (*Adapter) Heartbeat(venue.Shard) (time.Duration, func() (int, []byte)) {
 }
 
 func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
+	f, ok := scanFrame(msg)
+	if !ok || strings.HasPrefix(f.channel, "rs.") {
+		a.fallbacks.Add(1)
+		return a.legacySplit(sh, msg)
+	}
+	if f.channel == "pong" {
+		return nil
+	}
+	if strings.HasPrefix(f.channel, "push.contract") {
+		a.mu.RLock()
+		_, ok := a.universe[f.symbol]
+		a.mu.RUnlock()
+		if !ok {
+			return nil
+		}
+		ch := "contractmeta"
+		switch f.channel {
+		case "push.contract":
+			ch = "contract"
+		case "push.contract.extra.update":
+			ch = "contractextra"
+		case "push.contract.marketOrderSetting.update":
+			ch = "ordersetting"
+		}
+		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: f.symbol, Payload: msg}})
+	}
+	ch := map[string]string{"push.deal": "trade", "push.fair.price": "mark", "push.index.price": "index", "push.ticker": "ticker", "push.funding.rate": "funding"}[f.channel]
+	if ch != "" && len(f.data) > 0 && string(f.data) != "null" && f.symbol != "" {
+		if ch == "trade" {
+			if f.data[0] == '{' {
+				f.tradeFields = [][]scanField{f.fields}
+			} else if f.data[0] != '[' {
+				a.fallbacks.Add(1)
+				return a.legacySplit(sh, msg)
+			}
+			for _, fields := range f.tradeFields {
+				for _, field := range fields {
+					if !dropFields[ch][field.key] && !keepFields[ch][field.key] {
+						a.unknown.Add(1)
+					}
+				}
+			}
+			return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: f.symbol, Payload: msg}})
+		}
+		if f.data[0] != '{' {
+			a.fallbacks.Add(1)
+			return a.legacySplit(sh, msg)
+		}
+		filtered := make([]byte, 0, len(f.data))
+		filtered = append(filtered, '{')
+		for _, field := range f.fields {
+			if dropFields[ch][field.key] {
+				continue
+			}
+			if !keepFields[ch][field.key] {
+				a.unknown.Add(1)
+			}
+			if len(filtered) > 1 {
+				filtered = append(filtered, ',')
+			}
+			filtered = append(filtered, field.rawKey...)
+			filtered = append(filtered, ':')
+			filtered = append(filtered, field.value...)
+		}
+		filtered = append(filtered, '}')
+		idx := bytes.Index(msg, f.data)
+		payload := append(append(append([]byte{}, msg[:idx]...), filtered...), msg[idx+len(f.data):]...)
+		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: f.symbol, Payload: payload}})
+	}
+	if (len(f.data) == 0 || string(f.data) == "null") && !strings.HasPrefix(f.channel, "push.") {
+		return nil
+	}
+	a.fallbacks.Add(1)
+	return a.legacySplit(sh, msg)
+}
+
+func (a *Adapter) legacySplit(sh venue.Shard, msg []byte) []rawlog.Record {
 	var v struct {
 		Channel string          `json:"channel"`
 		Symbol  string          `json:"symbol"`
