@@ -1,0 +1,23 @@
+{
+  "retCode": 0,
+  "retMsg": "OK",
+  "result": {
+    "list": [
+      {
+        "symbol": "BTCUSDT",
+        "buyRatio": "0.7197",
+        "sellRatio": "0.2803",
+        "timestamp": "1794666000000"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "buyRatio": "0.7197",
+        "sellRatio": "0.2803",
+        "timestamp": "1794665700000"
+      }
+    ],
+    "nextPageCursor": "lastid%3D0%26lasttime%3D1794516300"
+  },
+  "retExtInfo": {},
+  "time": 1794666294912
+}
