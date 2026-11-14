@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -45,11 +46,13 @@ func Venue(name string, b *Binance) ([]Channel, error) {
 func init() { RegisterVenue("binance", BinanceChannels) }
 
 type Binance struct {
-	Doer      HTTPDoer
-	Clock     Clock
-	Config    PollConfig
-	Scheduler *Scheduler
-	Selected  []string
+	Doer                          HTTPDoer
+	Clock                         Clock
+	Config                        PollConfig
+	Scheduler                     *Scheduler
+	Selected                      []string
+	HistoryRequests               atomic.Uint64
+	HistoryResponsesWithoutWeight atomic.Uint64
 }
 
 func (b *Binance) Symbols() []string {
@@ -213,11 +216,17 @@ func (b *Binance) requestPage(ctx context.Context, name, sym string, start, end 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if series {
+		b.HistoryRequests.Add(1)
+	}
 	resp, err := b.Doer.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if series && resp.Header.Get("x-mbx-used-weight-1m") == "" {
+		b.HistoryResponsesWithoutWeight.Add(1)
+	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
 		return nil, err
