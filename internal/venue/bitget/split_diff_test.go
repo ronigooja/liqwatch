@@ -2,6 +2,7 @@ package bitget
 
 import (
 	"bufio"
+	"math/rand"
 	"os"
 	"reflect"
 	"testing"
@@ -78,11 +79,23 @@ func TestSplitDifferential(t *testing.T) {
 }
 func TestSplitMutations(t *testing.T) {
 	for _, f := range fixtureFrames(t) {
-		for i := range f {
+		mutated := append([]byte(nil), f...)
+		// Set LIQWATCH_SLOW_TESTS=1 to test every offset in large frames too.
+		offsets := make([]int, len(f))
+		for i := range offsets {
+			offsets[i] = i
+		}
+		if len(f) >= 2048 && os.Getenv("LIQWATCH_SLOW_TESTS") != "1" {
+			rand.New(rand.NewSource(int64(len(f)))).Shuffle(len(offsets), func(i, j int) {
+				offsets[i], offsets[j] = offsets[j], offsets[i]
+			})
+			offsets = offsets[:min(200, len(offsets))]
+		}
+		for _, i := range offsets {
 			compareSplits(t, f[:i])
-			m := append([]byte(nil), f...)
-			m[i] ^= 1
-			compareSplits(t, m)
+			mutated[i] ^= 1
+			compareSplits(t, mutated)
+			mutated[i] ^= 1
 		}
 	}
 }
