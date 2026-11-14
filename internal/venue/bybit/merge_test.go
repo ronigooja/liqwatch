@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/ronigooja/liqwatch/internal/rawlog"
 	"github.com/ronigooja/liqwatch/internal/venue"
 )
 
@@ -74,4 +75,44 @@ func TestTickerMergeConcurrent(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+func TestTickerConnectionIsolationAndClose(t *testing.T) {
+	a := &Adapter{}
+	type connected interface {
+		ConnOpened(venue.Shard, string)
+		ConnClosed(venue.Shard, string)
+		SplitConn(venue.Shard, string, []byte) []rawlog.Record
+	}
+	c, ok := any(a).(connected)
+	if !ok {
+		t.Fatal("missing connection-aware interfaces")
+	}
+	sh := venue.Shard{Name: "isolation"}
+	c.ConnOpened(sh, "a")
+	c.ConnOpened(sh, "b")
+	send := func(id, typ, data string) string {
+		t.Helper()
+		frame := fmt.Sprintf(`{"topic":"tickers.X","type":%q,"data":%s}`, typ, data)
+		for _, r := range c.SplitConn(sh, id, []byte(frame)) {
+			if !strings.HasPrefix(string(r.Payload), `{"sample":`) {
+				return string(r.Payload)
+			}
+		}
+		return ""
+	}
+	send("a", "snapshot", `{"markPrice":"1","indexPrice":"a"}`)
+	send("a", "delta", `{"markPrice":"2"}`)
+	send("b", "snapshot", `{"markPrice":"10","indexPrice":"b"}`)
+	if got := send("a", "delta", `{"markPrice":"3"}`); !strings.Contains(got, `"indexPrice":"a"`) {
+		t.Fatalf("A: %s", got)
+	}
+	if got := send("b", "delta", `{"openInterest":"4"}`); !strings.Contains(got, `"markPrice":"10"`) || !strings.Contains(got, `"indexPrice":"b"`) {
+		t.Fatalf("B: %s", got)
+	}
+	c.ConnClosed(sh, "a")
+	c.ConnOpened(sh, "a")
+	if got := send("a", "delta", `{"markPrice":"5"}`); !strings.Contains(got, `"state":"partial"`) || strings.Contains(got, `"indexPrice"`) {
+		t.Fatalf("closed state retained: %s", got)
+	}
 }

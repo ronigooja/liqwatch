@@ -212,6 +212,83 @@ func TestTokenFlowOnDisconnect(t *testing.T) {
 
 type fakeAdapter struct{}
 
+type connEvents struct {
+	fakeAdapter
+	events chan string
+}
+
+func (a *connEvents) ConnOpened(_ venue.Shard, id string) { a.events <- "open:" + id }
+func (a *connEvents) ConnClosed(_ venue.Shard, id string) { a.events <- "close:" + id }
+func (a *connEvents) SplitConn(_ venue.Shard, id string, _ []byte) []rawlog.Record {
+	a.events <- "split:" + id
+	return nil
+}
+
+func TestConnectionLifecycleOverlap(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.CloseNow()
+		tick := time.NewTicker(30 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-tick.C:
+				if ws.Write(r.Context(), websocket.MessageText, []byte("data")) != nil {
+					return
+				}
+			}
+		}
+	}))
+	defer srv.Close()
+	a := &connEvents{events: make(chan string, 1024)}
+	c := New(nopSink{}, a, []Shard{{Name: "overlap", URL: srv.URL, MaxAge: 100 * time.Millisecond}})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { c.Run(ctx); close(done) }()
+	seen := map[string]bool{}
+	opened := map[string]bool{}
+	deadline := time.After(4 * time.Second)
+	for len(seen) < 2 {
+		select {
+		case e := <-a.events:
+			kind, id, _ := strings.Cut(e, ":")
+			if kind == "open" {
+				opened[id] = true
+			}
+			if kind == "split" {
+				if !opened[id] {
+					t.Errorf("split before open: %s", id)
+				}
+				seen[id] = true
+			}
+		case <-deadline:
+			cancel()
+			<-done
+			t.Fatal("did not receive frames from two connections")
+		}
+	}
+	cancel()
+	<-done
+	closed := map[string]bool{}
+	for len(a.events) > 0 {
+		e := <-a.events
+		kind, id, _ := strings.Cut(e, ":")
+		if kind == "close" {
+			closed[id] = true
+		}
+	}
+	for id := range seen {
+		if !closed[id] {
+			t.Errorf("missing close for %s", id)
+		}
+	}
+}
+
 func (fakeAdapter) Name() string                                                  { return "fake" }
 func (fakeAdapter) Symbols(context.Context) ([]venue.Symbol, error)               { return nil, nil }
 func (fakeAdapter) Shards(context.Context, []venue.Symbol) ([]venue.Shard, error) { return nil, nil }
