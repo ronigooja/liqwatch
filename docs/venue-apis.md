@@ -1,8 +1,92 @@
-# Venue APIs (non-Binance)
+# Venue APIs
 
-Keyless public API facts surveyed on 2026-11-12 and live adapter captures on 2026-11-13. Governing records: [0013](decisions/0013-no-dex-recording.md) and [0014](decisions/0014-daily-pack-storage.md).
+Keyless public API surveys on 2026-11-12 and 2026-11-14, and live adapter captures on 2026-11-13. Governing records: [0013](decisions/0013-no-dex-recording.md) and [0014](decisions/0014-daily-pack-storage.md).
 
 Status labels: **measured** = live observation with stated date; **doc** = stated in official documentation, not necessarily tested live; **unverified** = not established. Live WebSocket captures are listed below. Counts are response-filter counts, not tradable-volume counts.
+
+## REST history and snapshot endpoints (2026-11-14)
+
+**Live** = measured keyless request on 2026-11-14, generally BTC; **Doc** = survey's documentation reading, not independently verified against official sources; **Unknown** = not established. Source: user-provided REST polling survey, 2026-11-14; request logs and exact parameters are not available, so measurements are not independently reproducible. Times describe returned coverage, not guarantees.
+
+### Open interest
+
+| Venue | Endpoint, depth and behaviour |
+|---|---|
+| Binance | Live: `/fapi/v1/openInterest` snapshot, weight 1; `/futures/data/openInterestHist` per symbol, 5m, 1,000 rows (83h20m); 29-day start accepted, 31-day rejected; start without end returns newest 1,000. Doc: max 500 (41h40m), weight 0, 1,000 requests/5m/IP. |
+| Bybit | Live: `/v5/market/tickers` bulk snapshot; `/v5/market/open-interest` 5m, 200 rows (16h40m), per symbol with cursor, BTC from Jan 2021. Doc: back to launch; general 600 requests/5s/IP. |
+| OKX | Live: `/api/v5/public/open-interest` bulk snapshot, 543 swaps; `/api/v5/rubik/stat/contracts/open-interest-history` 5m, 100 rows/page (8h20m) even when requesting 1,440; 4-day-old returned, 6-day-old empty. Doc: latest 1,440 observations (~5 days); snapshot 20 requests/2s, history 10/2s. |
+| Bitget | Live: `/api/v3/market/open-interest` bulk snapshot, 902 entries; `/api/v3/market/open-interest-history`, available since Oct 2026, 5m, 30 rows (2h30m); old startTime/endTime/cursor/limits ignored. Doc: history 10/s/IP. |
+| Gate | Live: `/futures/usdt/contracts` `position_size` snapshot; `/futures/usdt/contract_stats` 1m, max 2,000 (33h20m nominal), 179-day-old returned, 180-day limit error for 2020; 2,000 accepted, 2,001 rejected. Includes OI, USD OI, ratios, liquidation totals and mark; a source minute was missing. |
+| MEXC | Live: `/api/v1/contract/ticker` `holdVol`, bulk 1,163 tickers. Doc: 10 requests/2s. Unknown: OI history endpoint, none found. |
+| KuCoin | Live: `/api/ua/v2/market/open-interest` snapshot all symbols or up to 10; `interval=5min` 200 rows (16h40m), 6-day-old returned, 7–8-day-old empty, 200 accepted and 201 rejected. Doc: weight 10, 7 days at 5m. |
+
+Live: Binance bounded 24h OI with `limit=5` returned the newest five rows; with `limit=500` it returned all 288 buckets. Live: `exchangeInfo` and `constituents` each had weight 1; `exchangeInfo` reported 2,400/min. Live: the five history responses lacked `X-MBX-USED-WEIGHT-1M`. Source: user-provided survey, 2026-11-14; request logs unavailable.
+
+### Long/short ratios and taker flow
+
+| Venue | Endpoint, depth and behaviour |
+|---|---|
+| Binance | Live: `/futures/data/` `globalLongShortAccountRatio`, `topLongShortAccountRatio`, `topLongShortPositionRatio`, `takerlongshortRatio`: 5m, 1,000 rows, 29-day start accepted, 31-day rejected. Doc: max 500, weight 0; OI timestamps at period end, taker volume at period start. |
+| Bybit | Live: `/v5/market/account-ratio`, 5m, 500 rows (41h40m), from 2020-07-20. |
+| OKX | Live: `/api/v5/rubik/stat/contracts/` `long-short-account-ratio-contract`, `long-short-account-ratio-contract-top-trader`, `long-short-position-ratio-contract-top-trader`, and `taker-volume-contract`: 5m, 100 rows; ratios 4-day-old returned, 6-day-old empty; currency `long-short-account-ratio`: 576 rows (48h). Doc: contract ratio depth 1,440. |
+| Bitget | Live: `/api/v2/mix/market/` `long-short`, `account-long-short`, `position-long-short`, `taker-buy-sell`: 5m, 30 rows (2h30m); old parameters ignored. Doc: 1/s/IP. |
+| Gate | Live: `contract_stats` carries ratio variants at 1m; [coverage](#open-interest). |
+| MEXC | Unknown: no public ratio endpoint found. |
+| KuCoin | Unknown: no public ratio endpoint found. |
+
+### Funding history
+
+| Venue | Endpoint, depth and behaviour |
+|---|---|
+| Binance | Live: `/fapi/v1/fundingRate` max 1,000 rows, BTC from 2020; without symbol, 1,000 rows across symbols, and one settlement-time range returned 811 symbols. Doc: shared 500 requests/5m/IP with `fundingInfo`. |
+| Bybit | Live: `/v5/market/funding/history`, 200 rows. |
+| OKX | Live: `/api/v5/public/funding-rate-history` max 400, BTC 288 (96 days). Doc: 3 months. |
+| Bitget | Live: `/api/v2/mix/market/history-fund-rate`, 100 rows; page 3 ended around 90 days, page 4 empty. |
+| Gate | Live: `/futures/usdt/funding_rate` max 1,000, 179-day-old returned, older rejected. |
+| MEXC | Live: `/api/v1/contract/funding_rate/history`, 1,000 rows; BTC oldest 2025-05-23. |
+| KuCoin | Live: `/api/ua/v2/market/funding-rate-history` or `/api/v1/contract/funding-rates`, 100 rows observed; BTC from Jan 2021. |
+
+### Risk tiers and metadata
+
+All entries are Live current snapshots, not historical tier series; counts are captured entries, not necessarily active markets.
+
+| Venue | Endpoint and observed behaviour |
+|---|---|
+| Binance | `POST https://www.binance.com/bapi/futures/v1/friendly/future/common/brackets`: undocumented website endpoint, 1,083 symbols; `exchangeInfo` 946 entries, weight 1. Two captures 600s apart: zero changed entries in either. Doc: tier changes announced; no fixed frequency. |
+| Bybit | `/v5/market/risk-limit`: 15 symbols/page, bulk cursor; `/v5/market/instruments-info`: 929 instruments. |
+| OKX | `/api/v5/public/position-tiers`: 99 BTC tiers, up to five families/call, separate margin modes; `/api/v5/public/instruments`: 543 swaps. |
+| Bitget | `/api/v2/mix/market/query-position-lever` per symbol, 12 BTC tiers; `/api/v2/mix/market/contracts`: 885 entries. V3 `/api/v3/market/position-tier` returned BTC tiers but error 40019 without symbol although Doc says optional. |
+| Gate | `/futures/usdt/risk_limit_tiers`: 100 markets/page by default; limit=1000 still returned 100; `/futures/usdt/contracts`: 1,051 entries. |
+| MEXC | `/api/v1/contract/detail`: 1,154 entries including risk tiers. |
+| KuCoin | `/api/v1/contracts/risk-limit/{symbol}` per symbol, 12 BTC tiers, classic isolated margin; `/api/v1/contracts/active`: 727 entries; UTA position-tier attempts returned 404. |
+
+### Insurance funds
+
+| Venue | Endpoint and observed behaviour |
+|---|---|
+| Binance | Live: `/fapi/v1/insuranceBalance` snapshot, 124 pools. |
+| Bybit | Live: `/v5/market/insurance` snapshot, 76 rows; Doc: isolated pools update each minute, shared daily. |
+| OKX | Live: `/api/v5/public/insurance-fund`, 100 minute-spaced entries. |
+| Bitget | Live: `/api/v3/market/risk-reserve-hour` 30 hourly rows, `risk-reserve` 30 daily rows, `risk-reserve-all` 45 pools. |
+| Gate | Live: `/futures/usdt/insurance`, 180 daily rows. |
+| MEXC | Live: `/api/v1/contract/risk_reverse/history`, 42 four-hourly rows over 7 days. |
+| KuCoin | Unknown: no endpoint found. |
+
+### Polling cost per item (inferred)
+
+Inferred from the survey's illustrative intervals for 522 symbols, requests/day without retries. No poll schedule is decided by this table; current implementation: [poller](poller.md).
+
+| Venue | Item and illustrative interval | Requests/day |
+|---|---|---:|
+| Binance | OI snapshot 5m | 150,336 |
+| Binance | OI history and four ratios, each 20h | 3,132 |
+| Binance | Funding, constituents, bulk tiers and metadata daily | 1,046 |
+| Bybit | OI history 8h; account ratio 20h; funding daily; tiers; metadata | 1,566; 626.4; 522; 35; 1 |
+| OKX | OI history, three ratios and taker volume, each 4h; currency ratio daily; funding daily; tiers; metadata | 15,660; 522; 522; 210; 1 |
+| Bitget | OI history, three ratios and taker volume, each 1h; funding and tiers daily | 62,640; 1,045 |
+| Gate | `contract_stats` 12h; funding daily; tiers; metadata | 1,044; 522; 6; 1 |
+| MEXC | Bulk OI snapshot 5m; funding; metadata and tiers | 288; 522; 1 |
+| KuCoin | OI history 8h; funding; tiers; metadata | 1,566; 522; 522; 1 |
 
 ## Live adapter captures
 
@@ -60,10 +144,10 @@ Y = documented keyless public source; N = none found; ? = unverified. Live = Web
 | Index price live | Y, 100 ms | Y, 100 ms | Y, 200 ms on change | tickers, cadence unspecified | `sub.index.price` on change | Y, 1 s | Y |
 | Liquidations live | Y, all, 500 ms batches | Y, **incomplete** | Y, **sampled** | Y, batched, not sampled per doc | N | N | `liquidation` field in trades |
 | Liquidations hist | N | N | N | REST `liq_orders`, 3,600 s per query | N | N | via trade history |
-| Open interest | Y, hist from 5 m | Y, 3 s; hist 1,440 rows | snapshot only | Y, hist | snapshot only (`holdVol`) | Y, hist 7 d | book summary |
+| Open interest | Y, hist from 5 m | Y, 3 s; hist: [depth and page](#open-interest) | [history](#open-interest) | Y, hist | snapshot only (`holdVol`) | Y, hist 7 d | book summary |
 | Funding | Y | Y | Y | Y | Y | Y | Y |
 | Risk tiers | Y, current | Y, current | Y, current | Y, current | Y, current | Y, current | no public complete table |
-| Long/short ratio | Y, from 2020-07-20, 5 m | Y, 5 m | Y, 5 m, depth unspecified | via `contract_stats` | N | N | ? |
+| Long/short ratio | Y, from 2020-07-20, 5 m | Y, 5 m | Y, [history](#longshort-ratios-and-taker-flow) | via `contract_stats` | N | N | ? |
 
 No venue documents historical risk-tier snapshots, so tiers must be recorded as snapshots.
 
@@ -80,8 +164,8 @@ Scope: seven centralized venues are in scope ([0014](decisions/0014-daily-pack-s
 | Index price | same stream | `tickers` | `index-tickers`, 100 ms | `ticker` | `tickers` | `sub.index.price` | `instrument`, 1 s |
 | Funding rate | same stream | `tickers` | `funding-rate`, 30 to 90 s | `funding-rate` | `tickers` | `sub.funding.rate` | `instrument`, 1 min |
 | Open interest | REST poll, 5 min | `tickers`, 100 ms | `open-interest`, 3 s | `ticker` field | `contract_stats`, 1 min | `sub.ticker` `holdVol` | UTA `mark-price` `oi`, 1 s, or REST |
-| Leverage tiers | website internal endpoint (may change), daily | REST `risk-limit` | REST `position-tiers` | WS `position-tier` | REST `risk_limit_tiers` | REST `contract/detail` | REST `risk-limit` per symbol |
-| Long/short ratios | REST: top-trader position, top-trader account, global account, taker volume; 5 min | REST `account-ratio`, 5 min | REST contract and top-trader ratios, 5 min | REST, three endpoints, 5 min | `contract_stats`, 1 min | none | none |
+| Leverage tiers | website internal endpoint (may change); [poller schedule](poller.md) | REST `risk-limit` | REST `position-tiers` | WS `position-tier` | REST `risk_limit_tiers` | REST `contract/detail` | REST `risk-limit` per symbol |
+| Long/short ratios | REST: top-trader position, top-trader account, global account, taker volume; 5 min buckets, [poller schedule](poller.md) | REST `account-ratio`, 5 min | REST contract and top-trader ratios, 5 min | REST ratios and taker flow: [survey](#longshort-ratios-and-taker-flow) | `contract_stats`, 1 min | none | none |
 | Index constituents | `constituents`, daily | n/a | n/a | n/a | n/a | n/a | n/a |
 
 Constraints that shape recording:
@@ -112,7 +196,7 @@ Constraints that shape recording:
 |---|---|---|
 | Endpoints | WS `/ws/v5/public` (`mark-price`, `index-tickers`, `liquidation-orders`, `open-interest`, `funding-rate`), `/ws/v5/business` (`trades-all`); REST `/api/v5/*` | doc |
 | Liquidation | `liquidation-orders` by `instType=SWAP`; OKX states it does not represent all liquidations; no REST history found | doc |
-| History | trades 3 months, 100 per page; OI 1,440 rows, 5 m minimum; funding 3 months, 400 per page; mark and index 1 m candles | doc |
+| History | trades 3 months, 100 per page; OI: [depth and page](#open-interest); funding 3 months, 400 per page; mark and index 1 m candles | doc |
 | Limits | REST history 10 to 20 requests per 2 s per IP; WS 3 connection attempts per s per IP, 480 subscribe requests per connection per hour, 64 KB args; 30 s idle close; connections per IP and forced reconnect not found | doc |
 | Units | swap sizes are in contracts, spot in base currency | doc |
 | Live access | Initial instrument-list calls returned HTTP 403; later REST and WebSocket capture succeeded ([capture](#live-adapter-captures)) | measured; original 403 cause unverified |
@@ -122,7 +206,7 @@ Constraints that shape recording:
 |---|---|---|
 | Endpoints | V3 WS `publicTrade`, `ticker` (mark, index, OI), `liquidation`, `funding-rate`, `position-tier`; V2 REST `/api/v2/mix/market/*` | doc; REST measured |
 | Liquidation | once per second, at most two records per pair per second (largest long and largest short); sampled; no REST history | doc |
-| History | trades 90 days, 7-day window, 1,000 per page (spot timestamps second-level); candles 1 m, 90-day range; OI snapshot only | doc |
+| History | trades 90 days, 7-day window, 1,000 per page (spot timestamps second-level); candles 1 m, 90-day range; OI history: [survey](#open-interest) | doc; Live |
 | Limits | V3 docs specify 300 connection requests per 5 min per IP, 100 connections per IP, under 50 channels recommended, ping every 30 s; V3 trade snapshot on subscribe is removed on 2026-11-17 ([source](../internal/venue/bitget/testdata/README.txt)) | doc |
 | Universe | 885 USDT-futures entries (not filtered by `symbolType`); 3,669 spot pairs, 3,662 online | measured |
 
@@ -153,7 +237,7 @@ Constraints that shape recording:
 |---|---|---|
 | Endpoints | classic futures WS `/contractMarket/execution:{symbol}`, `/contract/instrument:{symbol}` (mark, index, funding); spot WS `/market/match:{symbol}`; token from `POST /api/v1/bullet-public` (keyless, measured); UTA V2 `mark-price` channel includes `oi` | doc; token and REST measured |
 | Missing | no public liquidation feed and no long/short ratio found | unverified |
-| History | trades last 100 only; OI intervals from 5 m, 7 days (daily 70 days), data begins no earlier than 2025-12-29; funding history by time range, REST auth unclear | doc |
+| History | trades last 100 only; OI intervals from 5 m, 7 days (daily 70 days), data begins no earlier than 2025-12-29; funding history keyless: [survey](#funding-history) | doc |
 | Limits | 800 public connections per IP; 100 messages per 10 s per connection; futures topics unlimited per connection; REST pool 2,000 weight per 30 s; error-code page still says 50 sessions and 300 subscriptions (documentation conflict) | doc |
 | Universe | 712 contracts (USDT, `FFWCSX`, Open); 958 spot symbols, 957 enabled; `XBTUSDTM` base XBT; `PEPEUSDTM` multiplier 520,000 | measured |
 
