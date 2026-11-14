@@ -10,6 +10,9 @@ open_spacing_ms = 500
 max_streams_per_ws = 100
 queue_size = 10000
 
+[collect.throttle]
+enabled = true # Set false to disable; override declared channels with e.g. "mark" = "1s".
+
 [archive]
 remote_root = "https://example.invalid/dav/ronigooja_onedrive/liqwatch/"
 max_pack_mb = 400

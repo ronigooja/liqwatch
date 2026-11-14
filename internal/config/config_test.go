@@ -48,6 +48,30 @@ func TestLoadDefaultsAndValidation(t *testing.T) {
 	}
 }
 
+func TestThrottleConfig(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.toml")
+	for _, tc := range []struct {
+		text  string
+		valid bool
+	}{
+		{"[collect.throttle]\nmark='1s'\n", true},
+		{"[collect.throttle]\nenabled=false\nfunding='0s'\n", true},
+		{"[collect.throttle]\nmark='bad'\n", false},
+		{"[collect.throttle]\nenabled='yes'\n", false},
+	} {
+		if err := os.WriteFile(p, []byte(tc.text), 0600); err != nil {
+			t.Fatal(err)
+		}
+		c, err := Load(p)
+		if (err == nil) != tc.valid {
+			t.Fatalf("%s: %v", tc.text, err)
+		}
+		if err == nil && tc.text == "[collect.throttle]\nmark='1s'\n" && c.Collect.Throttle["enabled"] != true {
+			t.Fatal("enabled default")
+		}
+	}
+}
+
 func TestVerifySamplePercent(t *testing.T) {
 	for _, tc := range []struct {
 		value string

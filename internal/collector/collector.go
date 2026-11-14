@@ -27,9 +27,10 @@ const (
 type Shard = venue.Shard
 
 type Collector struct {
-	sink    rawlog.Sink
-	shards  []Shard
-	adapter venue.Adapter
+	sink     rawlog.Sink
+	shards   []Shard
+	adapter  venue.Adapter
+	throttle *throttler
 
 	// OnReconnect is called after a shard reopens following an unplanned disconnect, once the
 	// new connection is open. Planned 23 h replacements overlap and do not call it.
@@ -52,11 +53,26 @@ type Collector struct {
 }
 
 func New(sink rawlog.Sink, adapter venue.Adapter, shards []Shard) *Collector {
-	return &Collector{sink: sink, adapter: adapter, shards: shards, OpenSpacing: openSpacing}
+	c := &Collector{sink: sink, adapter: adapter, shards: shards, OpenSpacing: openSpacing}
+	c.ConfigureThrottle(true, nil)
+	return c
 }
 
 // Run starts all shards (gradually) and blocks until ctx is cancelled and all connections are closed.
 func (c *Collector) Run(ctx context.Context) {
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case now := <-t.C:
+				c.throttle.flush(now, "", false)
+			case <-done:
+				return
+			}
+		}
+	}()
 	var wg sync.WaitGroup
 	for i, sh := range c.shards {
 		wg.Add(1)
@@ -71,6 +87,8 @@ func (c *Collector) Run(ctx context.Context) {
 		}()
 	}
 	wg.Wait()
+	close(done)
+	c.throttle.flush(time.Time{}, "", true)
 }
 
 func (c *Collector) runShard(ctx context.Context, sh Shard) {
@@ -205,6 +223,7 @@ func (c *Collector) start(parent context.Context, sh Shard, url string, gen int)
 }
 
 func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) error {
+	defer c.throttle.flush(time.Time{}, k.id, false)
 	ws, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: sh.Header})
 	if err != nil {
 		return err
@@ -292,7 +311,7 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		for _, rec := range c.adapter.Split(sh, data) {
 			rec.Venue, rec.Conn, rec.CSeq, rec.RecvWal, rec.RecvMon = c.adapter.Name(), k.id, cseq, rw.UnixNano(), rawlog.Mono()
 			// The writer routes by venue, symbol and channel; only GroupGap changes its handling.
-			c.sink.Write(rawlog.GroupTrade, rec)
+			c.throttle.write(rec)
 		}
 	}
 }

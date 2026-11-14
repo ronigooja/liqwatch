@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -18,14 +19,15 @@ type Config struct {
 }
 
 type Collect struct {
-	MetricsAddr     string   `toml:"metrics_addr"`        // e.g. 127.0.0.1:9101
-	PprofAddr       string   `toml:"pprof_addr"`          // empty disables profiling
-	ExtraMetrics    []string `toml:"extra_metrics_addrs"` // other slots checked too, e.g. 127.0.0.1:9102
-	Venue           string   `toml:"venue"`
-	MapPath         string   `toml:"map_path"`
-	MaxStreamsPerWS int      `toml:"max_streams_per_ws"` // 100
-	QueueSize       int      `toml:"queue_size"`
-	OpenSpacingMS   int      `toml:"open_spacing_ms"` // gap between opening shard connections; 500
+	MetricsAddr     string         `toml:"metrics_addr"`        // e.g. 127.0.0.1:9101
+	PprofAddr       string         `toml:"pprof_addr"`          // empty disables profiling
+	ExtraMetrics    []string       `toml:"extra_metrics_addrs"` // other slots checked too, e.g. 127.0.0.1:9102
+	Venue           string         `toml:"venue"`
+	MapPath         string         `toml:"map_path"`
+	MaxStreamsPerWS int            `toml:"max_streams_per_ws"` // 100
+	QueueSize       int            `toml:"queue_size"`
+	OpenSpacingMS   int            `toml:"open_spacing_ms"` // gap between opening shard connections; 500
+	Throttle        map[string]any `toml:"throttle"`
 }
 
 type Archive struct {
@@ -57,7 +59,7 @@ const (
 func Load(path string) (*Config, error) {
 	c := Config{
 		DataDir: "/var/lib/liqwatch",
-		Collect: Collect{Venue: "binance", MapPath: "/etc/liqwatch/venue-map.toml", MetricsAddr: "127.0.0.1:9101", MaxStreamsPerWS: 100, QueueSize: 10000, OpenSpacingMS: 500},
+		Collect: Collect{Venue: "binance", MapPath: "/etc/liqwatch/venue-map.toml", MetricsAddr: "127.0.0.1:9101", MaxStreamsPerWS: 100, QueueSize: 10000, OpenSpacingMS: 500, Throttle: map[string]any{"enabled": true}},
 		Archive: Archive{MaxPackMB: 400, FullVerifyDays: 7, VerifySamplePercent: 10},
 		Pack:    Pack{Unit: "tar_then_zstd", Level: 3, QuietMinutes: 10},
 		Checks:  Checks{DiskWarnPct: 80, StaleSec: map[string]int{"aggTrade": 120, "markPrice_all": 60, "forceOrder_all": 0}, UnverifiedHours: 3},
@@ -76,6 +78,22 @@ func Load(path string) (*Config, error) {
 }
 
 func (c Config) validate() error {
+	for key, value := range c.Collect.Throttle {
+		if key == "enabled" {
+			if _, ok := value.(bool); !ok {
+				return fmt.Errorf("collect.throttle.enabled must be a boolean")
+			}
+			continue
+		}
+		s, ok := value.(string)
+		if !ok || key == "" {
+			return fmt.Errorf("invalid collect.throttle interval %q", key)
+		}
+		d, err := time.ParseDuration(s)
+		if err != nil || d < 0 {
+			return fmt.Errorf("invalid collect.throttle interval %q", key)
+		}
+	}
 	if c.DataDir == "" || c.Collect.MetricsAddr == "" {
 		return fmt.Errorf("data_dir and collect.metrics_addr are required")
 	}
