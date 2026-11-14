@@ -74,3 +74,16 @@ Move an item to "Verified" with source and date once checked.
 | `topLongShortPositionRatio`, `topLongShortAccountRatio`, `globalLongShortAccountRatio`, `takerlongshortRatio` under `/futures/data/` are public, 30 days of history, and give ratios or volumes, not leverage used | developers.binance.com market-data docs; live GET (BTCUSDT 5m), via subagent | 2026-11-11 |
 | `GET /fapi/v1/premiumIndex?symbol=` is public and returns `markPrice`, `indexPrice`, `estimatedSettlePrice`, `lastFundingRate`, `nextFundingTime`; `GET /fapi/v1/constituents?symbol=` is public and returns each index venue with price and weight | Live calls from the research Mac | 2026-11-10 |
 | Index composition differs by symbol: BTCUSDT has 8 venues, Binance spot weight 0.43; FLOCKUSDT has 4 venues (gateio, mexc, bitget, bybit), no Binance; XANUSDT has 6 including coinbase and `binance_alpha`. Weights are fixed fractions that change over time | Live `constituents` calls | 2026-11-10 |
+
+## Recording open issues
+
+| Question | Evidence |
+|---|---|
+| Inferred: can a late old Bybit connection frame contaminate merged state during replacement overlap? | Verified in [collector](../internal/collector/) and [adapter](../internal/venue/bybit/bybit.go): overlap occurs without connection identity in `Split`. |
+| Inferred: can redundant `venue`, `ch`, `sym` envelope fields be dropped later? | Owner deferred this; verified in [rawlog](../internal/rawlog/). |
+| Unknown: how do OKX, Bitget and Gate sources finalize newest buckets? | Verified deferral implementation: [history](../internal/poller/history.go). |
+| Unknown: how should KuCoin Chinese-named symbols be handled? | Measured: none in the captured contract list, [fixture](../internal/venue/kucoin/testdata/README.txt), 2026-11-13. |
+| Unknown: why is Gate WebSocket `contract_stats` discontinuous and `mark_price` zero? | Measured capture: [fixture](../internal/venue/gate/testdata/README.txt); REST coverage: [poller](poller.md). |
+| Unknown: will Bitget's connection-per-IP limit constrain deployment? | Verified: [official quick start](https://www.bitget.com/docs/uta/quick-start), as linked in [fixture](../internal/venue/bitget/testdata/README.txt), 2026-11-13. |
+| Unknown: should Bybit, Bitget, Gate and KuCoin REST discovery set an explicit User-Agent as a precaution? | Verified in [venue adapters](../internal/venue/); this is not a claim of failed requests. |
+| Unknown: what staging disk and CPU are needed over a full day? | Inferred: short-run estimates are extrapolations, not full-day measurements; [storage design](storage-design.md#local-disk-size). |

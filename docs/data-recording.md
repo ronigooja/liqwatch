@@ -32,11 +32,11 @@ Metrics: latency, reconnects, gaps, queue depth
 - Shard connections by channel and symbol group; keep per-connection stream counts well below the exchange limit.
 - Take wall-clock and monotonic receive time immediately on read, before parsing.
 - Handle forced reconnects by opening the replacement connection early and de-duplicating by sequence.
-- Never repair data inside the recording path. Record gaps as unavailable intervals.
+- Verified in [adapters](venue-adapters.md#recorded-content): payloads are filtered and Bybit ticker deltas are merged; gaps are recorded.
 
 ## Record fields
 
-venue, symbol, channel, connection id, local sequence, `recv_wall_time`, `recv_mono_time`, exchange event time (if present), raw payload, parser version.
+Verified in [rawlog](../internal/rawlog/): the envelope carries receive metadata and a payload; [adapter filtering](venue-adapters.md#recorded-content) describes recorded content.
 
 ## Order book integrity
 

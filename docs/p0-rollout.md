@@ -15,11 +15,11 @@ Verified: the recorder is down ([outage](#recorder-outage)). The first-release s
 
 Why the archiver is in stage 1: expected raw growth is ~18 GB/day compressed ([trial-plan.md](trial-plan.md)) against ~21 GB free, so unattended recording without upload and cleanup fills the disk in about a day. It runs hourly so local use stays near 5–8 GB ([decision 0008](decisions/0008-hourly-archive-and-retention.md)).
 
-Historical first-release subscriptions included trades, mark, liquidations, top-50 quotes and depth. Verified in code: current scope excludes quotes and depth ([decision 0011](decisions/0011-no-alert-narrower-recording.md)); deployment has not been established.
+Historical first-release subscriptions included trades, mark, liquidations, top-50 quotes and depth. Verified in code: current scope excludes quotes and depth ([decision 0011](decisions/0011-no-alert-narrower-recording.md)); current collector and poller code is built and merged but not deployed.
 
 ## Release and service setup
 
-- Build on a GitHub-hosted Linux runner, verify the artifact sha256, copy to `/opt/liqwatch/releases/<version>/`, switch the `current` symlink. Rollback is switching the link back.
+- Build on the Linux build machine, verify the artifact sha256, copy to `/opt/liqwatch/releases/<version>/`, switch the `current` symlink. Rollback is switching the link back.
 - Each service has its own systemd unit with `LimitNOFILE`, `Restart=always` with backoff, and CPU, IO and memory limits per [p0-support-design.md](p0-support-design.md) (Component 11). The collector has the highest priority.
 - Config in `/etc/liqwatch/config.toml`; WebDAV credentials in `/etc/liqwatch/secrets.env` mode 0600, copied from `/root/pass/openlist` on the host, never into the repo.
 - Start order: collector, then archiver timer, then checks timer. Do not run `trialrec` and the collector at the same time on the host.

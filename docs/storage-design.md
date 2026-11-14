@@ -25,11 +25,11 @@ Raw venue symbol names are kept in paths. Mapping (`1000PEPE` to `PEPE`, `XBT` t
 |---|---|
 | Path | `raw/<venue>/<symbol>/<UTC date>/<channel>.<slot>.jsonl` |
 | Split | Every channel is split by symbol: trades, mark (with index and funding), liquidations, open interest, long/short ratios, leverage tiers, index constituents. A liquidation file exists only if that symbol had a liquidation that day |
-| All-market streams | Binance mark price (array) and liquidation streams are cut into one record per symbol, each keeping the original envelope shape. This is the only deviation from storing payloads as received |
-| Content | Payload appended as received, uncompressed. Envelope: existing fields (receive wall and monotonic time, channel, symbol, connection id, sequence) plus `venue`. Exchange timestamps stay in the payload; MEXC `t` and `cts` must be kept |
+| All-market streams | Binance mark price (array) and liquidation streams are cut into one record per symbol, each keeping the original envelope shape. See [adapter filtering](venue-adapters.md#recorded-content) for other transformations |
+| Content | Filtered payload appended uncompressed; see [recorded content](venue-adapters.md#recorded-content). Envelope: existing fields (receive wall and monotonic time, channel, symbol, connection id, sequence) plus `venue`. Exchange timestamps stay in the payload; MEXC `t` and `cts` must be kept |
 | Rotation | UTC day boundary only. One file per symbol per channel per day; no size limit, no sequence number |
 | Processes | One collector process per venue (own reconnects, limits, token handshakes); slots a/b and handoff per [0009](decisions/0009-zero-gap-handoff.md). Polled data is written by the poller, with `venue` added |
-| Gaps | One gap file per venue per day: disconnects, queue drops, reconnects. Poll failures need gap records too; the current poller writes none (not built) |
+| Gaps | One gap file per venue per day: disconnects, queue drops, reconnects. Poll failures and history gaps are recorded by the [poller](poller.md) |
 
 The collector only appends text and opens no compressor. Measured in the trial: writing zstd per file with a frame closed every 5 s kept one core near full at 522 symbols plus splitting (Binance only).
 
@@ -66,7 +66,7 @@ peak  ~ two days of raw + one day of compressed (when compression or upload lags
 |---|---:|---:|---:|---:|
 | Binance, 10-minute trial scaled by 144 (extrapolation, not a full day) | about 14 GB | about 1.4 GB | about 16 GB | about 30 GB |
 
-The six other venues are unmeasured; do not scale by seven. Venues that push every trade, not merged trades like Binance `aggTrade`, may produce more records (inferred). The compressed figure comes from 5-second frames; whole-file compression ratio is unmeasured.
+The historical estimate predates multi-venue filtering; current full-day volume is unmeasured. Venues that push every trade, not merged trades like Binance `aggTrade`, may produce more records (inferred). The compressed figure comes from 5-second frames; whole-file compression ratio is unmeasured.
 
 ## Charting needs no raw window
 
@@ -91,7 +91,7 @@ Mark-price A included contracts outside the 522 (TRADIFI and others) and B did n
 | Compression unit | A: each channel file compressed, then tarred. B: tar first, then compress as `.tar.zst`. B may compress better; unmeasured |
 | Compression level | Offline, so above default is possible; unmeasured |
 | Chart-state snapshot location | Not on the recorder, not in the research layer |
-| Other six venues' volume | One trial per venue needs new subscription code (KuCoin public token, OKX business endpoint) |
+| Other six venues' volume | Full-day volume remains unmeasured; adapters are built |
 | Upload of about 3,200 packs per day | Per-day time and failure rate unmeasured on WebDAV; [infrastructure.md](infrastructure.md) states WebDAV suits few large files |
 | Many open append files per process | Descriptor and IO load unmeasured |
 | Peak and busy days | Only a 10-minute sample exists |
@@ -104,4 +104,4 @@ Mark-price A included contracts outside the 522 (TRADIFI and others) and B did n
 |---|---|
 | `internal/rawlog`, `internal/pack`, `cmd/liqwatch-archiver` | Verified in code: daily raw files, packs and unchunked upload |
 | Collectors | Verified in code: venue adapters registered; deployment is separate |
-| Poller | Verified in code: Go poller writes venue; poll gap records and other venues' polled channels are not built |
+| Poller | Verified in code: All seven venue pollers and gap records are built; see [poller](poller.md) |
