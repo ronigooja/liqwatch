@@ -112,6 +112,10 @@ func TestTickerConnectionIsolationAndClose(t *testing.T) {
 	}
 	c.ConnClosed(sh, "a")
 	c.ConnOpened(sh, "a")
+	if got := send("a", "delta", `{"markPrice":"5"}`); got != "" {
+		t.Fatalf("partial should not displace complete overlap state: %s", got)
+	}
+	c.ConnClosed(sh, "b")
 	if got := send("a", "delta", `{"markPrice":"5"}`); !strings.Contains(got, `"state":"partial"`) || strings.Contains(got, `"indexPrice"`) {
 		t.Fatalf("closed state retained: %s", got)
 	}

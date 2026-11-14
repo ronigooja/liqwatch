@@ -18,6 +18,17 @@ type Throttler interface {
 	Throttles() map[string]time.Duration
 }
 
+// ConnSplitter optionally decodes frames using the collector's connection ID.
+type ConnSplitter interface {
+	SplitConn(sh Shard, connID string, msg []byte) []rawlog.Record
+}
+
+// ConnLifecycle optionally receives open and close notifications around frame decoding.
+type ConnLifecycle interface {
+	ConnOpened(sh Shard, connID string)
+	ConnClosed(sh Shard, connID string)
+}
+
 // Shard describes one WebSocket connection.
 type Shard struct {
 	Name             string
@@ -33,7 +44,7 @@ type Shard struct {
 
 // Adapter provides venue-specific discovery, connection setup, and decoding.
 //
-// Call order: Symbols, then Shards, then Split for every received frame. Split may depend on state
+// Call order: Symbols, then Shards, then Split (or SplitConn when implemented) for every received frame. Split may depend on state
 // set by Shards (for example the symbol universe), so an adapter must not be used before Shards ran.
 // Split is called from one goroutine per connection and several connections run at once: an adapter
 // that keeps state must make it safe for concurrent reads and must not rewrite it while connections

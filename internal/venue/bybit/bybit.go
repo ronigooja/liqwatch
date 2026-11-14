@@ -58,6 +58,12 @@ type Adapter struct {
 	subscribeErrors atomic.Uint64
 	tickerMu        sync.Mutex
 	tickers         map[string]*tickerState
+	connections     map[string]*tickerConnection
+}
+
+type tickerConnection struct {
+	shard   string
+	tickers map[string]*tickerState
 }
 
 type tickerField struct {
@@ -211,10 +217,36 @@ func (a *Adapter) Subscribe(sh venue.Shard) [][]byte {
 	}
 	return out
 }
+
+// ConnOpened allocates isolated ticker state for a connection.
+func (a *Adapter) ConnOpened(sh venue.Shard, id string) {
+	a.tickerMu.Lock()
+	defer a.tickerMu.Unlock()
+	if a.connections == nil {
+		a.connections = make(map[string]*tickerConnection)
+	}
+	a.connections[id] = &tickerConnection{shard: sh.Name, tickers: make(map[string]*tickerState)}
+}
+
+// ConnClosed releases ticker state belonging to a finished connection.
+func (a *Adapter) ConnClosed(_ venue.Shard, id string) {
+	a.tickerMu.Lock()
+	defer a.tickerMu.Unlock()
+	delete(a.connections, id)
+}
 func (*Adapter) Heartbeat(venue.Shard) (time.Duration, func() (int, []byte)) {
 	return 20 * time.Second, func() (int, []byte) { return int(websocket.MessageText), []byte(`{"op":"ping"}`) }
 }
 func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
+	return a.split(sh, "", msg)
+}
+
+// SplitConn decodes a frame using ticker state isolated to its connection.
+func (a *Adapter) SplitConn(sh venue.Shard, id string, msg []byte) []rawlog.Record {
+	return a.split(sh, id, msg)
+}
+
+func (a *Adapter) split(sh venue.Shard, connID string, msg []byte) []rawlog.Record {
 	s := jsonScanner{b: msg}
 	root, valid := s.value(0, true)
 	s.ws()
@@ -339,7 +371,11 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 				}
 				partial := false
 				if ch == "mark" && (typ == "snapshot" || typ == "delta") {
-					filtered, partial = a.mergeTicker(symbol, typ, item.children, msg)
+					var suppress bool
+					filtered, partial, suppress = a.mergeTicker(connID, symbol, typ, item.children, msg)
+					if suppress {
+						continue
+					}
 				}
 				payload := make([]byte, 0, len(msg))
 				payload = append(payload, '{')
@@ -402,16 +438,27 @@ func (*Adapter) Classes() func(string) (string, bool) {
 
 // mergeTicker retains original JSON value bytes and snapshot field order. A delta
 // before a snapshot is marked partial so consumers can ignore incomplete state.
-func (a *Adapter) mergeTicker(symbol, typ string, fields []jsonNode, msg []byte) ([]byte, bool) {
+func (a *Adapter) mergeTicker(connID, symbol, typ string, fields []jsonNode, msg []byte) ([]byte, bool, bool) {
 	a.tickerMu.Lock()
 	defer a.tickerMu.Unlock()
-	if a.tickers == nil {
-		a.tickers = make(map[string]*tickerState)
+	var tickers map[string]*tickerState
+	var conn *tickerConnection
+	if connID == "" {
+		if a.tickers == nil {
+			a.tickers = make(map[string]*tickerState)
+		}
+		tickers = a.tickers
+	} else {
+		conn = a.connections[connID]
+		if conn == nil {
+			return nil, true, true
+		}
+		tickers = conn.tickers
 	}
-	state := a.tickers[symbol]
+	state := tickers[symbol]
 	if state == nil || typ == "snapshot" {
 		state = &tickerState{complete: typ == "snapshot"}
-		a.tickers[symbol] = state
+		tickers[symbol] = state
 	}
 	for _, field := range fields {
 		if dropFields["mark"][field.key] {
@@ -438,5 +485,14 @@ func (a *Adapter) mergeTicker(symbol, typ string, fields []jsonNode, msg []byte)
 		out = append(out, field.value...)
 	}
 	out = append(out, '}')
-	return out, !state.complete
+	if !state.complete && conn != nil {
+		for id, other := range a.connections {
+			if id != connID && other.shard == conn.shard {
+				if s := other.tickers[symbol]; s != nil && s.complete {
+					return out, true, true
+				}
+			}
+		}
+	}
+	return out, !state.complete, false
 }
