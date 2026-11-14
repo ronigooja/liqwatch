@@ -66,6 +66,7 @@ func TestSplitDifferential(t *testing.T) {
 	oldNow, oldLast := samples.now, samples.last
 	defer func() { samples.now, samples.last = oldNow, oldLast }()
 	frames := fixtureFrames(t)
+	frames = append(frames, []byte(`{"type":"ack","T":"mark-price","d":{"s":"X"}}`), []byte(`{"code":"","T":"mark-price","d":{"s":"X"}}`), []byte(`{"result":"true","T":"mark-price","d":{"s":"X"}}`))
 	for _, s := range []string{` {"type":"message","topic":"/contractMarket/execution:X","subject":"match","data":{"x":-1e+10,"a":[{},null],"symbol":"\u20ac"}} `, `{"T":"mark-price","d":{"s":"X","mp":1,"bp":2}}`, `{"T":"mark-price","d":null}`, `{"type":"message","type":null,"data":{}}`, `{"\u0074ype":"ack"}`, `{"type":"error","code":400}`, `{"result":false}`, `null`, `[]`, `{"x":`, `{"T":"mark-price","d":{"s":"X","d":{}}}`} {
 		frames = append(frames, []byte(s))
 	}

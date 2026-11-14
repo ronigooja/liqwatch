@@ -323,7 +323,7 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 	f, ok := scan(msg)
 	if ok {
 		// Control and uncommon frames retain the exact legacy behavior.
-		if f.typ != "error" && f.code == "" && f.result == "" && f.op == "" {
+		if f.typ != "error" && f.typ != "ack" && f.typ != "welcome" && f.typ != "pong" && f.code == "" && f.result == "" && f.op == "" {
 			channel, symbol := "", ""
 			if f.t == "mark-price" && f.symbol != "" {
 				channel, symbol = "utamark", f.symbol

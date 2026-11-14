@@ -263,10 +263,8 @@ func scan(msg []byte) (scanFrame, bool) {
 			case "T":
 				f.t = v
 			}
-		case "code":
-			f.code = strings.Trim(string(x.value), `"`)
-		case "result":
-			f.result = strings.Trim(string(x.value), `"`)
+		case "code", "result":
+			return f, false
 		case "data":
 			f.hasData = true
 		case "d":
