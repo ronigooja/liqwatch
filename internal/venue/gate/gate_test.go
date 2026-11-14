@@ -18,6 +18,9 @@ import (
 
 func TestSymbols(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != "Mozilla/5.0" {
+			t.Errorf("User-Agent = %q", got)
+		}
 		fmt.Fprint(w, `[{"name":"龙虾_USDT","status":"trading","in_delisting":false},{"name":"BAD_USDT","status":"trading","in_delisting":true},{"name":"WAIT_USDT","status":"prelaunch"},{"name":"BTC_USDT","status":"trading"},{"name":"X_BTC","status":"trading"}]`)
 	}))
 	defer s.Close()
