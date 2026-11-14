@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -78,3 +79,35 @@ func TestOKXHistoryAndSnapshots(t *testing.T) {
 		t.Fatal("currency")
 	}
 }
+
+func TestOKXBackwardPaging(t *testing.T) {
+	const step = int64(300000)
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		start, _ := strconv.ParseInt(r.URL.Query().Get("begin"), 10, 64)
+		end, _ := strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)
+		rows := [][]string{}
+		for n := int64(250); n >= 1 && len(rows) < 100; n-- {
+			ts := n * step
+			if ts >= start && ts < end {
+				rows = append(rows, []string{strconv.FormatInt(ts, 10), "1"})
+			}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"code": "0", "data": rows})
+	}))
+	defer server.Close()
+	e := &Env{Doer: uaDoer{server.Client()}, BaseURL: server.URL, Clock: RealClock{}}
+	h := History{Venue: "okx", Channel: "test", Symbol: "BTC-USDT-SWAP", Clock: okxTestClock{time.UnixMilli(250 * step)}, Lookback: 250 * 5 * time.Minute, Step: 5 * time.Minute, Mode: PageBackward, PageSize: 100, Fetch: func(ctx context.Context, a, b int64) ([]Row, error) {
+		return okxRows(ctx, e, "/test", "BTC-USDT-SWAP", a, b, false)
+	}}
+	records, err := h.Run(context.Background())
+	if err != nil || len(records) != 250 || calls != 3 {
+		t.Fatalf("records=%d calls=%d err=%v", len(records), calls, err)
+	}
+}
+
+type okxTestClock struct{ time.Time }
+
+func (c okxTestClock) Now() time.Time                                   { return c.Time }
+func (c okxTestClock) Sleep(ctx context.Context, d time.Duration) error { return nil }
