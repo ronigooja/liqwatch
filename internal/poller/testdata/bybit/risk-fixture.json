@@ -1,0 +1,32 @@
+{
+  "retCode": 0,
+  "retMsg": "OK",
+  "result": {
+    "category": "linear",
+    "list": [
+      {
+        "id": 1,
+        "symbol": "0GUSDT",
+        "riskLimitValue": "10000",
+        "maintenanceMargin": "0.015",
+        "initialMargin": "0.02",
+        "isLowestRisk": 1,
+        "maxLeverage": "50.00",
+        "mmDeduction": ""
+      },
+      {
+        "id": 2,
+        "symbol": "0GUSDT",
+        "riskLimitValue": "25000",
+        "maintenanceMargin": "0.02",
+        "initialMargin": "0.04",
+        "isLowestRisk": 0,
+        "maxLeverage": "25.00",
+        "mmDeduction": "50"
+      }
+    ],
+    "nextPageCursor": "first%3D0GUSDT%26last%3D1000PEPEUSDT"
+  },
+  "retExtInfo": {},
+  "time": 1794666297098
+}
