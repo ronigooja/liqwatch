@@ -25,6 +25,8 @@ type Channel struct {
 	Weight      float64
 	RPS         float64
 	Fetch       func(context.Context, Symbol) ([]Record, error)
+	// Skip, when set and true for a symbol, leaves the job untouched this cycle: no request, no budget used.
+	Skip func(Symbol) bool
 }
 
 type Clock interface {
@@ -62,6 +64,7 @@ func (e *PermanentError) Error() string { return e.Err.Error() }
 type jobState struct {
 	LastSuccess  int64 `json:"last_success"`
 	RowTimestamp int64 `json:"row_timestamp,omitempty"`
+	NoDataAt     int64 `json:"no_data_at,omitempty"`
 }
 type state struct {
 	Jobs    map[string]jobState `json:"jobs"`
@@ -117,9 +120,37 @@ func NewScheduler(channels []Channel, sink Sink, clock Clock, path string, weigh
 	}
 	return s, nil
 }
+
+// StatePath returns the state file of a venue inside the raw directory. Each venue process has its own file
+// so concurrent per-venue pollers never overwrite each other; binance keeps the original poll-state.json.
+func StatePath(rawDir, venue string) string {
+	if venue == "binance" {
+		return filepath.Join(rawDir, "poll-state.json")
+	}
+	return filepath.Join(rawDir, "poll-state-"+venue+".json")
+}
 func jobKey(c Channel, sym string) string { return c.Venue + "/" + c.Name + "/" + sym }
 func (s *Scheduler) RowTimestamp(venue, channel, symbol string) int64 {
 	return s.state.Jobs[venue+"/"+channel+"/"+symbol].RowTimestamp
+}
+
+// NoDataSkip reports whether a symbol without cursor had an empty first request less than 24h ago.
+func (s *Scheduler) NoDataSkip(venue, channel, symbol string) bool {
+	st := s.state.Jobs[venue+"/"+channel+"/"+symbol]
+	return st.RowTimestamp == 0 && st.NoDataAt > 0 && s.Clock.Now().Sub(time.Unix(0, st.NoDataAt)) < noDataRetry
+}
+
+// NoDataAt returns the unix-nanosecond time of the last empty first request, 0 if none.
+func (s *Scheduler) NoDataAt(venue, channel, symbol string) int64 {
+	return s.state.Jobs[venue+"/"+channel+"/"+symbol].NoDataAt
+}
+
+// MarkNoData records an empty first request; the state file persists it with the next successful job.
+func (s *Scheduler) MarkNoData(venue, channel, symbol string, at time.Time) {
+	key := venue + "/" + channel + "/" + symbol
+	st := s.state.Jobs[key]
+	st.NoDataAt = at.UnixNano()
+	s.state.Jobs[key] = st
 }
 func (s *Scheduler) Symbols() []string           { return append([]string(nil), s.state.Symbols...) }
 func (s *Scheduler) SetSymbols(symbols []string) { s.state.Symbols = append([]string(nil), symbols...) }
@@ -210,9 +241,6 @@ func (s *Scheduler) available(c Channel, now time.Time) time.Duration {
 
 // dedup reconstructs recent output before accepting a history row.
 func (s *Scheduler) dedup(r *Record) bool {
-	if !isHistory(r.Channel) && r.Channel != "fundingRate" {
-		return false
-	}
 	ts, ok := r.Meta["last_row_timestamp"].(int64)
 	if !ok {
 		return false
@@ -234,20 +262,14 @@ func (s *Scheduler) dedup(r *Record) bool {
 				for sc.Scan() {
 					var v struct {
 						Payload json.RawMessage `json:"p"`
+						Meta    struct {
+							TS int64 `json:"last_row_timestamp"`
+						} `json:"meta"`
 					}
-					if json.Unmarshal(sc.Bytes(), &v) != nil {
+					if json.Unmarshal(sc.Bytes(), &v) != nil || v.Meta.TS <= 0 {
 						continue
 					}
-					var x map[string]json.RawMessage
-					var t int64
-					field := "timestamp"
-					if r.Channel == "fundingRate" {
-						field = "fundingTime"
-					}
-					if json.Unmarshal(v.Payload, &x) != nil || json.Unmarshal(x[field], &t) != nil || t <= 0 {
-						continue
-					}
-					addHash(m, t, v.Payload)
+					addHash(m, v.Meta.TS, v.Payload)
 				}
 				f.Close()
 			}
@@ -334,7 +356,7 @@ func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
 		}
 		for _, sym := range syms {
 			key := jobKey(c, sym)
-			if s.stopped[key] || !due(c, s.state.Jobs[key].LastSuccess, now) {
+			if s.stopped[key] || !due(c, s.state.Jobs[key].LastSuccess, now) || (c.Skip != nil && c.Skip(sym)) {
 				continue
 			}
 			if f := s.failures[key]; f != nil && now.Before(f.next) {
@@ -492,7 +514,7 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 					}
 				}
 				for _, sym := range syms {
-					if !seen[jobKey(c, sym)] && due(c, s.state.Jobs[jobKey(c, sym)].LastSuccess, s.Clock.Now()) {
+					if !seen[jobKey(c, sym)] && due(c, s.state.Jobs[jobKey(c, sym)].LastSuccess, s.Clock.Now()) && !(c.Skip != nil && c.Skip(sym)) {
 						pending = true
 					}
 				}

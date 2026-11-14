@@ -96,81 +96,25 @@ func duration(s string, fallback time.Duration) time.Duration {
 	return d
 }
 func (b *Binance) history(ctx context.Context, name, sym string) ([]Record, error) {
-	now := b.Clock.Now()
-	overlap := duration(b.Config.Overlap, 2*time.Hour)
-	lookback := duration(b.Config.InitialLookback, 2*time.Hour)
-	if lookback > 29*24*time.Hour {
-		lookback = 29 * 24 * time.Hour
-	}
-	start := now.Add(-lookback).UnixMilli()
-	cursor := int64(0)
-	if b.Scheduler != nil {
-		cursor = b.Scheduler.RowTimestamp("binance", name, sym)
-	}
-	if cursor > 0 {
-		start = cursor - overlap.Milliseconds()
-	}
-	if isHistory(name) {
-		oldest := now.Add(-29 * 24 * time.Hour).UnixMilli()
-		if start < oldest {
-			if cursor > 0 && cursor < oldest && b.Scheduler != nil {
-				p, _ := json.Marshal(map[string]any{"event": "retention_gap", "channel": name, "symbol": sym, "start_ms": cursor, "end_ms": oldest})
-				b.Scheduler.Sink.Write(Record{Venue: "binance", Symbol: sym, Channel: "gap", RecvWall: now.UnixNano(), Payload: p})
-			}
-			start = oldest
-		}
-	}
-	var all []Record
-	first := true
-	for start <= now.UnixMilli() {
-		end := now.UnixMilli()
-		if isHistory(name) {
-			max := start + (400 * 5 * time.Minute).Milliseconds() - 1
-			if end > max {
-				end = max
-			}
-		}
-		if !first && b.Scheduler != nil {
-			if err := b.Scheduler.waitRequest(ctx, "binance", name); err != nil {
+	h := &History{Venue: "binance", Channel: name, Symbol: sym, Clock: b.Clock, Sched: b.Scheduler,
+		Overlap: duration(b.Config.Overlap, 2*time.Hour), Lookback: duration(b.Config.InitialLookback, 2*time.Hour), MaxLookback: 29 * 24 * time.Hour,
+		Fetch: func(ctx context.Context, start, end int64) ([]Row, error) {
+			recs, err := b.requestPage(ctx, name, sym, start, end)
+			if err != nil {
 				return nil, err
 			}
-		}
-		first = false
-		rows, err := b.requestPage(ctx, name, sym, start, end)
-		if err != nil {
-			return nil, err
-		}
-		all = append(all, rows...)
-		if isHistory(name) {
-			start = end + 1
-		} else {
-			if len(rows) < 1000 {
-				break
+			rows := make([]Row, len(recs))
+			for i, r := range recs {
+				rows[i] = Row{TS: r.Meta["last_row_timestamp"].(int64), Raw: r.Payload, Meta: map[string]any{"status": r.Meta["status"], "used_weight_1m": r.Meta["used_weight_1m"]}}
 			}
-			last := rows[len(rows)-1].Meta["last_row_timestamp"].(int64)
-			if last < start {
-				return nil, fmt.Errorf("funding pagination did not advance")
-			}
-			start = last + 1
-		}
-	}
+			return rows, nil
+		}}
 	if isHistory(name) {
-		sort.Slice(all, func(i, j int) bool {
-			return all[i].Meta["last_row_timestamp"].(int64) < all[j].Meta["last_row_timestamp"].(int64)
-		})
-		var gaps []Record
-		for i := 1; i < len(all); i++ {
-			prev := all[i-1].Meta["last_row_timestamp"].(int64)
-			next := all[i].Meta["last_row_timestamp"].(int64)
-			if next-prev <= (5 * time.Minute).Milliseconds() {
-				continue
-			}
-			payload, _ := json.Marshal(map[string]any{"event": "source_gap", "kind": "source_gap", "channel": name, "symbol": sym, "start_ms": prev + (5 * time.Minute).Milliseconds(), "end_ms": next})
-			gaps = append(gaps, Record{Venue: "binance", Symbol: sym, Channel: "gap", RecvWall: now.UnixNano(), Payload: payload})
-		}
-		all = append(all, gaps...)
+		h.Retention, h.Step, h.Mode, h.Window = 29*24*time.Hour, 5*time.Minute, PageWindows, 400
+	} else {
+		h.Mode, h.PageSize, h.SkipNoData = PageForward, 1000, true
 	}
-	return all, nil
+	return h.Run(ctx)
 }
 func (b *Binance) requestPage(ctx context.Context, name, sym string, start, end int64) ([]Record, error) {
 	now := b.Clock.Now()
@@ -390,6 +334,9 @@ func BinanceChannels(b *Binance) []Channel {
 		c := Channel{Venue: "binance", Name: n, PerSymbol: n != "exchangeInfo" && n != "brackets", Weight: 1, RPS: 1, Period: 24 * time.Hour, Fetch: func(ctx context.Context, s string) ([]Record, error) { return b.request(ctx, n, s) }}
 		if n == "exchangeInfo" || n == "brackets" || n == "constituents" || n == "fundingRate" {
 			c.Daily = true
+		}
+		if isHistory(n) {
+			c.Skip = func(sym string) bool { return b.Scheduler != nil && b.Scheduler.NoDataSkip("binance", n, sym) }
 		}
 		if n == "openInterest" {
 			c.Period = 5 * time.Minute

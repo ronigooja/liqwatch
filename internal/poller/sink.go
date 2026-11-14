@@ -1,4 +1,3 @@
-// Package poller provides output primitives for REST market data polling.
 package poller
 
 import (
