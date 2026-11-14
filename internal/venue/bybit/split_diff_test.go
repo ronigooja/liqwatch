@@ -124,6 +124,15 @@ func isTicker(frame []byte) bool {
 func compareSplits(t *testing.T, frame []byte) {
 	t.Helper()
 	if isTicker(frame) {
+		// Tickers are stateful now, but every output must still be valid JSON.
+		a := &Adapter{}
+		for i := 0; i < 2; i++ {
+			for _, r := range a.Split(venue.Shard{Name: "fuzz"}, frame) {
+				if !json.Valid(r.Payload) {
+					t.Fatalf("invalid payload %q from %q", r.Payload, frame)
+				}
+			}
+		}
 		return
 	}
 	run := func(legacy bool) ([]rawlog.Record, uint64, uint64, uint64, uint64, map[string]time.Time) {
