@@ -19,6 +19,9 @@ import (
 
 func TestDiscoveryAndShards(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != "Mozilla/5.0" {
+			t.Errorf("User-Agent = %q for %s", got, r.URL.Path)
+		}
 		switch r.URL.Path {
 		case "/api/v1/contracts/active":
 			fmt.Fprint(w, `{"code":"200000","data":[{"symbol":"中文USDTM","settleCurrency":"USDT","type":"FFWCSX","status":"Open"},{"symbol":"NO","settleCurrency":"USDC","type":"FFWCSX","status":"Open"}]}`)

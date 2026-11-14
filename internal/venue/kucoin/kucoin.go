@@ -158,6 +158,9 @@ func (a *Adapter) request(ctx context.Context, method, path string, dst any) err
 	if err != nil {
 		return err
 	}
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "Mozilla/5.0")
+	}
 	c := a.Client
 	if c == nil {
 		c = &http.Client{Timeout: 20 * time.Second}
