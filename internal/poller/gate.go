@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -21,9 +22,48 @@ func gateChannels(e *Env) []Channel {
 		Fetch: func(ctx context.Context, symbol string, start, end int64) ([]Row, error) {
 			q := url.Values{"contract": {symbol}, "interval": {"1m"}, "limit": {"2000"},
 				"from": {strconv.FormatInt(start/1000, 10)}, "to": {strconv.FormatInt(end/1000, 10)}}
-			resp, err := e.Get(ctx, "/futures/usdt/contract_stats", q)
-			if err != nil {
-				return nil, err
+			var resp *Response
+			var err error
+			for attempt := 0; attempt < 3; attempt++ {
+				if attempt > 0 && e.Scheduler != nil {
+					if err := e.Scheduler.waitRequest(ctx, e.Venue, "contractStats"); err != nil {
+						return nil, err
+					}
+				}
+				resp, err = e.Get(ctx, "/futures/usdt/contract_stats", q)
+				if err != nil {
+					if strings.HasPrefix(err.Error(), "HTTP 400: ") {
+						var failure struct {
+							Label string `json:"label"`
+						}
+						if json.Unmarshal([]byte(strings.TrimPrefix(err.Error(), "HTTP 400: ")), &failure) == nil && failure.Label == "CONTRACT_NOT_FOUND" {
+							return []Row{}, nil
+						}
+					}
+					return nil, err
+				}
+				var check []struct {
+					Time int64 `json:"time"`
+				}
+				if json.Unmarshal(resp.Body, &check) != nil {
+					return nil, fmt.Errorf("gate: invalid contract stats")
+				}
+				if len(check) == 0 {
+					break
+				}
+				within := false
+				for _, v := range check {
+					if v.Time*1000 <= end {
+						within = true
+						break
+					}
+				}
+				if within {
+					break
+				}
+				if attempt == 2 {
+					return nil, fmt.Errorf("gate: contract stats repeatedly ignored to")
+				}
 			}
 			var raw []json.RawMessage
 			if err := json.Unmarshal(resp.Body, &raw); err != nil || raw == nil {
