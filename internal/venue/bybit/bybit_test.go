@@ -22,6 +22,9 @@ func TestSymbols(t *testing.T) {
 	var calls int
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
+		if got := r.Header.Get("User-Agent"); got != "Mozilla/5.0" {
+			t.Errorf("User-Agent = %q", got)
+		}
 		if r.URL.Query().Get("category") != "linear" {
 			t.Error("category")
 		}
