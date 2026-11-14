@@ -1,0 +1,23 @@
+{
+  "code": "00000",
+  "msg": "success",
+  "requestTime": 1794666300256,
+  "data": [
+    {
+      "symbol": "BTCUSDT",
+      "level": "1",
+      "startUnit": "0",
+      "endUnit": "200000",
+      "leverage": "150",
+      "keepMarginRate": "0.0040"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "level": "2",
+      "startUnit": "200000",
+      "endUnit": "1000000",
+      "leverage": "100",
+      "keepMarginRate": "0.0050"
+    }
+  ]
+}
