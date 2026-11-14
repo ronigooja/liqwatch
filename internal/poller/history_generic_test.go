@@ -575,3 +575,97 @@ func TestSnapshotFetch(t *testing.T) {
 		t.Fatal("snapshot was deduplicated")
 	}
 }
+
+func TestHistoryFinalizedBuckets(t *testing.T) {
+	now := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	for _, mode := range []PageMode{PageWindows, PageForward, PageBackward} {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			f := newFakeExchange(now.Add(-20*step5).UnixMilli(), now.UnixMilli(), mode != PageForward, 5)
+			defer f.server.Close()
+			clock := &fakeClock{now}
+			sink := &memorySink{}
+			s, h := fakeJob(f, clock, mode, sink, "")
+			var fetched []int64
+			fetch := h.Fetch
+			h.Fetch = func(ctx context.Context, a, b int64) ([]Row, error) {
+				rows, err := fetch(ctx, a, b)
+				for _, r := range rows {
+					fetched = append(fetched, r.TS)
+				}
+				return rows, err
+			}
+			if _, err := s.Step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if got := s.RowTimestamp("fake", "oi", "BTCUSDT"); got != now.Add(-2*step5).UnixMilli() {
+				t.Fatalf("cursor=%d", got)
+			}
+			for _, r := range sink.records {
+				if r.Channel == "gap" {
+					t.Fatalf("unexpected gap: %s", r.Payload)
+				}
+			}
+			fetched = nil
+			f.value = func(ts int64) int {
+				if ts == now.UnixMilli() {
+					return 2
+				}
+				return 1
+			}
+			clock.t = now.Add(2 * step5)
+			if _, err := s.Step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			foundFetch, count := false, 0
+			for _, ts := range fetched {
+				if ts == now.UnixMilli() {
+					foundFetch = true
+				}
+			}
+			for _, r := range sink.records {
+				if r.Meta["revised"] != nil {
+					t.Fatalf("revised: %+v", r.Meta)
+				}
+				if r.Meta["last_row_timestamp"] == now.UnixMilli() {
+					count++
+					var row struct {
+						V int `json:"v"`
+					}
+					json.Unmarshal(r.Payload, &row)
+					if row.V != 2 {
+						t.Fatalf("value=%d", row.V)
+					}
+				}
+			}
+			if !foundFetch || count != 1 {
+				t.Fatalf("re-fetched=%v count=%d", foundFetch, count)
+			}
+		})
+	}
+}
+
+func TestHistoryOnlyUnfinishedAndSparse(t *testing.T) {
+	now := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	for _, mode := range []PageMode{PageWindows, PageForward, PageBackward} {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			f := newFakeExchange(now.UnixMilli(), now.UnixMilli(), mode != PageForward, 10)
+			defer f.server.Close()
+			clock := &fakeClock{now}
+			sink := &memorySink{}
+			s, h := fakeJob(f, clock, mode, sink, "")
+			if _, err := s.Step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if len(sink.records) != 0 || s.NoDataAt("fake", "oi", "BTCUSDT") != 0 || s.RowTimestamp("fake", "oi", "BTCUSDT") != 0 {
+				t.Fatalf("records=%v state=%+v", sink.records, s.state)
+			}
+			if mode != PageWindows {
+				h.Step = 0
+				recs, err := h.Run(context.Background())
+				if err != nil || len(recs) != 1 {
+					t.Fatalf("sparse=%v err=%v", recs, err)
+				}
+			}
+		})
+	}
+}
