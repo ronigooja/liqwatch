@@ -75,6 +75,7 @@ type Adapter struct {
 	unknownFields   atomic.Uint64
 	subscribeAcks   atomic.Uint64
 	subscribeErrors atomic.Uint64
+	fallbacks       atomic.Uint64
 }
 
 // UnknownFields returns the number of unclassified field occurrences retained.
@@ -232,7 +233,7 @@ func gap(msg []byte) []rawlog.Record {
 	b, _ := json.Marshal(map[string]any{"event": "unrecognized_frame", "bytes": len(msg), "head": string(msg[:min(len(msg), 200)])})
 	return []rawlog.Record{{Channel: "gap", Payload: b}}
 }
-func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
+func (a *Adapter) splitFallback(sh venue.Shard, msg []byte) []rawlog.Record {
 	var env struct {
 		Channel string          `json:"channel"`
 		Event   string          `json:"event"`
@@ -319,4 +320,15 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 		out = append(out, rawlog.Record{Channel: ch, Symbol: out[0].Symbol, Payload: payload})
 	}
 	return out
+}
+
+// Fallbacks returns the number of frames handled by the reference decoder.
+func (a *Adapter) Fallbacks() uint64 { return a.fallbacks.Load() }
+
+func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
+	if records, ok := a.scanSplit(sh, msg); ok {
+		return records
+	}
+	a.fallbacks.Add(1)
+	return a.splitFallback(sh, msg)
 }
