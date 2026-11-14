@@ -110,6 +110,12 @@ func okxFactory(e *Env) []Channel {
 	}})
 	origSkip, origFetch := c.Skip, c.Fetch
 	c.Skip = func(s string) bool {
+		if e.Scheduler != nil {
+			at := e.Scheduler.NoDataAt(e.Venue, name, s)
+			if at > 0 && e.Clock.Now().Sub(time.Unix(0, at)) < 24*time.Hour {
+				return true
+			}
+		}
 		if origSkip != nil && origSkip(s) {
 			return true
 		}
