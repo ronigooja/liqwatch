@@ -81,6 +81,45 @@ func TestHistorySourceGap(t *testing.T) {
 	}
 }
 
+func TestInitialLookbackConfig(t *testing.T) {
+	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name, lookback string
+		state          string
+		want           time.Duration
+	}{{"missing", "", "missing", 2 * time.Hour}, {"corrupt", "", "bad", 2 * time.Hour}, {"override", "72h", "missing", 72 * time.Hour}, {"clamped", "1000h", "missing", 29 * 24 * time.Hour}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var first int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if first == 0 {
+					first, _ = strconv.ParseInt(r.URL.Query().Get("startTime"), 10, 64)
+				}
+				fmt.Fprint(w, `[]`)
+			}))
+			defer server.Close()
+			p := filepath.Join(t.TempDir(), "state.json")
+			if tc.state == "bad" {
+				if err := os.WriteFile(p, []byte("{"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			clock := &fakeClock{now}
+			b := &Binance{Clock: clock, Doer: server.Client(), Config: PollConfig{BaseURL: server.URL, InitialLookback: tc.lookback}}
+			s, err := NewScheduler(BinanceChannels(b), &memorySink{}, clock, p, 240)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b.Scheduler = s
+			if _, err = b.request(context.Background(), "openInterestHist", "BTCUSDT"); err != nil {
+				t.Fatal(err)
+			}
+			if first != now.Add(-tc.want).UnixMilli() {
+				t.Fatalf("start=%d want=%d", first, now.Add(-tc.want).UnixMilli())
+			}
+		})
+	}
+}
+
 func TestRestartDedupAcrossDaysAndTruncatedTail(t *testing.T) {
 	now := time.Date(2026, 1, 11, 0, 2, 0, 0, time.UTC)
 	clock := &fakeClock{now}

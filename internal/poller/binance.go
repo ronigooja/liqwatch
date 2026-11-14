@@ -98,7 +98,7 @@ func duration(s string, fallback time.Duration) time.Duration {
 func (b *Binance) history(ctx context.Context, name, sym string) ([]Record, error) {
 	now := b.Clock.Now()
 	overlap := duration(b.Config.Overlap, 2*time.Hour)
-	lookback := duration(b.Config.InitialLookback, 7*24*time.Hour)
+	lookback := duration(b.Config.InitialLookback, 2*time.Hour)
 	if lookback > 29*24*time.Hour {
 		lookback = 29 * 24 * time.Hour
 	}

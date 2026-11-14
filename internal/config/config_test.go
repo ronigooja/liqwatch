@@ -4,7 +4,27 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/pelletier/go-toml/v2"
 )
+
+func TestExamplePollerLookback(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "config", "config.toml.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c struct {
+		Poller struct {
+			InitialLookback string `toml:"initial_lookback"`
+		} `toml:"poller"`
+	}
+	if err := toml.Unmarshal(b, &c); err != nil {
+		t.Fatal(err)
+	}
+	if c.Poller.InitialLookback != "2h" {
+		t.Fatalf("initial lookback = %q", c.Poller.InitialLookback)
+	}
+}
 
 func TestLoadDefaultsAndValidation(t *testing.T) {
 	dir := t.TempDir()

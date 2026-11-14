@@ -36,7 +36,7 @@ forceOrder_all = 0
 
 [poller]
 overlap = "2h"
-initial_lookback = "168h" # Clamped to 29 days.
+initial_lookback = "2h" # Clamped to 29 days.
 
 [poller.periods]
 # openInterestHist = "12h"
