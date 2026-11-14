@@ -124,6 +124,7 @@ func get(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("User-Agent", "Mozilla/5.0")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err

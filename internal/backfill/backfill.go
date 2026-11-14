@@ -256,6 +256,7 @@ func (b *Backfiller) fetch(ctx context.Context, symbol string, from int64) ([]by
 	if err != nil {
 		return nil, 0, start, b.now(), 0, err
 	}
+	req.Header.Set("User-Agent", "Mozilla/5.0")
 	resp, err := b.doer.Do(req)
 	end := b.now()
 	b.mu.Lock()

@@ -184,3 +184,16 @@ func TestMarkIsReleased(t *testing.T) {
 		t.Fatalf("marker state leaked: %d %d", len(tap.marks), len(tap.starts))
 	}
 }
+
+func TestBackfillRequestSendsBrowserUserAgent(t *testing.T) {
+	s := &testSink{}
+	tap := NewTap(s)
+	tap.Write(rawlog.GroupTrade, trade(10))
+	d := &testDoer{responses: []response{{200, `[{"a":11}]`, ""}}}
+	b := New(tap, s, d, 1000, 1)
+	b.sleep = func(context.Context, time.Duration) error { return nil }
+	b.runRequest(context.Background(), request{symbols: []string{"ENAUSDT"}, marker: tap.Mark()})
+	if len(d.requests) != 1 || d.requests[0].Header.Get("User-Agent") != "Mozilla/5.0" {
+		t.Fatalf("requests %d user agent %q", len(d.requests), d.requests[0].Header.Get("User-Agent"))
+	}
+}
