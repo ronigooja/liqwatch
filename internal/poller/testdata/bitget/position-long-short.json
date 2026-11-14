@@ -1,0 +1,19 @@
+{
+  "code": "00000",
+  "msg": "success",
+  "requestTime": 1794666297601,
+  "data": [
+    {
+      "longPositionRatio": "0.4929",
+      "shortPositionRatio": "0.5071",
+      "longShortPositionRatio": "0.9719",
+      "ts": "1794657000000"
+    },
+    {
+      "longPositionRatio": "0.4929",
+      "shortPositionRatio": "0.5071",
+      "longShortPositionRatio": "0.9719",
+      "ts": "1794657300000"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "code": "00000",
+  "msg": "success",
+  "requestTime": 1794666298922,
+  "data": [
+    {
+      "sellVolume": "6.5172",
+      "buyVolume": "9.5182",
+      "ts": "1794657300000"
+    },
+    {
+      "sellVolume": "24.1524",
+      "buyVolume": "10.5525",
+      "ts": "1794657600000"
+    }
+  ]
+}
