@@ -99,7 +99,7 @@ func NewScheduler(channels []Channel, sink Sink, clock Clock, path string, weigh
 		b, err := os.ReadFile(path)
 		if err == nil {
 			if err = json.Unmarshal(b, &s.state); err != nil {
-				return nil, err
+				s.state = state{Jobs: map[string]jobState{}}
 			}
 		} else if !os.IsNotExist(err) {
 			return nil, err
@@ -199,6 +199,9 @@ func (s *Scheduler) available(c Channel, now time.Time) time.Duration {
 		return 0
 	}
 	return wait
+}
+func (s *Scheduler) waitRequest(ctx context.Context, venue,name string) error {
+ for _,c:=range s.Channels { if c.Venue==venue && c.Name==name { for { now:=s.Clock.Now(); d:=s.available(c,now); if d<=0 { w:=c.Weight; if w<=0 {w=1}; s.buckets[venue].tokens-=w; s.lastRequest[venue+"/"+name]=now; return nil }; if err:=s.Clock.Sleep(ctx,d); err!=nil{return err} } } }; return nil
 }
 func (s *Scheduler) gap(c Channel, sym, event, msg string, f *failure) {
 	now := s.Clock.Now()
