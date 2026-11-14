@@ -35,6 +35,56 @@ func TestOnce(t *testing.T) {
 	}
 }
 
+func TestSymbolValidation(t *testing.T) {
+	for _, s := range []string{"BTC-USDT-SWAP", "龙虾_USDT", "龙虾USDT", "币安人生USDT", "abc.１２"} {
+		if !validSymbol(s) {
+			t.Errorf("rejected %q", s)
+		}
+	}
+	for _, s := range []string{"", " ", "BTC USDT", "BTC\nUSDT", "BTC/USDT", "BTC?USDT", "BTC&USDT", "BTC#USDT", "BTC%USDT", `BTC"USDT`, "BTC'USDT", "BTC,USDT", "\xff"} {
+		if validSymbol(s) {
+			t.Errorf("accepted %q", s)
+		}
+	}
+}
+
+func TestSelectedSymbols(t *testing.T) {
+	var requested []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/fapi/v1/exchangeInfo" {
+			fmt.Fprint(w, `{"symbols":[{"symbol":"币安人生USDT","status":"TRADING","contractType":"PERPETUAL","quoteAsset":"USDT"},{"symbol":"BTC-USDT-SWAP","status":"TRADING","contractType":"PERPETUAL","quoteAsset":"USDT"},{"symbol":"OTHER","status":"TRADING","contractType":"PERPETUAL","quoteAsset":"USDT"}]}`)
+			return
+		}
+		if s := r.URL.Query().Get("symbol"); s != "" {
+			requested = append(requested, s)
+		}
+		fmt.Fprint(w, `[]`)
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	config := filepath.Join(dir, "config.toml")
+	text := fmt.Sprintf("data_dir = %q\n[poller]\nbase_url = %q\nbrackets_url = %q\n", dir, server.URL, server.URL+"/brackets")
+	if err := os.WriteFile(config, []byte(text), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"", ",BTC", "BTC,", "BTC,,ETH"} {
+		err := run(context.Background(), []string{"-config", config, "-once", "-syms", bad}, server.Client())
+		if err == nil || !strings.Contains(err.Error(), "invalid symbol") {
+			t.Errorf("-syms %q: %v", bad, err)
+		}
+	}
+	if err := run(context.Background(), []string{"-config", config, "-once", "-syms", "币安人生USDT,BTC-USDT-SWAP"}, server.Client()); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, s := range requested {
+		seen[s] = true
+	}
+	if !seen["币安人生USDT"] || !seen["BTC-USDT-SWAP"] || seen["OTHER"] {
+		t.Fatalf("requested symbols: %v", seen)
+	}
+}
+
 func TestUnknownVenueAndUsage(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "config.toml")

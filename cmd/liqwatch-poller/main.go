@@ -9,10 +9,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/ronigooja/liqwatch/internal/config"
@@ -50,11 +50,16 @@ func run(ctx context.Context, args []string, client poller.HTTPDoer) error {
 		return errors.New("data_dir is empty")
 	}
 	var selected []string
-	if *syms != "" {
+	symsSet := false
+	f.Visit(func(flag *flag.Flag) {
+		if flag.Name == "syms" {
+			symsSet = true
+		}
+	})
+	if symsSet {
 		selected = strings.Split(*syms, ",")
-		valid := regexp.MustCompile(`^[A-Z0-9_]+$`)
 		for _, s := range selected {
-			if !valid.MatchString(s) {
+			if !validSymbol(s) {
 				return fmt.Errorf("invalid symbol %q", s)
 			}
 		}
@@ -83,6 +88,19 @@ func run(ctx context.Context, args []string, client poller.HTTPDoer) error {
 	}
 	return err
 }
+
+func validSymbol(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' && r != '-' && r != '.' {
+			return false
+		}
+	}
+	return true
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
