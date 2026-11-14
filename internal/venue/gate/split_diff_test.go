@@ -73,27 +73,29 @@ func FuzzSplit(f *testing.F) {
 	f.Fuzz(func(t *testing.T, b []byte) { compareSplit(t, b) })
 }
 func BenchmarkSplit(b *testing.B) {
-	for _, frame := range fixtureFrames() {
-		var ch string
-		for _, name := range []string{"trades", "tickers", "contract_stats", "contract_info", "public_liquidates"} {
-			if bytes.Contains(frame, []byte("futures."+name)) {
-				ch = name
-				break
-			}
-		}
-		if ch == "" {
-			continue
-		}
-		b.Run(ch, func(b *testing.B) {
+	cases := map[string]string{
+		"trades":               `{"time":123,"channel":"futures.trades","event":"update","result":[{"contract":"BTC_USDT","id":1,"size":"1","price":"2"}]}`,
+		"tickers":              `{"time":123,"channel":"futures.tickers","event":"update","result":[{"contract":"BTC_USDT","last":"1","mark_price":"1","index_price":"2","volume_24h":"5"}]}`,
+		"contract_stats":       `{"time":123,"channel":"futures.contract_stats","event":"update","result":[{"contract":"BTC_USDT","open_interest":"1","lsr_account":"2","mark_price":"3"}]}`,
+		"contract_info":        `{"time":123,"channel":"futures.contract_info","event":"all","result":{"contract":"BTC_USDT","quanto_multiplier":"0.001","risk_limit_tiers":[{"risk_limit":"1","leverage":"20"}]}}`,
+		"liquidations":         `{"time":123,"channel":"futures.public_liquidates","event":"update","result":[{"contract":"BTC_USDT","price":"2","size":"1"}]}`,
+		"control_ack":          `{"channel":"futures.trades","event":"subscribe","result":{"status":"success"}}`,
+		"control_pong":         `{"channel":"futures.pong","event":"","result":null}`,
+		"fallback_escaped_key": `{"channel":"futures.trades","event":"update","result":[{"contract":"BTC_USDT","pr\u0069ce":"1"}]}`,
+	}
+	for name, text := range cases {
+		frame := []byte(text)
+		b.Run(name, func(b *testing.B) {
 			for _, ref := range []bool{false, true} {
-				name := "new"
+				label := "new"
 				if ref {
-					name = "old"
+					label = "old"
 				}
-				b.Run(name, func(b *testing.B) {
+				b.Run(label, func(b *testing.B) {
 					a := &Adapter{}
-					a.Shards(context.Background(), []string{"BTC_USDT", "ETH_USDT", "SOL_USDT", "PEPE_USDT", "龙虾_USDT", "AKE_USDT"})
+					a.Shards(context.Background(), []string{"BTC_USDT"})
 					sh := venue.Shard{Name: "bench"}
+					a.Split(sh, frame)
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
 						if ref {
@@ -101,6 +103,10 @@ func BenchmarkSplit(b *testing.B) {
 						} else {
 							a.Split(sh, frame)
 						}
+					}
+					b.StopTimer()
+					if !ref {
+						b.ReportMetric(float64(a.Fallbacks())/float64(b.N+1)*100, "fallback%")
 					}
 				})
 			}
