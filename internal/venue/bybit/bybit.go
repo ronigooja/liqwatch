@@ -56,6 +56,17 @@ type Adapter struct {
 	InstrumentsURL  string
 	subscribeAcks   atomic.Uint64
 	subscribeErrors atomic.Uint64
+	tickerMu        sync.Mutex
+	tickers         map[string]*tickerState
+}
+
+type tickerField struct {
+	key   string
+	value []byte
+}
+type tickerState struct {
+	fields   []tickerField
+	complete bool
 }
 
 // SubscribeAcks returns the number of successful subscription acknowledgements.
@@ -180,7 +191,15 @@ func (*Adapter) Shards(_ context.Context, syms []venue.Symbol) ([]venue.Shard, e
 	flush()
 	return out, nil
 }
-func (*Adapter) Subscribe(sh venue.Shard) [][]byte {
+func (a *Adapter) Subscribe(sh venue.Shard) [][]byte {
+	// Subscribe is called at the start of each connection, including reconnects.
+	a.tickerMu.Lock()
+	for _, stream := range sh.Streams {
+		if symbol, ok := strings.CutPrefix(stream, "tickers."); ok {
+			delete(a.tickers, symbol)
+		}
+	}
+	a.tickerMu.Unlock()
 	const batchSize = 30
 	var out [][]byte
 	for i := 0; i < len(sh.Streams); i += batchSize {
@@ -318,6 +337,10 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 					droppedDeltas.Add(1)
 					continue
 				}
+				partial := false
+				if ch == "mark" && (typ == "snapshot" || typ == "delta") {
+					filtered, partial = a.mergeTicker(symbol, typ, item.children, msg)
+				}
 				payload := make([]byte, 0, len(msg))
 				payload = append(payload, '{')
 				for i, field := range root.children {
@@ -337,6 +360,9 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 					} else {
 						payload = append(payload, msg[field.start:field.end]...)
 					}
+				}
+				if partial {
+					payload = append(payload, `,"state":"partial"`...)
 				}
 				payload = append(payload, '}')
 				out = append(out, rawlog.Record{Channel: ch, Symbol: symbol, Payload: payload})
@@ -372,4 +398,45 @@ func (*Adapter) Classes() func(string) (string, bool) {
 		}
 		return "", false
 	}
+}
+
+// mergeTicker retains original JSON value bytes and snapshot field order. A delta
+// before a snapshot is marked partial so consumers can ignore incomplete state.
+func (a *Adapter) mergeTicker(symbol, typ string, fields []jsonNode, msg []byte) ([]byte, bool) {
+	a.tickerMu.Lock()
+	defer a.tickerMu.Unlock()
+	if a.tickers == nil {
+		a.tickers = make(map[string]*tickerState)
+	}
+	state := a.tickers[symbol]
+	if state == nil || typ == "snapshot" {
+		state = &tickerState{complete: typ == "snapshot"}
+		a.tickers[symbol] = state
+	}
+	for _, field := range fields {
+		if dropFields["mark"][field.key] {
+			continue
+		}
+		i := 0
+		for i < len(state.fields) && state.fields[i].key != field.key {
+			i++
+		}
+		value := append([]byte(nil), msg[field.start:field.end]...)
+		if i == len(state.fields) {
+			state.fields = append(state.fields, tickerField{field.key, value})
+		} else {
+			state.fields[i].value = value
+		}
+	}
+	out := []byte{'{'}
+	for i, field := range state.fields {
+		if i > 0 {
+			out = append(out, ',')
+		}
+		out = appendKey(out, field.key)
+		out = append(out, ':')
+		out = append(out, field.value...)
+	}
+	out = append(out, '}')
+	return out, !state.complete
 }
