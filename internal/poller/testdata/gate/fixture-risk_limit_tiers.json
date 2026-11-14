@@ -1,0 +1,20 @@
+[
+  {
+    "maintenance_rate": "0.08",
+    "tier": 1,
+    "initial_rate": "0.1",
+    "leverage_max": "10",
+    "risk_limit": "5000",
+    "contract": "龙虾_USDT",
+    "deduction": "0"
+  },
+  {
+    "maintenance_rate": "0.09",
+    "tier": 2,
+    "initial_rate": "0.1111",
+    "leverage_max": "9",
+    "risk_limit": "10000",
+    "contract": "龙虾_USDT",
+    "deduction": "50"
+  }
+]
