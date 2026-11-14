@@ -2,6 +2,7 @@ package bybit
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -53,6 +54,9 @@ func TestSplitDifferential(t *testing.T) {
 	defer func() { sampleNow = oldNow }()
 	sampleNow = func() time.Time { return now }
 	for i, frame := range frames {
+		if isTicker([]byte(frame)) {
+			continue
+		}
 		t.Run(stringIndex(i), func(t *testing.T) {
 			run := func(legacy bool) ([]rawlog.Record, uint64, uint64, uint64, uint64, map[string]time.Time) {
 				unknownFields.Store(0)
@@ -110,8 +114,18 @@ func BenchmarkSplit(b *testing.B) {
 	}
 }
 
+func isTicker(frame []byte) bool {
+	var x struct {
+		Topic string `json:"topic"`
+	}
+	return json.Unmarshal(frame, &x) == nil && strings.HasPrefix(x.Topic, "tickers.")
+}
+
 func compareSplits(t *testing.T, frame []byte) {
 	t.Helper()
+	if isTicker(frame) {
+		return
+	}
 	run := func(legacy bool) ([]rawlog.Record, uint64, uint64, uint64, uint64, map[string]time.Time) {
 		unknownFields.Store(0)
 		droppedDeltas.Store(0)

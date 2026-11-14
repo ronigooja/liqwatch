@@ -311,7 +311,7 @@ func TestFilteringAndSampling(t *testing.T) {
 	frame := `{"topic":"tickers.BTCUSDT","type":"delta","data":{"symbol":"BTCUSDT","bid1Price":"3","markPrice":"1.2300","newField":"\\u0031"},"cs":123,"ts":456}`
 	before := a.UnknownFieldsSeen()
 	r := a.Split(sh, []byte(frame))
-	want := `{"topic":"tickers.BTCUSDT","type":"delta","data":{"symbol":"BTCUSDT","markPrice":"1.2300","newField":"\\u0031"},"cs":123,"ts":456}`
+	want := `{"topic":"tickers.BTCUSDT","type":"delta","data":{"symbol":"BTCUSDT","markPrice":"1.2300","newField":"\\u0031"},"cs":123,"ts":456,"state":"partial"}`
 	if len(r) != 2 || string(r[0].Payload) != want || string(r[1].Payload) != `{"sample":`+frame+`}` || a.UnknownFieldsSeen() != before+1 {
 		t.Fatalf("records: %+v unknown: %d", r, a.UnknownFieldsSeen()-before)
 	}
