@@ -17,6 +17,7 @@ Read only what the task needs.
 | [docs/p0-rollout.md](docs/p0-rollout.md) | Operations | Recorder rollout and status | Checking recording operations |
 | [docs/p1-data-pipeline.md](docs/p1-data-pipeline.md) | Design | Research data pipeline | Replaying or converting data |
 | [docs/fill-simulator.md](docs/fill-simulator.md) | Design | Fill simulator design and results | Evaluating simulated fills |
+| [docs/recording-results.md](docs/recording-results.md) | Results | Adapter profiling measurements | Sizing or reviewing recorder optimization |
 | [docs/trial-plan.md](docs/trial-plan.md) | Results | Historical recording trial and measurements | Reviewing trial evidence |
 | [docs/overview.md](docs/overview.md) | Design | Goals, products, non-goals, success criteria | Need scope or intent |
 | [docs/architecture.md](docs/architecture.md) | Design | Layers and data flow | Designing any component |
@@ -33,5 +34,5 @@ Read only what the task needs.
 | [docs/roadmap.md](docs/roadmap.md) | Design | Phases P0–P5, gates, stop rules | Planning or checking progress |
 | [docs/open-questions.md](docs/open-questions.md) | Facts | Unresolved inputs and unverified facts | Before relying on any external fact |
 | [docs/venue-apis.md](docs/venue-apis.md) | Facts | Keyless public API facts for non-Binance venues and Binance index constituents, 2026-11-12 | Considering recording another venue |
-| [docs/decisions/](docs/decisions/) | Decisions | One record per decision, 0001 to 0014 | Need the reason behind a choice or before changing direction or scope |
+| [docs/decisions/](docs/decisions/) | Decisions | One record per decision, 0001 to 0015 | Need the reason behind a choice or before changing direction or scope |
 | [docs/archive/v1-architecture-zh.md](docs/archive/v1-architecture-zh.md) | Archive | v1 design (Chinese), superseded | Historical reference only |

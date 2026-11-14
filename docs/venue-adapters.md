@@ -1,6 +1,6 @@
 # Venue adapters
 
-Design and verified implementation status of collector adapters; governed by [0011](decisions/0011-no-alert-narrower-recording.md), [0013](decisions/0013-no-dex-recording.md), and [0014](decisions/0014-daily-pack-storage.md). API observations and limitations: [venue APIs](venue-apis.md#live-adapter-captures).
+Design and verified implementation status of collector adapters; governed by [0011](decisions/0011-no-alert-narrower-recording.md), [0013](decisions/0013-no-dex-recording.md), and [0014](decisions/0014-daily-pack-storage.md), and [0015](decisions/0015-recording-scope-and-granularity.md). API observations and limitations: [venue APIs](venue-apis.md#live-adapter-captures).
 
 ## Contract
 

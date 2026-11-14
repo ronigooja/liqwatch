@@ -1,6 +1,6 @@
 # REST poller
 
-Verified in [code](../internal/poller/): the Go poller records REST data separately from the collector; governed by [0014](decisions/0014-daily-pack-storage.md). Deployment: [infrastructure](infrastructure.md).
+Verified in [code](../internal/poller/): the Go poller records REST data separately from the collector; governed by [0014](decisions/0014-daily-pack-storage.md) and [0015](decisions/0015-recording-scope-and-granularity.md). Deployment: [infrastructure](infrastructure.md).
 
 ## Operation
 

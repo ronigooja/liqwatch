@@ -1,6 +1,6 @@
 # 0011 No alert; recording narrowed to data that cannot be fetched
 
-Date: 2026-11-11. Supersedes items 2 (first use) and 6 (retention) of [0010](0010-liquidation-model-direction.md); the rest of 0010 holds. [0006](0006-alert-interface.md) stays valid for data-health alerts only.
+Date: 2026-11-11. Item 4 is superseded by [0015](0015-recording-scope-and-granularity.md). Supersedes items 2 (first use) and 6 (retention) of [0010](0010-liquidation-model-direction.md); the rest of 0010 holds. [0006](0006-alert-interface.md) stays valid for data-health alerts only.
 
 ## Decision
 
