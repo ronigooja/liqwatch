@@ -230,6 +230,10 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 	}
 	defer ws.CloseNow()
 	ws.SetReadLimit(16 << 20)
+	if lifecycle, ok := c.adapter.(venue.ConnLifecycle); ok {
+		lifecycle.ConnOpened(sh, k.id)
+		defer lifecycle.ConnClosed(sh, k.id)
+	}
 	close(k.opened)
 	if c.OnOpen != nil {
 		c.OnOpen(sh)
@@ -308,7 +312,13 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		last.Store(rw.UnixNano())
 		cseq++
 		c.Messages.Add(1)
-		for _, rec := range c.adapter.Split(sh, data) {
+		var records []rawlog.Record
+		if splitter, ok := c.adapter.(venue.ConnSplitter); ok {
+			records = splitter.SplitConn(sh, k.id, data)
+		} else {
+			records = c.adapter.Split(sh, data)
+		}
+		for _, rec := range records {
 			rec.Venue, rec.Conn, rec.CSeq, rec.RecvWal, rec.RecvMon = c.adapter.Name(), k.id, cseq, rw.UnixNano(), rawlog.Mono()
 			// The writer routes by venue, symbol and channel; only GroupGap changes its handling.
 			c.throttle.write(rec)
