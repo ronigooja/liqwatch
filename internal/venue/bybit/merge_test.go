@@ -65,7 +65,11 @@ func TestTickerMergeConcurrent(t *testing.T) {
 					typ = "snapshot"
 				}
 				frame := fmt.Sprintf(`{"topic":"tickers.%s","type":"%s","data":{"markPrice":"%d"}}`, sym, typ, j)
-				a.Split(sh, []byte(frame))
+				for _, r := range a.Split(sh, []byte(frame)) {
+					if !strings.HasPrefix(string(r.Payload), `{"sample":`) && !strings.Contains(string(r.Payload), fmt.Sprintf(`"markPrice":"%d"`, j)) {
+						t.Errorf("symbol %s: %s", sym, r.Payload)
+					}
+				}
 			}
 		}(i)
 	}
