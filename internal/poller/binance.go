@@ -387,7 +387,7 @@ func BinanceChannels(b *Binance) []Channel {
 	out := make([]Channel, 0, len(names))
 	for _, name := range names {
 		n := name
-		c := Channel{Venue: "binance", Name: n, PerSymbol: n != "exchangeInfo" && n != "brackets", Weight: 1, RPS: 1, Period: 12 * time.Hour, Fetch: func(ctx context.Context, s string) ([]Record, error) { return b.request(ctx, n, s) }}
+		c := Channel{Venue: "binance", Name: n, PerSymbol: n != "exchangeInfo" && n != "brackets", Weight: 1, RPS: 1, Period: 24 * time.Hour, Fetch: func(ctx context.Context, s string) ([]Record, error) { return b.request(ctx, n, s) }}
 		if n == "exchangeInfo" || n == "brackets" || n == "constituents" || n == "fundingRate" {
 			c.Daily = true
 		}
