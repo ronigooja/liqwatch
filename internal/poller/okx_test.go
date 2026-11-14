@@ -111,3 +111,48 @@ type okxTestClock struct{ time.Time }
 
 func (c okxTestClock) Now() time.Time                                   { return c.Time }
 func (c okxTestClock) Sleep(ctx context.Context, d time.Duration) error { return nil }
+
+func TestOKXCurrencyRetentionError(t *testing.T) {
+	for _, hasCursor := range []bool{false, true} {
+		t.Run(fmt.Sprint(hasCursor), func(t *testing.T) {
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				fmt.Fprint(w, `{"code":"50030","msg":"Data older than retention","data":[]}`)
+			}))
+			defer server.Close()
+			clock := &fakeClock{t: time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)}
+			sink := &memorySink{}
+			e := &Env{Venue: "okx", Doer: uaDoer{server.Client()}, Clock: clock, BaseURL: server.URL, Lookback: time.Hour, Universe: func() []string { return []string{"BTC-USDT-SWAP"} }}
+			channels := okxFactory(e)
+			var ch Channel
+			for _, v := range channels {
+				if v.Name == "longShortAccountRatio" {
+					ch = v
+				}
+			}
+			s, _ := NewScheduler([]Channel{ch}, sink, clock, "", 240)
+			e.Bind(s)
+			if hasCursor {
+				s.state.Jobs["okx/longShortAccountRatio/BTC-USDT-SWAP"] = jobState{RowTimestamp: clock.Now().Add(-72 * time.Hour).UnixMilli()}
+			}
+			records, err := ch.Fetch(context.Background(), "BTC-USDT-SWAP")
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			if hasCursor {
+				for _, r := range sink.records {
+					found = found || strings.Contains(string(r.Payload), `"retention_gap"`)
+				}
+			} else {
+				for _, r := range records {
+					found = found || strings.Contains(string(r.Payload), `"no_data"`)
+				}
+			}
+			if !found || !ch.Skip("BTC-USDT-SWAP") || calls == 0 {
+				t.Fatalf("missing gap or throttle, cursor=%v records=%v sink=%v calls=%d", hasCursor, records, sink.records, calls)
+			}
+		})
+	}
+}

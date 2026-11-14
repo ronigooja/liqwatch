@@ -22,6 +22,10 @@ type okxEnvelope struct {
 	Data json.RawMessage `json:"data"`
 }
 
+type okxError struct{ code, message string }
+
+func (err *okxError) Error() string { return fmt.Sprintf("OKX code %s: %s", err.code, err.message) }
+
 func okxGet(ctx context.Context, e *Env, path string, q url.Values) ([]byte, error) {
 	r, err := e.Get(ctx, path, q)
 	if err != nil {
@@ -32,7 +36,7 @@ func okxGet(ctx context.Context, e *Env, path string, q url.Values) ([]byte, err
 		return nil, err
 	}
 	if v.Code != "0" {
-		return nil, fmt.Errorf("OKX code %s: %s", v.Code, v.Msg)
+		return nil, &okxError{v.Code, v.Msg}
 	}
 	if len(v.Data) == 0 || string(v.Data) == "null" {
 		return nil, fmt.Errorf("OKX missing data")
@@ -95,7 +99,14 @@ func okxFactory(e *Env) []Channel {
 	}
 	const name = "longShortAccountRatio"
 	c := e.HistoryChannel(name, HistorySpec{Step: 5 * time.Minute, Retention: 2 * 24 * time.Hour, Mode: PageWindows, Window: 288, Period: 24 * time.Hour, Fetch: func(ctx context.Context, s string, a, b int64) ([]Row, error) {
-		return okxRows(ctx, e, "/api/v5/rubik/stat/contracts/long-short-account-ratio", okxCurrency(s), a, b, true)
+		rows, err := okxRows(ctx, e, "/api/v5/rubik/stat/contracts/long-short-account-ratio", okxCurrency(s), a, b, true)
+		if apiErr, ok := err.(*okxError); ok && apiErr.code == "50030" {
+			if e.Scheduler != nil {
+				e.Scheduler.MarkNoData(e.Venue, name, s, e.Clock.Now())
+			}
+			return nil, nil
+		}
+		return rows, err
 	}})
 	origSkip, origFetch := c.Skip, c.Fetch
 	c.Skip = func(s string) bool {
