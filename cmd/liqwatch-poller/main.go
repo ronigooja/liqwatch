@@ -21,8 +21,12 @@ import (
 
 func run(ctx context.Context, args []string, client poller.HTTPDoer) error {
 	f := flag.NewFlagSet("liqwatch-poller", flag.ContinueOnError)
+	f.Usage = func() {
+		fmt.Fprintf(f.Output(), "usage: liqwatch-poller [-config path] [-venue name] [-once] [-syms A,B]\nregistered venues: %s\n", strings.Join(poller.Venues(), ", "))
+		f.PrintDefaults()
+	}
 	path := f.String("config", "/etc/liqwatch/config.toml", "configuration")
-	venue := f.String("venue", "binance", "venue")
+	venue := f.String("venue", "binance", "venue: "+strings.Join(poller.Venues(), ", "))
 	once := f.Bool("once", false, "single sweep")
 	syms := f.String("syms", "", "comma-separated symbols")
 	if err := f.Parse(args); err != nil {
@@ -32,15 +36,17 @@ func run(ctx context.Context, args []string, client poller.HTTPDoer) error {
 	if err != nil {
 		return err
 	}
+	base, err := config.Load(*path)
+	if err != nil {
+		return err
+	}
 	cfg := struct {
-		config.Config
 		Poller poller.PollConfig `toml:"poller"`
 	}{}
-	cfg.DataDir = "/var/lib/liqwatch"
 	if err = toml.Unmarshal(b, &cfg); err != nil {
 		return err
 	}
-	if cfg.DataDir == "" {
+	if base.DataDir == "" {
 		return errors.New("data_dir is empty")
 	}
 	var selected []string
@@ -53,20 +59,21 @@ func run(ctx context.Context, args []string, client poller.HTTPDoer) error {
 			}
 		}
 	}
-	raw := filepath.Join(cfg.DataDir, "raw")
+	raw := filepath.Join(base.DataDir, "raw")
 	sink := poller.NewFileSink(raw, time.Second)
 	defer sink.Close()
-	bn := &poller.Binance{Doer: client, Clock: poller.RealClock{}, Config: cfg.Poller, Selected: selected}
-	channels, err := poller.Venue(*venue, bn)
+	if cfg.Poller.MapPath == "" {
+		cfg.Poller.MapPath = base.Poller.MapPath
+	}
+	env, channels, err := poller.NewVenue(*venue, cfg.Poller, poller.Deps{Doer: client, Clock: poller.RealClock{}, Sink: sink, Selected: selected})
 	if err != nil {
 		return err
 	}
-	scheduler, err := poller.NewScheduler(channels, sink, bn.Clock, filepath.Join(raw, "poll-state.json"), cfg.Poller.WeightPerMinute)
+	scheduler, err := poller.NewScheduler(channels, sink, env.Clock, poller.StatePath(raw, *venue), env.WeightPerMinute)
 	if err != nil {
 		return err
 	}
-	bn.Scheduler = scheduler
-	scheduler.Universe = bn.Symbols
+	env.Bind(scheduler)
 	if *once {
 		return scheduler.RunOnce(ctx)
 	}

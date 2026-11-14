@@ -109,3 +109,49 @@ func TestVerifySamplePercent(t *testing.T) {
 		})
 	}
 }
+
+func TestPollerVenuesConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	write := func(s string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(s), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("[collect]\nmap_path = \"/m.toml\"\n[poller]\n[poller.venues.okx]\nrps = 2.5\nbase_url = \"http://x\"\nweight_per_minute = 100\n[poller.venues.okx.periods]\nopenInterest = \"1h\"\n")
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := c.Poller.Venues["okx"]
+	if v.RPS != 2.5 || v.BaseURL != "http://x" || v.WeightPerMinute != 100 || v.Periods["openInterest"] != "1h" || c.Poller.MapPath != "/m.toml" {
+		t.Fatalf("%+v", c.Poller)
+	}
+	write("[poller]\nmap_path = \"/p.toml\"\n")
+	if c, err = Load(path); err != nil || c.Poller.MapPath != "/p.toml" {
+		t.Fatalf("%+v %v", c.Poller, err)
+	}
+	for _, bad := range []string{
+		"[poller.venues.nope]\nrps = 1\n",
+		"[poller.venues.okx]\nrps = -1\n",
+		"[poller.venues.okx.periods]\nx = \"soon\"\n",
+		"[poller.venues.okx]\noverlap = \"-1h\"\n",
+		"[poller]\ninitial_lookback = \"abc\"\n",
+		"[poller.venues.okx.channel_rps]\nx = -2\n",
+	} {
+		write(bad)
+		if _, err := Load(path); err == nil {
+			t.Fatalf("accepted %q", bad)
+		}
+	}
+}
+
+func TestExampleConfigLoads(t *testing.T) {
+	c, err := Load(filepath.Join("..", "..", "config", "config.toml.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := c.Poller.Venues["bybit"]; v.RPS != 2 || v.WeightPerMinute != 240 {
+		t.Fatalf("%+v", c.Poller.Venues)
+	}
+}

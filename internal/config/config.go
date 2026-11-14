@@ -16,6 +16,74 @@ type Config struct {
 	Archive Archive `toml:"archive"`
 	Pack    Pack    `toml:"pack"`
 	Checks  Checks  `toml:"checks"`
+	Poller  Poller  `toml:"poller"`
+}
+
+// Poller is the validated subset of [poller] shared with cmd/liqwatch-poller, which decodes the full table
+// into poller.PollConfig.
+type Poller struct {
+	MapPath         string                 `toml:"map_path"` // venue map for per-venue symbol universes; default collect.map_path
+	Overlap         string                 `toml:"overlap"`
+	InitialLookback string                 `toml:"initial_lookback"`
+	Venues          map[string]PollerVenue `toml:"venues"`
+}
+
+// PollerVenue is one [poller.venues.<name>] table.
+type PollerVenue struct {
+	RPS             float64            `toml:"rps"`               // requests per second per endpoint
+	WeightPerMinute float64            `toml:"weight_per_minute"` // request budget per minute
+	BaseURL         string             `toml:"base_url"`          // overrides the venue default
+	Periods         map[string]string  `toml:"periods"`           // channel -> period
+	ChannelRPS      map[string]float64 `toml:"channel_rps"`
+	Weights         map[string]float64 `toml:"weights"`
+	Overlap         string             `toml:"overlap"`
+	InitialLookback string             `toml:"initial_lookback"`
+}
+
+var pollerVenues = map[string]bool{"binance": true, "bybit": true, "okx": true, "bitget": true, "gate": true, "mexc": true, "kucoin": true}
+
+func (p Poller) validate() error {
+	dur := func(what, v string) error {
+		if v == "" {
+			return nil
+		}
+		if d, err := time.ParseDuration(v); err != nil || d <= 0 {
+			return fmt.Errorf("poller %s %q is not a positive duration", what, v)
+		}
+		return nil
+	}
+	if err := dur("overlap", p.Overlap); err != nil {
+		return err
+	}
+	if err := dur("initial_lookback", p.InitialLookback); err != nil {
+		return err
+	}
+	for name, v := range p.Venues {
+		if !pollerVenues[name] {
+			return fmt.Errorf("unknown poller venue %q", name)
+		}
+		if v.RPS < 0 || v.WeightPerMinute < 0 {
+			return fmt.Errorf("poller.venues.%s: rps and weight_per_minute must not be negative", name)
+		}
+		for _, d := range []struct{ what, v string }{{"overlap", v.Overlap}, {"initial_lookback", v.InitialLookback}} {
+			if err := dur("venues."+name+"."+d.what, d.v); err != nil {
+				return err
+			}
+		}
+		for k, d := range v.Periods {
+			if err := dur("venues."+name+".periods."+k, d); err != nil {
+				return err
+			}
+		}
+		for _, m := range []map[string]float64{v.ChannelRPS, v.Weights} {
+			for k, f := range m {
+				if f < 0 {
+					return fmt.Errorf("poller.venues.%s: %s must not be negative", name, k)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 type Collect struct {
@@ -71,6 +139,9 @@ func Load(path string) (*Config, error) {
 	if err := toml.Unmarshal(b, &c); err != nil {
 		return nil, fmt.Errorf("decode config: %w", err)
 	}
+	if c.Poller.MapPath == "" {
+		c.Poller.MapPath = c.Collect.MapPath
+	}
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
@@ -93,6 +164,9 @@ func (c Config) validate() error {
 		if err != nil || d < 0 {
 			return fmt.Errorf("invalid collect.throttle interval %q", key)
 		}
+	}
+	if err := c.Poller.validate(); err != nil {
+		return err
 	}
 	if c.DataDir == "" || c.Collect.MetricsAddr == "" {
 		return fmt.Errorf("data_dir and collect.metrics_addr are required")

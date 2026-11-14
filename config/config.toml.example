@@ -35,8 +35,25 @@ markPrice_all = 60
 forceOrder_all = 0
 
 [poller]
+# map_path = "/etc/liqwatch/venue-map.toml" # defaults to collect.map_path
 overlap = "2h"
 initial_lookback = "2h" # Clamped to 29 days.
 
 [poller.periods]
 # openInterestHist = "24h"
+
+# Per-venue poller settings; run one process per venue: liqwatch-poller -venue bybit.
+# Universe: usable symbols of the venue in map_path (default collect.map_path); binance uses exchangeInfo.
+# The top-level channel tables above (periods, rps, weights) and base_url apply to binance only.
+[poller.venues.bybit]
+rps = 2                  # requests per second per endpoint
+weight_per_minute = 240  # request budget per minute
+# base_url = "https://api.bybit.com"  # override the venue default, e.g. for tests
+# overlap = "2h"
+# initial_lookback = "2h"
+
+[poller.venues.bybit.periods]
+# openInterest = "24h"
+
+[poller.venues.bybit.channel_rps]
+# openInterest = 1

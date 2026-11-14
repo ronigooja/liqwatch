@@ -21,29 +21,59 @@ type HTTPDoer interface {
 
 var monoOrigin = time.Now()
 
+// PollConfig is the [poller] table. The top-level channel maps and URLs predate venues and apply to
+// binance; every venue (binance included) can override them in [poller.venues.<name>].
 type PollConfig struct {
-	WeightPerMinute float64            `toml:"weight_per_minute"`
-	Weights         map[string]float64 `toml:"weights"`
-	RPS             map[string]float64 `toml:"rps"`
-	Periods         map[string]string  `toml:"periods"`
-	Overlap         string             `toml:"overlap"`
-	InitialLookback string             `toml:"initial_lookback"`
-	BaseURL         string             `toml:"base_url"`
-	BracketsURL     string             `toml:"brackets_url"`
+	WeightPerMinute float64                `toml:"weight_per_minute"`
+	Weights         map[string]float64     `toml:"weights"`
+	RPS             map[string]float64     `toml:"rps"`
+	Periods         map[string]string      `toml:"periods"`
+	Overlap         string                 `toml:"overlap"`
+	InitialLookback string                 `toml:"initial_lookback"`
+	BaseURL         string                 `toml:"base_url"`
+	BracketsURL     string                 `toml:"brackets_url"`
+	MapPath         string                 `toml:"map_path"` // venue map for the symbol universe; default /etc/liqwatch/venue-map.toml
+	Venues          map[string]VenueConfig `toml:"venues"`
 }
-type VenueFactory func(*Binance) []Channel
 
-var registry = map[string]VenueFactory{}
+func init() { RegisterVenue("binance", binanceFactory, WithBaseURL("https://fapi.binance.com")) }
 
-func RegisterVenue(name string, factory VenueFactory) { registry[name] = factory }
-func Venue(name string, b *Binance) ([]Channel, error) {
-	f := registry[name]
-	if f == nil {
-		return nil, fmt.Errorf("unknown venue %q", name)
+// binanceFactory adapts the Binance channels to Env: universe from exchangeInfo, config merged with
+// [poller.venues.binance].
+func binanceFactory(e *Env) []Channel {
+	cfg := e.Config
+	vc := cfg.Venues["binance"]
+	merge := func(top, over map[string]float64) map[string]float64 {
+		out := map[string]float64{}
+		for k, v := range top {
+			out[k] = v
+		}
+		for k, v := range over {
+			out[k] = v
+		}
+		return out
 	}
-	return f(b), nil
+	cfg.RPS, cfg.Weights = merge(cfg.RPS, vc.ChannelRPS), merge(cfg.Weights, vc.Weights)
+	periods := map[string]string{}
+	for k, v := range cfg.Periods {
+		periods[k] = v
+	}
+	for k, v := range vc.Periods {
+		periods[k] = v
+	}
+	cfg.Periods = periods
+	if vc.Overlap != "" {
+		cfg.Overlap = vc.Overlap
+	}
+	if vc.InitialLookback != "" {
+		cfg.InitialLookback = vc.InitialLookback
+	}
+	cfg.BaseURL = e.BaseURL
+	bn := &Binance{Doer: e.Doer, Clock: e.Clock, Config: cfg, Selected: e.Selected}
+	e.Universe = bn.Symbols
+	e.OnBind(func(s *Scheduler) { bn.Scheduler = s })
+	return BinanceChannels(bn)
 }
-func init() { RegisterVenue("binance", BinanceChannels) }
 
 type Binance struct {
 	Doer                          HTTPDoer
@@ -326,6 +356,9 @@ func BinanceChannels(b *Binance) []Channel {
 	}
 	if b.Doer == nil {
 		b.Doer = &http.Client{Timeout: 30 * time.Second}
+	}
+	if _, ok := b.Doer.(uaDoer); !ok {
+		b.Doer = uaDoer{b.Doer}
 	}
 	names := []string{"exchangeInfo", "brackets", "constituents", "topLongShortPositionRatio", "topLongShortAccountRatio", "globalLongShortAccountRatio", "takerlongshortRatio", "openInterestHist", "fundingRate"}
 	out := make([]Channel, 0, len(names))
