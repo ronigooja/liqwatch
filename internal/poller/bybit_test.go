@@ -94,7 +94,7 @@ func TestBybitPagingAndSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(records) != 1201 || len(ends) != 3 {
+	if len(records) != 1201 || len(ends) != 4 {
 		t.Fatalf("rows %d ends %v", len(records), ends)
 	}
 	if ends[1] != now.UnixMilli()-499*300000-1 || ends[2] != now.UnixMilli()-999*300000-1 {
@@ -111,5 +111,146 @@ func TestBybitPagingAndSnapshots(t *testing.T) {
 		if err != nil || len(rows) != 2 {
 			t.Fatal(c.Name, len(rows), err)
 		}
+	}
+}
+
+func TestBybitDailyOverlapAndShortPage(t *testing.T) {
+	for _, short := range []bool{false, true} {
+		t.Run(fmt.Sprintf("short=%v", short), func(t *testing.T) {
+			now := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+			clock := &fakeClock{now}
+			calls := 0
+			firstPage := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				q := r.URL.Query()
+				start, _ := strconv.ParseInt(q.Get("startTime"), 10, 64)
+				end, _ := strconv.ParseInt(q.Get("endTime"), 10, 64)
+				rows := []json.RawMessage{}
+				// The server caps time slots, so holes produce a short first page.
+				for ts, slots := end-end%300000, 0; ts >= start && slots < 500; ts, slots = ts-300000, slots+1 {
+					if short && ts <= now.UnixMilli()-300000 && ts >= now.UnixMilli()-900000 {
+						continue
+					}
+					rows = append(rows, json.RawMessage(fmt.Sprintf(`{"symbol":"BTCUSDT","timestamp":"%d"}`, ts)))
+				}
+				if calls == 1 {
+					firstPage = len(rows)
+				}
+				json.NewEncoder(w).Encode(map[string]any{"retCode": 0, "result": map[string]any{"list": rows}})
+			}))
+			defer server.Close()
+			path := filepath.Join(t.TempDir(), "map.toml")
+			if err := os.WriteFile(path, []byte("[[pair]]\nbinance='BTCUSDT'\nvenue='bybit'\nsymbol='BTCUSDT'\nexp10=0\nstatus='auto'\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			sink := &memorySink{}
+			env, channels, err := NewVenue("bybit", PollConfig{MapPath: path, InitialLookback: "72h", Venues: map[string]VenueConfig{"bybit": {BaseURL: server.URL}}}, Deps{Clock: clock, Sink: sink})
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, err := NewScheduler(channels[:1], sink, clock, "", env.WeightPerMinute)
+			if err != nil {
+				t.Fatal(err)
+			}
+			env.Bind(s)
+			if _, err := s.Step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			wantFirst := 500
+			if short {
+				wantFirst = 497
+			}
+			if firstPage != wantFirst || calls != 2 {
+				t.Fatalf("first page=%d calls=%d", firstPage, calls)
+			}
+			seen := map[int64]bool{}
+			gaps := 0
+			for _, r := range sink.records {
+				if r.Channel == "gap" {
+					gaps++
+					continue
+				}
+				seen[r.Meta["last_row_timestamp"].(int64)] = true
+			}
+			for ts := now.Add(-72 * time.Hour).UnixMilli(); ts <= now.UnixMilli(); ts += 300000 {
+				hole := short && ts <= now.UnixMilli()-300000 && ts >= now.UnixMilli()-900000
+				if seen[ts] == hole {
+					t.Fatalf("timestamp %d present=%v hole=%v", ts, seen[ts], hole)
+				}
+			}
+			if short && gaps != 1 || !short && gaps != 0 {
+				t.Fatalf("gaps=%d", gaps)
+			}
+			if short {
+				return
+			}
+			clock.t = now.Add(24 * time.Hour)
+			if _, err := s.Step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if calls != 3 || s.Duplicates.Load() != 25 {
+				t.Fatalf("total calls=%d duplicates=%d", calls, s.Duplicates.Load())
+			}
+			counts := map[int64]int{}
+			for _, r := range sink.records {
+				if r.Channel == "accountRatio" {
+					counts[r.Meta["last_row_timestamp"].(int64)]++
+				}
+			}
+			if len(counts) != 865+288 {
+				t.Fatalf("unique rows=%d", len(counts))
+			}
+			for ts, n := range counts {
+				if n != 1 {
+					t.Fatalf("duplicate %d: %d", ts, n)
+				}
+			}
+		})
+	}
+}
+
+func TestBybitNoDataRetryDaily(t *testing.T) {
+	for _, body := range []string{`{"retCode":10001,"retMsg":"params error: symbol not support"}`, `{"retCode":0,"result":{"list":[]}}`} {
+		t.Run(body, func(t *testing.T) {
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; fmt.Fprint(w, body) }))
+			defer server.Close()
+			path := filepath.Join(t.TempDir(), "map.toml")
+			if err := os.WriteFile(path, []byte("[[pair]]\nbinance='BTCUSDT'\nvenue='bybit'\nsymbol='BTCUSDT'\nexp10=0\nstatus='auto'\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			clock := &fakeClock{time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)}
+			sink := &memorySink{}
+			env, channels, err := NewVenue("bybit", PollConfig{MapPath: path, Venues: map[string]VenueConfig{"bybit": {BaseURL: server.URL, Periods: map[string]string{"accountRatio": "5m"}}}}, Deps{Clock: clock, Sink: sink})
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, err := NewScheduler(channels[:1], sink, clock, "", env.WeightPerMinute)
+			if err != nil {
+				t.Fatal(err)
+			}
+			env.Bind(s)
+			step := func() {
+				t.Helper()
+				if _, err := s.Step(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			step()
+			if calls != 1 || len(sink.records) != 1 || !strings.Contains(string(sink.records[0].Payload), `"no_data"`) {
+				t.Fatalf("calls=%d records=%v", calls, sink.records)
+			}
+			clock.t = clock.t.Add(23 * time.Hour)
+			step()
+			if calls != 1 {
+				t.Fatalf("early retry calls=%d", calls)
+			}
+			clock.t = clock.t.Add(time.Hour)
+			step()
+			if calls != 2 || len(sink.records) != 1 {
+				t.Fatalf("calls=%d records=%d", calls, len(sink.records))
+			}
+		})
 	}
 }
