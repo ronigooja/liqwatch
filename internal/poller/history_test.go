@@ -236,3 +236,45 @@ func TestFundingPagination(t *testing.T) {
 		t.Fatalf("rows=%d calls=%d err=%v", len(rows), calls, err)
 	}
 }
+
+func TestRestartForcesDueOverlap(t *testing.T) {
+	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	clock := &fakeClock{now}
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		fmt.Fprintf(w, `[{"timestamp":%d}]`, now.Add(-5*time.Minute).UnixMilli())
+	}))
+	defer server.Close()
+	for i := 0; i < 2; i++ {
+		sink := NewFileSink(dir, time.Hour)
+		b := &Binance{Clock: clock, Doer: server.Client(), Config: PollConfig{BaseURL: server.URL, InitialLookback: "1h", Periods: map[string]string{"openInterestHist": "1m"}}}
+		var channels []Channel
+		for _, c := range BinanceChannels(b) {
+			if c.Name == "openInterestHist" {
+				channels = append(channels, c)
+			}
+		}
+		s, err := NewScheduler(channels, sink, clock, statePath, 240)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.SetSymbols([]string{"BTCUSDT"})
+		b.Scheduler = s
+		if err = s.RunOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if i == 1 && s.Duplicates.Load() != 1 {
+			t.Fatalf("duplicates %d", s.Duplicates.Load())
+		}
+		if err = sink.Close(); err != nil {
+			t.Fatal(err)
+		}
+		clock.t = clock.t.Add(time.Minute)
+	}
+	if calls != 2 {
+		t.Fatalf("requests %d", calls)
+	}
+}
