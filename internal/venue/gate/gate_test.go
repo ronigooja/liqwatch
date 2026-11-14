@@ -44,6 +44,13 @@ func TestShardsAndSubscriptions(t *testing.T) {
 		if got := shard.Header.Get("X-Gate-Size-Decimal"); got != "1" {
 			t.Errorf("shard %s decimal header = %q", shard.Name, got)
 		}
+		wantSpacing := 100 * time.Millisecond
+		if shard.Name == "all" {
+			wantSpacing = 700 * time.Millisecond
+		}
+		if shard.SubscribeSpacing != wantSpacing {
+			t.Errorf("shard %s spacing = %s, want %s", shard.Name, shard.SubscribeSpacing, wantSpacing)
+		}
 	}
 	if len(a.Subscribe(sh[0])) != 102 || len(a.Subscribe(sh[1])) != 3 || len(a.Subscribe(sh[2])) != 2 {
 		t.Fatal("subscription counts")
