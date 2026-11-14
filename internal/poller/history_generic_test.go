@@ -21,13 +21,14 @@ const step5 = 5 * time.Minute
 // range (Bybit/OKX/Gate style); newest=false returns the oldest rows first (Binance fundingRate style).
 // Rows exist in [from, to] ms except timestamps in holes. value changes the payload of a timestamp.
 type fakeExchange struct {
-	from, to int64
-	newest   bool
-	limit    int
-	holes    map[int64]bool
-	value    func(ts int64) int
-	calls    atomic.Int64
-	server   *httptest.Server
+	from, to    int64
+	newest      bool
+	limit       int
+	holes       map[int64]bool
+	value       func(ts int64) int
+	calls       atomic.Int64
+	server      *httptest.Server
+	windowLimit bool // limit timestamp slots rather than existing rows
 }
 
 func newFakeExchange(from, to int64, newest bool, limit int) *fakeExchange {
@@ -36,6 +37,13 @@ func newFakeExchange(from, to int64, newest bool, limit int) *fakeExchange {
 		f.calls.Add(1)
 		start, _ := strconv.ParseInt(r.URL.Query().Get("start"), 10, 64)
 		end, _ := strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)
+		if f.windowLimit {
+			if f.newest {
+				start = max(start, end-int64(f.limit-1)*step5.Milliseconds())
+			} else {
+				end = min(end, start+int64(f.limit)*step5.Milliseconds()-1)
+			}
+		}
 		var rows []map[string]int64
 		for ts := f.from; ts <= f.to; ts += step5.Milliseconds() {
 			if ts >= start && ts <= end && !f.holes[ts] {
@@ -57,6 +65,92 @@ func newFakeExchange(from, to int64, newest bool, limit int) *fakeExchange {
 		json.NewEncoder(w).Encode(rows)
 	}))
 	return f
+}
+
+func TestHistoryShortPagesCoverRange(t *testing.T) {
+	now := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	for _, mode := range []PageMode{PageBackward, PageForward} {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			start := now.Add(-2500 * step5).UnixMilli()
+			f := newFakeExchange(start, now.UnixMilli(), mode == PageBackward, 2000)
+			defer f.server.Close()
+			f.windowLimit = true
+			for _, n := range []int64{600, 700, 800} {
+				f.holes[start+n*step5.Milliseconds()] = true
+			}
+			h := genericHistory(f, &fakeClock{now}, nil, mode)
+			h.Lookback = 2500 * step5
+			var first int
+			fetch := h.Fetch
+			h.Fetch = func(ctx context.Context, a, b int64) ([]Row, error) {
+				rows, err := fetch(ctx, a, b)
+				if f.calls.Load() == 1 {
+					first = len(rows)
+				}
+				return rows, err
+			}
+			recs, err := h.Run(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if first != 1997 {
+				t.Fatalf("first page=%d, want 1997", first)
+			}
+			got := map[int64]bool{}
+			for _, r := range recs {
+				if r.Channel == "oi" {
+					got[r.Meta["last_row_timestamp"].(int64)] = true
+				}
+			}
+			for ts := start; ts <= now.UnixMilli(); ts += step5.Milliseconds() {
+				if got[ts] == f.holes[ts] {
+					t.Fatalf("timestamp %d: present=%v hole=%v", ts, got[ts], f.holes[ts])
+				}
+			}
+			if f.calls.Load() != 2 {
+				t.Fatalf("calls=%d, want 2", f.calls.Load())
+			}
+		})
+	}
+}
+
+func TestHistoryPagingTermination(t *testing.T) {
+	now := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	for _, mode := range []PageMode{PageBackward, PageForward} {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			for _, scenario := range []string{"exhausted", "empty", "repeated"} {
+				t.Run(scenario, func(t *testing.T) {
+					from, to := now.Add(-time.Hour).UnixMilli(), now.UnixMilli()
+					if mode == PageForward {
+						to = now.Add(-time.Hour).UnixMilli()
+						from = now.Add(-2 * time.Hour).UnixMilli()
+					}
+					if scenario == "empty" {
+						from, to = now.Add(time.Hour).UnixMilli(), now.Add(2*time.Hour).UnixMilli()
+					}
+					f := newFakeExchange(from, to, mode == PageBackward, 100)
+					defer f.server.Close()
+					h := genericHistory(f, &fakeClock{now}, nil, mode)
+					h.Lookback = 3 * time.Hour
+					if scenario == "repeated" {
+						fetch := h.Fetch
+						h.Fetch = func(ctx context.Context, _, _ int64) ([]Row, error) { return fetch(ctx, from, to) }
+					}
+					_, err := h.Run(context.Background())
+					if err != nil {
+						t.Fatal(err)
+					}
+					want := int64(2)
+					if scenario == "empty" {
+						want = 1
+					}
+					if f.calls.Load() != want {
+						t.Fatalf("calls=%d, want %d", f.calls.Load(), want)
+					}
+				})
+			}
+		})
+	}
 }
 
 func (f *fakeExchange) fetch(ctx context.Context, start, end int64) ([]Row, error) {
