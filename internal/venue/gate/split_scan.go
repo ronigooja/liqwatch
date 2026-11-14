@@ -38,7 +38,7 @@ func (a *Adapter) scanSplit(sh venue.Shard, msg []byte) ([]rawlog.Record, bool) 
 	s := jsonScanner{b: msg}
 	root, ok := s.value(0, true)
 	s.ws()
-	if !ok || s.i != len(msg) || root.start >= len(msg) || msg[root.start] != '{' {
+	if !ok || s.unsure || s.i != len(msg) || root.start >= len(msg) || msg[root.start] != '{' {
 		return nil, false
 	}
 	// Avoid escaped or non-ASCII keys, case-insensitive struct matches, duplicate

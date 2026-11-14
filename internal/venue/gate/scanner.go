@@ -14,8 +14,9 @@ type jsonNode struct {
 	children   []jsonNode
 }
 type jsonScanner struct {
-	b []byte
-	i int
+	b      []byte
+	i      int
+	unsure bool
 }
 
 func (s *jsonScanner) ws() {
@@ -94,6 +95,9 @@ func (s *jsonScanner) value(depth int, capture bool) (jsonNode, bool) {
 					return n, false
 				}
 				if capture {
+					if bytes.ContainsRune(s.b[start:s.i], '\\') {
+						s.unsure = true
+					}
 					key = decodeString(s.b[start:s.i])
 				}
 				s.ws()
