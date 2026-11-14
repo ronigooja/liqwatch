@@ -102,7 +102,7 @@ func TestOKXBackwardPaging(t *testing.T) {
 		return okxRows(ctx, e, "/test", "BTC-USDT-SWAP", a, b, false)
 	}}
 	records, err := h.Run(context.Background())
-	if err != nil || len(records) != 250 || calls != 3 {
+	if err != nil || len(records) != 248 || calls != 3 {
 		t.Fatalf("records=%d calls=%d err=%v", len(records), calls, err)
 	}
 }
@@ -167,7 +167,7 @@ func TestOKXNoDataAndSourceGap(t *testing.T) {
 			fmt.Fprint(w, `{"code":"0","data":[]}`)
 			return
 		}
-		fmt.Fprintf(w, `{"code":"0","data":[["%d","2"],["%d","1"]]}`, now.Add(-5*time.Minute).UnixMilli(), now.Add(-15*time.Minute).UnixMilli())
+		fmt.Fprintf(w, `{"code":"0","data":[["%d","2"],["%d","1"]]}`, now.Add(-10*time.Minute).UnixMilli(), now.Add(-20*time.Minute).UnixMilli())
 	}))
 	defer server.Close()
 	e := &Env{Venue: "okx", Doer: uaDoer{server.Client()}, Clock: clock, BaseURL: server.URL, Lookback: time.Hour, Universe: func() []string { return []string{"EMPTY-USDT-SWAP", "BTC-USDT-SWAP"} }}
@@ -203,7 +203,7 @@ func TestOKXOverlapDedup(t *testing.T) {
 	now := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
 	clock := &fakeClock{t: now}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{"code":"0","data":[["%d","2"],["%d","1"]]}`, now.Add(-5*time.Minute).UnixMilli(), now.Add(-10*time.Minute).UnixMilli())
+		fmt.Fprintf(w, `{"code":"0","data":[["%d","2"],["%d","1"]]}`, now.Add(-10*time.Minute).UnixMilli(), now.Add(-15*time.Minute).UnixMilli())
 	}))
 	defer server.Close()
 	e := &Env{Venue: "okx", Doer: uaDoer{server.Client()}, Clock: clock, BaseURL: server.URL, Lookback: time.Hour, Universe: func() []string { return []string{"BTC-USDT-SWAP"} }}
@@ -221,7 +221,7 @@ func TestOKXOverlapDedup(t *testing.T) {
 				sink.Write(r)
 			}
 		}
-		s.state.Jobs["okx/longShortAccountRatioContract/BTC-USDT-SWAP"] = jobState{RowTimestamp: now.Add(-5 * time.Minute).UnixMilli()}
+		s.state.Jobs["okx/longShortAccountRatioContract/BTC-USDT-SWAP"] = jobState{RowTimestamp: now.Add(-10 * time.Minute).UnixMilli()}
 	}
 	if len(sink.records) != 2 || s.Duplicates.Load() != 2 {
 		t.Fatalf("records %d duplicates %d", len(sink.records), s.Duplicates.Load())

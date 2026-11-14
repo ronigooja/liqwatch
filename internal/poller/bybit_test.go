@@ -94,7 +94,7 @@ func TestBybitPagingAndSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(records) != 1201 || len(ends) != 4 {
+	if len(records) != 1199 || len(ends) != 4 {
 		t.Fatalf("rows %d ends %v", len(records), ends)
 	}
 	if ends[1] != now.UnixMilli()-499*300000-1 || ends[2] != now.UnixMilli()-999*300000-1 {
@@ -129,7 +129,7 @@ func TestBybitDailyOverlapAndShortPage(t *testing.T) {
 				rows := []json.RawMessage{}
 				// The server caps time slots, so holes produce a short first page.
 				for ts, slots := end-end%300000, 0; ts >= start && slots < 500; ts, slots = ts-300000, slots+1 {
-					if short && ts <= now.UnixMilli()-300000 && ts >= now.UnixMilli()-900000 {
+					if short && ts <= now.UnixMilli()-900000 && ts >= now.UnixMilli()-1500000 {
 						continue
 					}
 					rows = append(rows, json.RawMessage(fmt.Sprintf(`{"symbol":"BTCUSDT","timestamp":"%d"}`, ts)))
@@ -173,8 +173,8 @@ func TestBybitDailyOverlapAndShortPage(t *testing.T) {
 				}
 				seen[r.Meta["last_row_timestamp"].(int64)] = true
 			}
-			for ts := now.Add(-72 * time.Hour).UnixMilli(); ts <= now.UnixMilli(); ts += 300000 {
-				hole := short && ts <= now.UnixMilli()-300000 && ts >= now.UnixMilli()-900000
+			for ts := now.Add(-72 * time.Hour).UnixMilli(); ts <= now.Add(-10*time.Minute).UnixMilli(); ts += 300000 {
+				hole := short && ts <= now.UnixMilli()-900000 && ts >= now.UnixMilli()-1500000
 				if seen[ts] == hole {
 					t.Fatalf("timestamp %d present=%v hole=%v", ts, seen[ts], hole)
 				}
@@ -198,7 +198,7 @@ func TestBybitDailyOverlapAndShortPage(t *testing.T) {
 					counts[r.Meta["last_row_timestamp"].(int64)]++
 				}
 			}
-			if len(counts) != 865+288 {
+			if len(counts) != 863+288 {
 				t.Fatalf("unique rows=%d", len(counts))
 			}
 			for ts, n := range counts {

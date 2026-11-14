@@ -75,7 +75,7 @@ func TestGateHistoryAndSnapshots(t *testing.T) {
 			count++
 		}
 	}
-	if count != 3000 || gaps != 1 {
+	if count != 2998 || gaps != 1 {
 		t.Fatalf("history rows=%d gaps=%d", count, gaps)
 	}
 	if requests["/futures/usdt/contract_stats"] != 2 {

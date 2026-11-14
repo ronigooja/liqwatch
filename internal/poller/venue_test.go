@@ -216,7 +216,7 @@ func TestHistoryChannelEndToEnd(t *testing.T) {
 	clock := &fakeClock{now}
 	sink := &memorySink{}
 	e := &Env{Venue: "fake", Doer: uaDoer{f.server.Client()}, Clock: clock, Sink: sink, RPS: 1, Overlap: time.Hour, Lookback: 2 * time.Hour, Periods: map[string]time.Duration{}, ChannelRPS: map[string]float64{}, Weights: map[string]float64{}}
-	ch := e.HistoryChannel("oi", HistorySpec{Step: step5, Mode: PageBackward, PageSize: 50, Fetch: func(ctx context.Context, sym string, start, end int64) ([]Row, error) {
+	ch := e.HistoryChannel("oi", HistorySpec{Step: step5, Grace: 2 * step5, Mode: PageBackward, PageSize: 50, Fetch: func(ctx context.Context, sym string, start, end int64) ([]Row, error) {
 		return f.fetch(ctx, start, end)
 	}})
 	s, _ := NewScheduler([]Channel{ch}, sink, clock, "", 240)
@@ -225,7 +225,7 @@ func TestHistoryChannelEndToEnd(t *testing.T) {
 	if _, err := s.Step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(sink.records) != 25 || s.RowTimestamp("fake", "oi", "BTCUSDT") != now.UnixMilli() {
+	if len(sink.records) != 22 || s.RowTimestamp("fake", "oi", "BTCUSDT") != now.Add(-3*step5).UnixMilli() {
 		t.Fatalf("records=%d cursor=%d", len(sink.records), s.RowTimestamp("fake", "oi", "BTCUSDT"))
 	}
 }

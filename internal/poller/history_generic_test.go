@@ -102,7 +102,7 @@ func TestHistoryShortPagesCoverRange(t *testing.T) {
 					got[r.Meta["last_row_timestamp"].(int64)] = true
 				}
 			}
-			for ts := start; ts <= now.UnixMilli(); ts += step5.Milliseconds() {
+			for ts := start; ts <= now.Add(-2*step5).UnixMilli(); ts += step5.Milliseconds() {
 				if got[ts] == f.holes[ts] {
 					t.Fatalf("timestamp %d: present=%v hole=%v", ts, got[ts], f.holes[ts])
 				}
@@ -241,7 +241,7 @@ func TestGenericPagingModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			first := (start + 299999) / 300000 * 300000
-			checkSeries(t, recs, first, nowMS/300000*300000, int((nowMS/300000*300000-first)/300000)+1)
+			checkSeries(t, recs, first, nowMS-2*step5.Milliseconds(), int((nowMS-2*step5.Milliseconds()-first)/300000)+1)
 			if got := f.calls.Load(); got < tc.calls-2 || got > tc.calls+2 {
 				t.Fatalf("calls=%d expected about %d", got, tc.calls)
 			}
@@ -272,7 +272,7 @@ func TestGenericBackwardStopsAtStartAndNeverRepeats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(recs) != 121 { // 10h = 120 steps, inclusive start boundary
+	if len(recs) != 119 { // Exclude the two unfinished tail buckets.
 		t.Fatalf("rows=%d", len(recs))
 	}
 	for i := 1; i < len(requested); i++ {
@@ -310,7 +310,7 @@ func TestGenericSourceGapsBothDirections(t *testing.T) {
 					gaps = append(gaps, r)
 				}
 			}
-			if len(gaps) != 1 || len(recs) != 24+1-2+1 {
+			if len(gaps) != 1 || len(recs) != 24+1-2+1-2 {
 				t.Fatalf("gaps=%d recs=%d", len(gaps), len(recs))
 			}
 			var g struct {
@@ -353,16 +353,16 @@ func TestGenericOverlapDedupAndRevision(t *testing.T) {
 				t.Fatal(err)
 			}
 			first := len(sink.records)
-			if first != 25 {
+			if first != 23 {
 				t.Fatalf("first run wrote %d", first)
 			}
 			cursor := s.RowTimestamp("fake", "oi", "BTCUSDT")
-			if cursor != now.UnixMilli() {
+			if cursor != now.Add(-2*step5).UnixMilli() {
 				t.Fatalf("cursor %d", cursor)
 			}
 			clock.t = clock.t.Add(5 * time.Minute)
 			f.value = func(ts int64) int {
-				if ts == now.UnixMilli() {
+				if ts == now.Add(-2*step5).UnixMilli() {
 					return 2
 				}
 				return 1
@@ -370,18 +370,19 @@ func TestGenericOverlapDedupAndRevision(t *testing.T) {
 			if _, err := s.Step(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			// overlap of 2h (default) re-reads 24 old rows (all duplicates) plus now(revised) and now+5m (new)
-			if s.Duplicates.Load() != 24 || s.Revisions.Load() != 1 {
+			// The earlier cursor extends overlap two rows before the initial lookback; it also
+			// re-reads one deliberately revised row and includes one newly finalized row.
+			if s.Duplicates.Load() != 22 || s.Revisions.Load() != 1 {
 				t.Fatalf("dups=%d revs=%d", s.Duplicates.Load(), s.Revisions.Load())
 			}
-			if len(sink.records) != first+2 {
+			if len(sink.records) != first+4 {
 				t.Fatalf("wrote %d", len(sink.records)-first)
 			}
-			rev := sink.records[first]
-			if rev.Meta["revised"] != true || rev.Meta["last_row_timestamp"].(int64) != now.UnixMilli() {
+			rev := sink.records[first+2]
+			if rev.Meta["revised"] != true || rev.Meta["last_row_timestamp"].(int64) != now.Add(-2*step5).UnixMilli() {
 				t.Fatalf("revision not first appended: %+v", rev.Meta)
 			}
-			if sink.records[first+1].Meta["revised"] != nil {
+			if sink.records[first+3].Meta["revised"] != nil {
 				t.Fatal("new row flagged revised")
 			}
 		})
@@ -478,7 +479,7 @@ func TestGenericRestartReconstruction(t *testing.T) {
 			sink.Close()
 			clock.t = clock.t.Add(5 * time.Minute)
 			f.value = func(ts int64) int {
-				if ts == now.UnixMilli() {
+				if ts == now.Add(-10*time.Minute).UnixMilli() {
 					return 9
 				}
 				return 1
