@@ -156,3 +156,111 @@ func TestOKXCurrencyRetentionError(t *testing.T) {
 		})
 	}
 }
+
+func TestOKXNoDataAndSourceGap(t *testing.T) {
+	now := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	clock := &fakeClock{t: now}
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Query().Get("instId") == "EMPTY-USDT-SWAP" {
+			fmt.Fprint(w, `{"code":"0","data":[]}`)
+			return
+		}
+		fmt.Fprintf(w, `{"code":"0","data":[["%d","2"],["%d","1"]]}`, now.Add(-5*time.Minute).UnixMilli(), now.Add(-15*time.Minute).UnixMilli())
+	}))
+	defer server.Close()
+	e := &Env{Venue: "okx", Doer: uaDoer{server.Client()}, Clock: clock, BaseURL: server.URL, Lookback: time.Hour, Universe: func() []string { return []string{"EMPTY-USDT-SWAP", "BTC-USDT-SWAP"} }}
+	ch := okxFactory(e)[0]
+	sink := &memorySink{}
+	s, _ := NewScheduler([]Channel{ch}, sink, clock, "", 240)
+	e.Bind(s)
+	empty, err := ch.Fetch(context.Background(), "EMPTY-USDT-SWAP")
+	if err != nil || len(empty) != 1 || !strings.Contains(string(empty[0].Payload), `"no_data"`) || !ch.Skip("EMPTY-USDT-SWAP") {
+		t.Fatalf("no_data %v %v", empty, err)
+	}
+	r, err := ch.Fetch(context.Background(), "BTC-USDT-SWAP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, v := range r {
+		if v.Channel == "gap" && strings.Contains(string(v.Payload), `"source_gap"`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("missing source gap")
+	}
+	if calls != 2 {
+		t.Fatalf("calls %d", calls)
+	}
+}
+
+func TestOKXOverlapDedup(t *testing.T) {
+	now := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	clock := &fakeClock{t: now}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"code":"0","data":[["%d","2"],["%d","1"]]}`, now.Add(-5*time.Minute).UnixMilli(), now.Add(-10*time.Minute).UnixMilli())
+	}))
+	defer server.Close()
+	e := &Env{Venue: "okx", Doer: uaDoer{server.Client()}, Clock: clock, BaseURL: server.URL, Lookback: time.Hour, Universe: func() []string { return []string{"BTC-USDT-SWAP"} }}
+	ch := okxFactory(e)[0]
+	sink := &memorySink{}
+	s, _ := NewScheduler([]Channel{ch}, sink, clock, "", 240)
+	e.Bind(s)
+	for i := 0; i < 2; i++ {
+		records, err := ch.Fetch(context.Background(), "BTC-USDT-SWAP")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range records {
+			if !s.dedup(&r) {
+				sink.Write(r)
+			}
+		}
+		s.state.Jobs["okx/longShortAccountRatioContract/BTC-USDT-SWAP"] = jobState{RowTimestamp: now.Add(-5 * time.Minute).UnixMilli()}
+	}
+	if len(sink.records) != 2 || s.Duplicates.Load() != 2 {
+		t.Fatalf("records %d duplicates %d", len(sink.records), s.Duplicates.Load())
+	}
+}
+
+func TestOKXUniverseFromMap(t *testing.T) {
+	p := t.TempDir() + "/map.toml"
+	b := `[[pair]]
+venue="okx"
+binance="BTCUSDT"
+symbol="BTC-USDT-SWAP"
+status="auto"
+[[pair]]
+venue="okx"
+binance="ETHUSDT"
+symbol="ETH-USDT-SWAP"
+status="reviewed"
+[[pair]]
+venue="okx"
+binance="SOLUSDT"
+symbol="SOL-USDT-SWAP"
+status="review"
+[[pair]]
+venue="bybit"
+binance="DOGEUSDT"
+symbol="DOGEUSDT"
+status="auto"
+`
+	if err := os.WriteFile(p, []byte(b), 0600); err != nil {
+		t.Fatal(err)
+	}
+	e, _, err := NewVenue("okx", PollConfig{MapPath: p}, Deps{Selected: []string{"ETH-USDT-SWAP", "SOL-USDT-SWAP"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := e.Universe()
+	if len(got) != 1 || got[0] != "ETH-USDT-SWAP" {
+		t.Fatalf("universe %v", got)
+	}
+	if okxCurrency("PEPE-USDT-SWAP") != "PEPE" || okxCurrency("1000PEPE-USDT-SWAP") != "1000PEPE" {
+		t.Fatal("currency derivation")
+	}
+}
