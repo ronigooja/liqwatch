@@ -192,7 +192,9 @@ func TestOKXNoDataAndSourceGap(t *testing.T) {
 	if !found {
 		t.Fatal("missing source gap")
 	}
-	if calls != 2 {
+	// One request for the empty instrument, then the data page plus one confirming request: the page's
+	// earliest row is more than two steps after the lookback start, so coverage paging asks once more.
+	if calls != 3 {
 		t.Fatalf("calls %d", calls)
 	}
 }
