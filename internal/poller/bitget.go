@@ -31,7 +31,7 @@ func bitgetChannels(e *Env) []Channel {
 				if err != nil {
 					// Env.Get includes the body of HTTP errors in its message.
 					var envelope bitgetEnvelope
-					if strings.HasPrefix(err.Error(), "HTTP 400: ") && json.Unmarshal([]byte(strings.TrimPrefix(err.Error(), "HTTP 400: ")), &envelope) == nil && envelope.Code == "40309" {
+					if strings.HasPrefix(err.Error(), "HTTP 400: ") && json.Unmarshal([]byte(strings.TrimPrefix(err.Error(), "HTTP 400: ")), &envelope) == nil && (envelope.Code == "40309" || envelope.Code == "40054") {
 						return nil, nil
 					}
 					return nil, err
