@@ -25,8 +25,8 @@ type PollConfig struct {
 	Weights         map[string]float64 `toml:"weights"`
 	RPS             map[string]float64 `toml:"rps"`
 	Periods         map[string]string  `toml:"periods"`
-	Overlap string `toml:"overlap"`
-	InitialLookback string `toml:"initial_lookback"`
+	Overlap         string             `toml:"overlap"`
+	InitialLookback string             `toml:"initial_lookback"`
 	BaseURL         string             `toml:"base_url"`
 	BracketsURL     string             `toml:"brackets_url"`
 }
@@ -73,22 +73,85 @@ func (b *Binance) Symbols() []string {
 	return out
 }
 func (b *Binance) request(ctx context.Context, name, sym string) ([]Record, error) {
- if isHistory(name) || name == "fundingRate" { return b.history(ctx, name, sym) }
- return b.requestPage(ctx,name,sym,0,0)
+	if isHistory(name) || name == "fundingRate" {
+		return b.history(ctx, name, sym)
+	}
+	return b.requestPage(ctx, name, sym, 0, 0)
 }
-func isHistory(name string) bool { switch name { case "openInterestHist", "topLongShortPositionRatio", "topLongShortAccountRatio", "globalLongShortAccountRatio", "takerlongshortRatio": return true }; return false }
-func duration(s string, fallback time.Duration) time.Duration { d,e:=time.ParseDuration(s); if e!=nil || d<=0 { return fallback }; return d }
-func (b *Binance) history(ctx context.Context, name,sym string) ([]Record,error) {
- now:=b.Clock.Now(); overlap:=duration(b.Config.Overlap,2*time.Hour); lookback:=duration(b.Config.InitialLookback,7*24*time.Hour); if lookback>29*24*time.Hour { lookback=29*24*time.Hour }
- start:=now.Add(-lookback).UnixMilli(); cursor:=int64(0); if b.Scheduler!=nil { cursor=b.Scheduler.RowTimestamp("binance",name,sym) }; if cursor>0 { start=cursor-overlap.Milliseconds() }
- if isHistory(name) { oldest:=now.Add(-29*24*time.Hour).UnixMilli(); if start<oldest { if cursor>0 && cursor<oldest && b.Scheduler!=nil { p,_:=json.Marshal(map[string]any{"event":"retention_gap","channel":name,"symbol":sym,"start_ms":cursor,"end_ms":oldest}); b.Scheduler.Sink.Write(Record{Venue:"binance",Symbol:sym,Channel:"gap",RecvWall:now.UnixNano(),Payload:p}) }; start=oldest } }
- var all []Record
- for start<=now.UnixMilli() { end:=now.UnixMilli(); if isHistory(name) { max:=start+(400*5*time.Minute).Milliseconds()-1; if end>max { end=max } }
-  if len(all)>0 && b.Scheduler!=nil { if err:=b.Scheduler.waitRequest(ctx,"binance",name); err!=nil{return nil,err} }
-  rows,err:=b.requestPage(ctx,name,sym,start,end); if err!=nil{return nil,err}; all=append(all,rows...)
-  if isHistory(name) { start=end+1 } else { if len(rows)<1000 { break }; last:=rows[len(rows)-1].Meta["last_row_timestamp"].(int64); if last<start { return nil,fmt.Errorf("funding pagination did not advance") }; start=last+1 }
- }
- return all,nil
+func isHistory(name string) bool {
+	switch name {
+	case "openInterestHist", "topLongShortPositionRatio", "topLongShortAccountRatio", "globalLongShortAccountRatio", "takerlongshortRatio":
+		return true
+	}
+	return false
+}
+func duration(s string, fallback time.Duration) time.Duration {
+	d, e := time.ParseDuration(s)
+	if e != nil || d <= 0 {
+		return fallback
+	}
+	return d
+}
+func (b *Binance) history(ctx context.Context, name, sym string) ([]Record, error) {
+	now := b.Clock.Now()
+	overlap := duration(b.Config.Overlap, 2*time.Hour)
+	lookback := duration(b.Config.InitialLookback, 7*24*time.Hour)
+	if lookback > 29*24*time.Hour {
+		lookback = 29 * 24 * time.Hour
+	}
+	start := now.Add(-lookback).UnixMilli()
+	cursor := int64(0)
+	if b.Scheduler != nil {
+		cursor = b.Scheduler.RowTimestamp("binance", name, sym)
+	}
+	if cursor > 0 {
+		start = cursor - overlap.Milliseconds()
+	}
+	if isHistory(name) {
+		oldest := now.Add(-29 * 24 * time.Hour).UnixMilli()
+		if start < oldest {
+			if cursor > 0 && cursor < oldest && b.Scheduler != nil {
+				p, _ := json.Marshal(map[string]any{"event": "retention_gap", "channel": name, "symbol": sym, "start_ms": cursor, "end_ms": oldest})
+				b.Scheduler.Sink.Write(Record{Venue: "binance", Symbol: sym, Channel: "gap", RecvWall: now.UnixNano(), Payload: p})
+			}
+			start = oldest
+		}
+	}
+	var all []Record
+	first := true
+	for start <= now.UnixMilli() {
+		end := now.UnixMilli()
+		if isHistory(name) {
+			max := start + (400 * 5 * time.Minute).Milliseconds() - 1
+			if end > max {
+				end = max
+			}
+		}
+		if !first && b.Scheduler != nil {
+			if err := b.Scheduler.waitRequest(ctx, "binance", name); err != nil {
+				return nil, err
+			}
+		}
+		first = false
+		rows, err := b.requestPage(ctx, name, sym, start, end)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, rows...)
+		if isHistory(name) {
+			start = end + 1
+		} else {
+			if len(rows) < 1000 {
+				break
+			}
+			last := rows[len(rows)-1].Meta["last_row_timestamp"].(int64)
+			if last < start {
+				return nil, fmt.Errorf("funding pagination did not advance")
+			}
+			start = last + 1
+		}
+	}
+	return all, nil
 }
 func (b *Binance) requestPage(ctx context.Context, name, sym string, start, end int64) ([]Record, error) {
 	now := b.Clock.Now()
@@ -109,8 +172,12 @@ func (b *Binance) requestPage(ctx context.Context, name, sym string, start, end 
 		q.Set("limit", "500")
 	}
 	if series || name == "fundingRate" {
- q.Set("startTime", strconv.FormatInt(start,10)); q.Set("endTime",strconv.FormatInt(end,10)); if !series { q.Set("limit","1000") }
- }
+		q.Set("startTime", strconv.FormatInt(start, 10))
+		q.Set("endTime", strconv.FormatInt(end, 10))
+		if !series {
+			q.Set("limit", "1000")
+		}
+	}
 	var body io.Reader
 	if name == "brackets" {
 		endpoint = b.Config.BracketsURL
@@ -206,8 +273,28 @@ func (b *Binance) requestPage(ctx context.Context, name, sym string, start, end 
 		return out, nil
 	}
 	if series || name == "fundingRate" {
- var rows []json.RawMessage; if err=json.Unmarshal(raw,&rows); err!=nil{return nil,err}; field:="timestamp"; if name=="fundingRate" {field="fundingTime"}; out:=make([]Record,0,len(rows)); for _,row:=range rows { var obj map[string]json.RawMessage; var ts int64; if json.Unmarshal(row,&obj)!=nil || json.Unmarshal(obj[field],&ts)!=nil || ts<=0 {return nil,fmt.Errorf("missing row timestamp")}; r:=rec; r.Payload=row; r.Meta=map[string]any{"status":resp.StatusCode,"used_weight_1m":meta["used_weight_1m"],"last_row_timestamp":ts}; out=append(out,r) }; return out,nil
- }
+		var rows []json.RawMessage
+		if err = json.Unmarshal(raw, &rows); err != nil {
+			return nil, err
+		}
+		field := "timestamp"
+		if name == "fundingRate" {
+			field = "fundingTime"
+		}
+		out := make([]Record, 0, len(rows))
+		for _, row := range rows {
+			var obj map[string]json.RawMessage
+			var ts int64
+			if json.Unmarshal(row, &obj) != nil || json.Unmarshal(obj[field], &ts) != nil || ts <= 0 {
+				return nil, fmt.Errorf("missing row timestamp")
+			}
+			r := rec
+			r.Payload = row
+			r.Meta = map[string]any{"status": resp.StatusCode, "used_weight_1m": meta["used_weight_1m"], "last_row_timestamp": ts}
+			out = append(out, r)
+		}
+		return out, nil
+	}
 	return []Record{rec}, nil
 }
 func validateBrackets(raw []byte) ([]json.RawMessage, error) {

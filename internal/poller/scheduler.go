@@ -1,17 +1,17 @@
 package poller
 
 import (
+	"bufio"
+	"bytes"
 	"context"
- "bufio"
- "bytes"
- "crypto/sha256"
- "sync/atomic"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"sync/atomic"
 	"time"
 )
 
@@ -89,9 +89,9 @@ type Scheduler struct {
 	blocked, lastRequest map[string]time.Time
 	failures             map[string]*failure
 	stopped              map[string]bool
- seen map[string]map[int64]map[[32]byte]bool
- Duplicates atomic.Uint64
- Revisions atomic.Uint64
+	seen                 map[string]map[int64]map[[32]byte]bool
+	Duplicates           atomic.Uint64
+	Revisions            atomic.Uint64
 }
 
 func NewScheduler(channels []Channel, sink Sink, clock Clock, path string, weight float64) (*Scheduler, error) {
@@ -207,19 +207,110 @@ func (s *Scheduler) available(c Channel, now time.Time) time.Duration {
 	}
 	return wait
 }
+
 // dedup reconstructs recent output before accepting a history row.
 func (s *Scheduler) dedup(r *Record) bool {
- if !isHistory(r.Channel) && r.Channel!="fundingRate" {return false}
- ts,ok:=r.Meta["last_row_timestamp"].(int64); if !ok {return false}; key:=r.Venue+"/"+r.Channel+"/"+r.Symbol
- m,ok:=s.seen[key]; if !ok { m=map[int64]map[[32]byte]bool{}; s.seen[key]=m
-  if sink,yes:=s.Sink.(*FileSink); yes { for _,day:=range []time.Time{s.Clock.Now().Add(-24*time.Hour),s.Clock.Now()} { path:=filepath.Join(sink.Dir,r.Venue,r.Symbol,day.UTC().Format("20060102"),r.Channel+".p.jsonl"); f,e:=os.Open(path); if e!=nil {continue}; sc:=bufio.NewScanner(f); sc.Buffer(make([]byte,4096),16<<20); for sc.Scan() { var v struct { Payload json.RawMessage `json:"p"` }; if json.Unmarshal(sc.Bytes(),&v)!=nil {continue}; var x map[string]json.RawMessage; var t int64; field:="timestamp"; if r.Channel=="fundingRate" {field="fundingTime"}; if json.Unmarshal(v.Payload,&x)!=nil || json.Unmarshal(x[field],&t)!=nil || t<=0 {continue}; addHash(m,t,v.Payload) }; f.Close() } }
- }
- var compact bytes.Buffer; if json.Compact(&compact,r.Payload)!=nil {return false}; h:=sha256.Sum256(compact.Bytes()); if m[ts][h] {s.Duplicates.Add(1); return true}; if len(m[ts])>0 {r.Meta["revised"]=true;s.Revisions.Add(1)}; addHash(m,ts,r.Payload)
- if len(m)>10000 { var oldest int64; for t:=range m {if oldest==0 || t<oldest {oldest=t}}; delete(m,oldest) }; return false
+	if !isHistory(r.Channel) && r.Channel != "fundingRate" {
+		return false
+	}
+	ts, ok := r.Meta["last_row_timestamp"].(int64)
+	if !ok {
+		return false
+	}
+	key := r.Venue + "/" + r.Channel + "/" + r.Symbol
+	m, ok := s.seen[key]
+	if !ok {
+		m = map[int64]map[[32]byte]bool{}
+		s.seen[key] = m
+		if sink, yes := s.Sink.(*FileSink); yes {
+			for _, day := range []time.Time{s.Clock.Now().Add(-24 * time.Hour), s.Clock.Now()} {
+				path := filepath.Join(sink.Dir, r.Venue, r.Symbol, day.UTC().Format("20060102"), r.Channel+".p.jsonl")
+				f, e := os.Open(path)
+				if e != nil {
+					continue
+				}
+				sc := bufio.NewScanner(f)
+				sc.Buffer(make([]byte, 4096), 16<<20)
+				for sc.Scan() {
+					var v struct {
+						Payload json.RawMessage `json:"p"`
+					}
+					if json.Unmarshal(sc.Bytes(), &v) != nil {
+						continue
+					}
+					var x map[string]json.RawMessage
+					var t int64
+					field := "timestamp"
+					if r.Channel == "fundingRate" {
+						field = "fundingTime"
+					}
+					if json.Unmarshal(v.Payload, &x) != nil || json.Unmarshal(x[field], &t) != nil || t <= 0 {
+						continue
+					}
+					addHash(m, t, v.Payload)
+				}
+				f.Close()
+			}
+		}
+	}
+	var compact bytes.Buffer
+	if json.Compact(&compact, r.Payload) != nil {
+		return false
+	}
+	h := sha256.Sum256(compact.Bytes())
+	if m[ts][h] {
+		s.Duplicates.Add(1)
+		return true
+	}
+	if len(m[ts]) > 0 {
+		r.Meta["revised"] = true
+		s.Revisions.Add(1)
+	}
+	addHash(m, ts, r.Payload)
+	if len(m) > 10000 {
+		var oldest int64
+		for t := range m {
+			if oldest == 0 || t < oldest {
+				oldest = t
+			}
+		}
+		delete(m, oldest)
+	}
+	return false
 }
-func addHash(m map[int64]map[[32]byte]bool, ts int64, raw []byte) { var b bytes.Buffer; if json.Compact(&b,raw)!=nil{return}; h:=sha256.Sum256(b.Bytes()); if m[ts]==nil {m[ts]=map[[32]byte]bool{}}; m[ts][h]=true }
-func (s *Scheduler) waitRequest(ctx context.Context, venue,name string) error {
- for _,c:=range s.Channels { if c.Venue==venue && c.Name==name { for { now:=s.Clock.Now(); d:=s.available(c,now); if d<=0 { w:=c.Weight; if w<=0 {w=1}; s.buckets[venue].tokens-=w; s.lastRequest[venue+"/"+name]=now; return nil }; if err:=s.Clock.Sleep(ctx,d); err!=nil{return err} } } }; return nil
+func addHash(m map[int64]map[[32]byte]bool, ts int64, raw []byte) {
+	var b bytes.Buffer
+	if json.Compact(&b, raw) != nil {
+		return
+	}
+	h := sha256.Sum256(b.Bytes())
+	if m[ts] == nil {
+		m[ts] = map[[32]byte]bool{}
+	}
+	m[ts][h] = true
+}
+func (s *Scheduler) waitRequest(ctx context.Context, venue, name string) error {
+	for _, c := range s.Channels {
+		if c.Venue == venue && c.Name == name {
+			for {
+				now := s.Clock.Now()
+				d := s.available(c, now)
+				if d <= 0 {
+					w := c.Weight
+					if w <= 0 {
+						w = 1
+					}
+					s.buckets[venue].tokens -= w
+					s.lastRequest[venue+"/"+name] = now
+					return nil
+				}
+				if err := s.Clock.Sleep(ctx, d); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 func (s *Scheduler) gap(c Channel, sym, event, msg string, f *failure) {
 	now := s.Clock.Now()
@@ -299,7 +390,9 @@ func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
 				return 0, nil
 			}
 			for _, r := range records {
-                if !s.dedup(&r) { s.Sink.Write(r) }
+				if !s.dedup(&r) {
+					s.Sink.Write(r)
+				}
 			}
 			if f := s.failures[key]; f != nil {
 				s.gap(c, sym, "poll_recovered", "", f)

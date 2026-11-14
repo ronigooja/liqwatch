@@ -33,3 +33,10 @@ unverified_hours = 3
 aggTrade = 120
 markPrice_all = 60
 forceOrder_all = 0
+
+[poller]
+overlap = "2h"
+initial_lookback = "168h" # Clamped to 29 days.
+
+[poller.periods]
+# openInterestHist = "12h"
