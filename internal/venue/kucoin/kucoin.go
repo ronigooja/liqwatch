@@ -133,6 +133,7 @@ func filtered(sh venue.Shard, channel, symbol string, msg []byte, keep, drop map
 type Adapter struct {
 	BaseURL   string
 	Client    *http.Client
+	fallbacks atomic.Uint64
 	acks      atomic.Uint64
 	errors    atomic.Uint64
 	mu        sync.RWMutex
@@ -315,7 +316,52 @@ func (a *Adapter) Heartbeat(sh venue.Shard) (time.Duration, func() (int, []byte)
 	}
 }
 
+// SplitFallbacks returns frames handled by the compatibility path.
+func (a *Adapter) SplitFallbacks() uint64 { return a.fallbacks.Load() }
+
 func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
+	f, ok := scan(msg)
+	if ok {
+		// Control and uncommon frames retain the exact legacy behavior.
+		if f.typ != "error" && f.typ != "ack" && f.typ != "welcome" && f.typ != "pong" && f.code == "" && f.result == "" && f.op == "" {
+			channel, symbol := "", ""
+			if f.t == "mark-price" && f.symbol != "" {
+				channel, symbol = "utamark", f.symbol
+			} else if f.typ == "message" && f.hasData {
+				parts := strings.SplitN(f.topic, ":", 2)
+				if len(parts) == 2 && parts[1] != "" {
+					symbol = parts[1]
+					if parts[0] == "/contractMarket/execution" && f.subject == "match" {
+						channel = "trade"
+					}
+					if parts[0] == "/contract/instrument" && (f.subject == "mark.index.price" || f.subject == "funding.rate") {
+						channel = "mark"
+					}
+				}
+			}
+			if channel != "" {
+				keep, drop := utaKeep, utaDrop
+				if channel == "trade" {
+					keep, drop = tradeKeep, tradeDrop
+				} else if channel == "mark" {
+					keep, drop = markKeep, markDrop
+				}
+				if p, n, valid := scanFilter(f.fields, keep, drop); valid {
+					unknownFields.Add(n)
+					out := []rawlog.Record{{Channel: channel, Symbol: symbol, Payload: p}}
+					if p := sample(sh.Name, channel, msg); p != nil {
+						out = append(out, rawlog.Record{Channel: channel, Symbol: symbol, Payload: p})
+					}
+					return out
+				}
+			}
+		}
+	}
+	a.fallbacks.Add(1)
+	return a.legacySplit(sh, msg)
+}
+
+func (a *Adapter) legacySplit(sh venue.Shard, msg []byte) []rawlog.Record {
 	var f struct {
 		Type    string          `json:"type"`
 		Op      string          `json:"op"`
