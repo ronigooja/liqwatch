@@ -110,6 +110,16 @@ func run(cfg *config.Config, instance string) error {
 		bf = backfill.New(tap, tap, &http.Client{Timeout: 20 * time.Second}, a.WeightPerMinLimit, 0.10)
 	}
 	col := collector.New(sink, adapter, shards)
+	enabled := true
+	overrides := map[string]time.Duration{}
+	for ch, v := range cfg.Collect.Throttle {
+		if ch == "enabled" {
+			enabled = v.(bool)
+		} else {
+			overrides[ch], _ = time.ParseDuration(v.(string))
+		}
+	}
+	col.ConfigureThrottle(enabled, overrides)
 	col.OpenSpacing = time.Duration(cfg.Collect.OpenSpacingMS) * time.Millisecond
 	if bf != nil {
 		shardSyms := map[string][]string{}
@@ -188,6 +198,9 @@ func serveMetrics(addr string, w *rawlog.Writer, col *collector.Collector, ready
 			s.QueueDepth, float64(s.QueueDepth)/float64(max(s.QueueCap, 1)), s.Written)
 		for ch, n := range s.Dropped {
 			fmt.Fprintf(rw, "liqwatch_dropped_total{channel=%q} %d\n", ch, n)
+		}
+		for ch, n := range col.Thinned() {
+			fmt.Fprintf(rw, "liqwatch_thinned_total{channel=%q} %d\n", ch, n)
 		}
 		fmt.Fprintf(rw, "liqwatch_disk_stop_total %d\nliqwatch_reconnects_total %d\nliqwatch_stalls_total %d\nliqwatch_messages_total %d\n",
 			s.DiskStops, col.Reconnects.Load(), col.Stalls.Load(), col.Messages.Load())

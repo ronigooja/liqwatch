@@ -13,6 +13,11 @@ import (
 // Symbol is the venue's unmodified symbol name.
 type Symbol = string
 
+// Throttler optionally declares minimum receive-time intervals by record channel.
+type Throttler interface {
+	Throttles() map[string]time.Duration
+}
+
 // Shard describes one WebSocket connection.
 type Shard struct {
 	Name             string
