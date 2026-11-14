@@ -60,12 +60,14 @@ type Adapter struct {
 	skipped      atomic.Uint64
 	acks         atomic.Uint64
 	errors       atomic.Uint64
+	fallbacks    atomic.Uint64
 }
 
-func (a *Adapter) UnknownFields() uint64   { return a.unknown.Load() }
-func (a *Adapter) Deduplicated() uint64    { return a.skipped.Load() }
-func (a *Adapter) SubscribeAcks() uint64   { return a.acks.Load() }
-func (a *Adapter) SubscribeErrors() uint64 { return a.errors.Load() }
+func (a *Adapter) ScannerFallbacks() uint64 { return a.fallbacks.Load() }
+func (a *Adapter) UnknownFields() uint64    { return a.unknown.Load() }
+func (a *Adapter) Deduplicated() uint64     { return a.skipped.Load() }
+func (a *Adapter) SubscribeAcks() uint64    { return a.acks.Load() }
+func (a *Adapter) SubscribeErrors() uint64  { return a.errors.Load() }
 func (a *Adapter) now() time.Time {
 	if a.clock != nil {
 		return a.clock()
@@ -317,7 +319,7 @@ func jsonStringEnd(data []byte, i int) int {
 	return i
 }
 
-func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
+func (a *Adapter) legacySplit(sh venue.Shard, msg []byte) []rawlog.Record {
 	if bytes.Equal(bytes.TrimSpace(msg), []byte("pong")) {
 		return nil
 	}
