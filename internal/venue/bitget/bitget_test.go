@@ -23,7 +23,12 @@ func TestSymbols(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(data) }))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != "Mozilla/5.0" {
+			t.Errorf("User-Agent = %q", got)
+		}
+		w.Write(data)
+	}))
 	defer server.Close()
 	a := &Adapter{ContractsURL: server.URL}
 	got, err := a.Symbols(context.Background())
