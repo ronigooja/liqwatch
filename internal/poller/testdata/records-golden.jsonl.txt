@@ -1,0 +1,1709 @@
+[
+  {
+    "Fixture": "testdata/bitget/account-long-short.json",
+    "Venue": "bitget",
+    "Channel": "account-long-short",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "00000",
+      "msg": "success",
+      "requestTime": 1794666296294,
+      "data": [
+        {
+          "longAccountRatio": "0.8118",
+          "shortAccountRatio": "0.1882",
+          "longShortAccountRatio": "4.3134",
+          "ts": "1794657000000"
+        },
+        {
+          "longAccountRatio": "0.812",
+          "shortAccountRatio": "0.188",
+          "longShortAccountRatio": "4.3191",
+          "ts": "1794657300000"
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/bitget/contracts.json",
+    "Venue": "bitget",
+    "Channel": "contracts",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "00000",
+      "msg": "success",
+      "requestTime": 1794666301546,
+      "data": [
+        {
+          "symbol": "BTCUSDT",
+          "baseCoin": "BTC",
+          "quoteCoin": "USDT",
+          "buyLimitPriceRatio": "0.05",
+          "sellLimitPriceRatio": "0.05",
+          "feeRateUpRatio": "0.005",
+          "makerFeeRate": "0.0002",
+          "takerFeeRate": "0.0006",
+          "openCostUpRatio": "0.01",
+          "supportMarginCoins": [
+            "USDT"
+          ],
+          "minTradeNum": "0.0001",
+          "priceEndStep": "1",
+          "volumePlace": "4",
+          "pricePlace": "1",
+          "sizeMultiplier": "0.0001",
+          "symbolType": "perpetual",
+          "minTradeUSDT": "5",
+          "maxSymbolOrderNum": "200",
+          "maxProductOrderNum": "1000",
+          "maxPositionNum": "200",
+          "symbolStatus": "normal",
+          "offTime": "-1",
+          "limitOpenTime": "-1",
+          "deliveryTime": "",
+          "deliveryStartTime": "",
+          "deliveryPeriod": "",
+          "launchTime": "",
+          "fundInterval": "8",
+          "minLever": "1",
+          "maxLever": "150",
+          "posLimit": "0.2",
+          "maintainTime": "",
+          "openTime": "",
+          "maxMarketOrderQty": "220",
+          "maxOrderQty": "1200",
+          "isRwa": "NO"
+        },
+        {
+          "symbol": "ETHUSDT",
+          "baseCoin": "ETH",
+          "quoteCoin": "USDT",
+          "buyLimitPriceRatio": "0.05",
+          "sellLimitPriceRatio": "0.05",
+          "feeRateUpRatio": "0.005",
+          "makerFeeRate": "0.0002",
+          "takerFeeRate": "0.0006",
+          "openCostUpRatio": "0.01",
+          "supportMarginCoins": [
+            "USDT"
+          ],
+          "minTradeNum": "0.01",
+          "priceEndStep": "1",
+          "volumePlace": "2",
+          "pricePlace": "2",
+          "sizeMultiplier": "0.01",
+          "symbolType": "perpetual",
+          "minTradeUSDT": "5",
+          "maxSymbolOrderNum": "200",
+          "maxProductOrderNum": "1000",
+          "maxPositionNum": "200",
+          "symbolStatus": "normal",
+          "offTime": "-1",
+          "limitOpenTime": "-1",
+          "deliveryTime": "",
+          "deliveryStartTime": "",
+          "deliveryPeriod": "",
+          "launchTime": "",
+          "fundInterval": "8",
+          "minLever": "1",
+          "maxLever": "150",
+          "posLimit": "0.1",
+          "maintainTime": "",
+          "openTime": "",
+          "maxMarketOrderQty": "1900",
+          "maxOrderQty": "9900",
+          "isRwa": "NO"
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/bitget/long-short.json",
+    "Venue": "bitget",
+    "Channel": "long-short",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "00000",
+      "msg": "success",
+      "requestTime": 1794666294939,
+      "data": [
+        {
+          "longRatio": "0.7915",
+          "shortRatio": "0.2085",
+          "longShortRatio": "3.7961",
+          "ts": "1794657000000"
+        },
+        {
+          "longRatio": "0.7916",
+          "shortRatio": "0.2084",
+          "longShortRatio": "3.7984",
+          "ts": "1794657300000"
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/bitget/position-long-short.json",
+    "Venue": "bitget",
+    "Channel": "position-long-short",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "00000",
+      "msg": "success",
+      "requestTime": 1794666297601,
+      "data": [
+        {
+          "longPositionRatio": "0.4929",
+          "shortPositionRatio": "0.5071",
+          "longShortPositionRatio": "0.9719",
+          "ts": "1794657000000"
+        },
+        {
+          "longPositionRatio": "0.4929",
+          "shortPositionRatio": "0.5071",
+          "longShortPositionRatio": "0.9719",
+          "ts": "1794657300000"
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/bitget/query-position-lever.json",
+    "Venue": "bitget",
+    "Channel": "query-position-lever",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "00000",
+      "msg": "success",
+      "requestTime": 1794666300256,
+      "data": [
+        {
+          "symbol": "BTCUSDT",
+          "level": "1",
+          "startUnit": "0",
+          "endUnit": "200000",
+          "leverage": "150",
+          "keepMarginRate": "0.0040"
+        },
+        {
+          "symbol": "BTCUSDT",
+          "level": "2",
+          "startUnit": "200000",
+          "endUnit": "1000000",
+          "leverage": "100",
+          "keepMarginRate": "0.0050"
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/bitget/taker-buy-sell.json",
+    "Venue": "bitget",
+    "Channel": "taker-buy-sell",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "00000",
+      "msg": "success",
+      "requestTime": 1794666298922,
+      "data": [
+        {
+          "sellVolume": "6.5172",
+          "buyVolume": "9.5182",
+          "ts": "1794657300000"
+        },
+        {
+          "sellVolume": "24.1524",
+          "buyVolume": "10.5525",
+          "ts": "1794657600000"
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/bybit/instruments-fixture.json",
+    "Venue": "bybit",
+    "Channel": "instruments-fixture",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "category": "linear",
+        "list": [
+          {
+            "symbol": "0GUSDT",
+            "contractType": "LinearPerpetual",
+            "status": "Trading",
+            "baseCoin": "0G",
+            "quoteCoin": "USDT",
+            "launchTime": "1758175736000",
+            "deliveryTime": "0",
+            "deliveryFeeRate": "",
+            "priceScale": "4",
+            "leverageFilter": {
+              "minLeverage": "1",
+              "maxLeverage": "50.00",
+              "leverageStep": "0.01"
+            },
+            "priceFilter": {
+              "minPrice": "0.0001",
+              "maxPrice": "1999.9998",
+              "tickSize": "0.0001"
+            },
+            "lotSizeFilter": {
+              "maxOrderQty": "350000.0",
+              "minOrderQty": "0.1",
+              "qtyStep": "0.1",
+              "postOnlyMaxOrderQty": "350000.0",
+              "maxMktOrderQty": "70000.0",
+              "minNotionalValue": "5"
+            },
+            "unifiedMarginTrade": true,
+            "fundingInterval": 240,
+            "settleCoin": "USDT",
+            "copyTrading": "both",
+            "upperFundingRate": "0.005",
+            "lowerFundingRate": "-0.005",
+            "isPreListing": false,
+            "preListingInfo": null,
+            "riskParameters": {
+              "priceLimitRatioX": "0.15",
+              "priceLimitRatioY": "0.3"
+            },
+            "displayName": "0GUSDT",
+            "symbolType": "",
+            "forbidUplWithdrawal": false,
+            "symbolId": 2449,
+            "fullName": "0G",
+            "marketRegion": "",
+            "underlyingTicker": "",
+            "tags": []
+          },
+          {
+            "symbol": "1000000BABYDOGEUSDT",
+            "contractType": "LinearPerpetual",
+            "status": "Trading",
+            "baseCoin": "1000000BABYDOGE",
+            "quoteCoin": "USDT",
+            "launchTime": "1718105652000",
+            "deliveryTime": "0",
+            "deliveryFeeRate": "",
+            "priceScale": "7",
+            "leverageFilter": {
+              "minLeverage": "1",
+              "maxLeverage": "25.00",
+              "leverageStep": "0.01"
+            },
+            "priceFilter": {
+              "minPrice": "0.0000001",
+              "maxPrice": "1.9999998",
+              "tickSize": "0.0000001"
+            },
+            "lotSizeFilter": {
+              "maxOrderQty": "220000000",
+              "minOrderQty": "100",
+              "qtyStep": "100",
+              "postOnlyMaxOrderQty": "220000000",
+              "maxMktOrderQty": "45000000",
+              "minNotionalValue": "5"
+            },
+            "unifiedMarginTrade": true,
+            "fundingInterval": 240,
+            "settleCoin": "USDT",
+            "copyTrading": "both",
+            "upperFundingRate": "0.02",
+            "lowerFundingRate": "-0.02",
+            "isPreListing": false,
+            "preListingInfo": null,
+            "riskParameters": {
+              "priceLimitRatioX": "0.15",
+              "priceLimitRatioY": "0.3"
+            },
+            "displayName": "1000000BABYDOGEUSDT",
+            "symbolType": "",
+            "forbidUplWithdrawal": false,
+            "symbolId": 527,
+            "fullName": "",
+            "marketRegion": "",
+            "underlyingTicker": "",
+            "tags": []
+          }
+        ],
+        "nextPageCursor": ""
+      },
+      "retExtInfo": {},
+      "time": 1794666298281
+    }
+  },
+  {
+    "Fixture": "testdata/bybit/ratio-fixture.json",
+    "Venue": "bybit",
+    "Channel": "ratio-fixture",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "list": [
+          {
+            "symbol": "BTCUSDT",
+            "buyRatio": "0.7197",
+            "sellRatio": "0.2803",
+            "timestamp": "1794666000000"
+          },
+          {
+            "symbol": "BTCUSDT",
+            "buyRatio": "0.7197",
+            "sellRatio": "0.2803",
+            "timestamp": "1794665700000"
+          }
+        ],
+        "nextPageCursor": "lastid%3D0%26lasttime%3D1794516300"
+      },
+      "retExtInfo": {},
+      "time": 1794666294912
+    }
+  },
+  {
+    "Fixture": "testdata/bybit/risk-fixture.json",
+    "Venue": "bybit",
+    "Channel": "risk-fixture",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "category": "linear",
+        "list": [
+          {
+            "id": 1,
+            "symbol": "0GUSDT",
+            "riskLimitValue": "10000",
+            "maintenanceMargin": "0.015",
+            "initialMargin": "0.02",
+            "isLowestRisk": 1,
+            "maxLeverage": "50.00",
+            "mmDeduction": ""
+          },
+          {
+            "id": 2,
+            "symbol": "0GUSDT",
+            "riskLimitValue": "25000",
+            "maintenanceMargin": "0.02",
+            "initialMargin": "0.04",
+            "isLowestRisk": 0,
+            "maxLeverage": "25.00",
+            "mmDeduction": "50"
+          }
+        ],
+        "nextPageCursor": "first%3D0GUSDT%26last%3D1000PEPEUSDT"
+      },
+      "retExtInfo": {},
+      "time": 1794666297098
+    }
+  },
+  {
+    "Fixture": "testdata/gate/fixture-contract_stats.json",
+    "Venue": "gate",
+    "Channel": "fixture-contract_stats",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": [
+      {
+        "time": 1794665940,
+        "lsr_taker": 1.0962807988326935,
+        "lsr_account": 2.0594956658786447,
+        "long_liq_size": 0,
+        "short_liq_size": 0,
+        "open_interest": 596336056,
+        "short_liq_usd": 0,
+        "mark_price": 66522.2,
+        "top_lsr_size": 0.7062007408630377,
+        "top_long_size": 27152862,
+        "top_short_size": 38449212,
+        "short_liq_amount": 0,
+        "long_liq_amount": 0,
+        "short_liq_usd_new": 0,
+        "long_liq_usd_new": 0,
+        "open_interest_usd": 3966958638.44432,
+        "top_lsr_account": 0.4705882352941176,
+        "top_long_account": 40,
+        "top_short_account": 85,
+        "long_liq_usd": 0,
+        "long_taker_size": 448540,
+        "short_taker_size": 409147,
+        "long_users": 20908,
+        "short_users": 10152,
+        "last_funding_rate": "0.00005"
+      },
+      {
+        "time": 1794666000,
+        "lsr_taker": 1.5781299774487076,
+        "lsr_account": 2.05929866036249,
+        "long_liq_size": 0,
+        "short_liq_size": 52,
+        "open_interest": 595514760,
+        "short_liq_usd": 346.224476,
+        "mark_price": 66581.63,
+        "top_lsr_size": 0.7045059961480932,
+        "top_long_size": 27113529,
+        "top_short_size": 38485874,
+        "short_liq_amount": 0.0052,
+        "long_liq_amount": 0,
+        "short_liq_usd_new": 346.224476,
+        "long_liq_usd_new": 0,
+        "open_interest_usd": 3965034340.98588,
+        "top_lsr_account": 0.4705882352941176,
+        "top_long_account": 40,
+        "top_short_account": 85,
+        "long_liq_usd": 0,
+        "long_taker_size": 500354,
+        "short_taker_size": 317055,
+        "long_users": 20906,
+        "short_users": 10152,
+        "last_funding_rate": "0.000048"
+      }
+    ]
+  },
+  {
+    "Fixture": "testdata/gate/fixture-contracts.json",
+    "Venue": "gate",
+    "Channel": "fixture-contracts",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": [
+      {
+        "funding_rate_indicative": "0.0001",
+        "mark_price_round": "0.0001",
+        "funding_offset": 0,
+        "in_delisting": false,
+        "risk_limit_base": "5000",
+        "interest_rate": "0.0003",
+        "index_price": "0.1551",
+        "order_price_round": "0.0001",
+        "order_size_min": 1,
+        "enable_decimal": false,
+        "ref_rebate_rate": "0.2",
+        "name": "0G_USDT",
+        "ref_discount_rate": "0",
+        "order_price_deviate": "0.1",
+        "maintenance_rate": "0.01",
+        "mark_type": "index",
+        "funding_interval": 28800,
+        "type": "direct",
+        "risk_limit_step": "2495000",
+        "enable_bonus": true,
+        "enable_credit": true,
+        "leverage_min": "1",
+        "funding_rate": "0.0001",
+        "last_price": "0.1554",
+        "mark_price": "0.1551",
+        "order_size_max": 450000,
+        "funding_next_apply": 1794672000,
+        "short_users": 113,
+        "config_change_time": 1793007748,
+        "create_time": 1758124392,
+        "trade_size": 984314073,
+        "position_size": 965661,
+        "long_users": 150,
+        "quanto_multiplier": "1",
+        "funding_impact_value": "7000",
+        "leverage_max": "50",
+        "cross_leverage_default": "10",
+        "risk_limit_max": "2500000",
+        "maker_fee_rate": "-0.0001",
+        "taker_fee_rate": "0.00075",
+        "orders_limit": 100,
+        "trade_id": 11119268,
+        "orderbook_id": 1366552774,
+        "funding_cap_ratio": "1",
+        "voucher_leverage": "0",
+        "is_pre_market": false,
+        "status": "trading",
+        "launch_time": 1758124392,
+        "enable_circuit_breaker": false,
+        "funding_rate_limit": "0.02",
+        "market_order_slip_ratio": "0.035",
+        "market_order_size_max": "300000",
+        "contract_type": ""
+      },
+      {
+        "funding_rate_indicative": "0.0001",
+        "mark_price_round": "0.00001",
+        "funding_offset": 0,
+        "in_delisting": false,
+        "risk_limit_base": "5000",
+        "interest_rate": "0.0003",
+        "index_price": "0.06787",
+        "order_price_round": "0.00001",
+        "order_size_min": 1,
+        "enable_decimal": false,
+        "ref_rebate_rate": "0.2",
+        "name": "1INCH_USDT",
+        "ref_discount_rate": "0",
+        "order_price_deviate": "0.15",
+        "maintenance_rate": "0.01",
+        "mark_type": "index",
+        "funding_interval": 28800,
+        "type": "direct",
+        "risk_limit_step": "2495000",
+        "enable_bonus": true,
+        "enable_credit": true,
+        "leverage_min": "1",
+        "funding_rate": "0.0001",
+        "last_price": "0.068",
+        "mark_price": "0.06787",
+        "order_size_max": 1400000,
+        "funding_next_apply": 1794672000,
+        "short_users": 89,
+        "config_change_time": 1793007558,
+        "create_time": 1608854400,
+        "trade_size": 1809713438,
+        "position_size": 801597,
+        "long_users": 124,
+        "quanto_multiplier": "1",
+        "funding_impact_value": "7000",
+        "leverage_max": "50",
+        "cross_leverage_default": "10",
+        "risk_limit_max": "2500000",
+        "maker_fee_rate": "-0.0001",
+        "taker_fee_rate": "0.00075",
+        "orders_limit": 100,
+        "trade_id": 7078247,
+        "orderbook_id": 4269456082,
+        "funding_cap_ratio": "2",
+        "voucher_leverage": "0",
+        "is_pre_market": false,
+        "status": "trading",
+        "launch_time": 1608854400,
+        "enable_circuit_breaker": false,
+        "funding_rate_limit": "0.02",
+        "market_order_slip_ratio": "0.04",
+        "market_order_size_max": "900000",
+        "contract_type": ""
+      }
+    ]
+  },
+  {
+    "Fixture": "testdata/gate/fixture-risk_limit_tiers.json",
+    "Venue": "gate",
+    "Channel": "fixture-risk_limit_tiers",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": [
+      {
+        "maintenance_rate": "0.08",
+        "tier": 1,
+        "initial_rate": "0.1",
+        "leverage_max": "10",
+        "risk_limit": "5000",
+        "contract": "龙虾_USDT",
+        "deduction": "0"
+      },
+      {
+        "maintenance_rate": "0.09",
+        "tier": 2,
+        "initial_rate": "0.1111",
+        "leverage_max": "9",
+        "risk_limit": "10000",
+        "contract": "龙虾_USDT",
+        "deduction": "50"
+      }
+    ]
+  },
+  {
+    "Fixture": "testdata/kucoin/contracts.json",
+    "Venue": "kucoin",
+    "Channel": "contracts",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "200000",
+      "data": [
+        {
+          "symbol": "XBTUSDTM",
+          "displaySymbol": "XBTUSDTM",
+          "rootSymbol": "USDT",
+          "type": "FFWCSX",
+          "firstOpenDate": 1585555200000,
+          "expireDate": null,
+          "settleDate": null,
+          "baseCurrency": "XBT",
+          "displayBaseCurrency": "XBT",
+          "quoteCurrency": "USDT",
+          "settleCurrency": "USDT",
+          "maxOrderQty": 1000000,
+          "marketMaxOrderQty": 1000000,
+          "maxPrice": 1000000.0,
+          "lotSize": 1,
+          "tickSize": 0.1,
+          "indexPriceTickSize": 0.01,
+          "multiplier": 0.001,
+          "initialMargin": 0.008,
+          "maintainMargin": 0.004,
+          "maxRiskLimit": 250000,
+          "minRiskLimit": 250000,
+          "riskStep": 125000,
+          "makerFeeRate": 0.0002,
+          "takerFeeRate": 0.0006,
+          "takerFixFee": 0.0,
+          "makerFixFee": 0.0,
+          "settlementFee": null,
+          "isDeleverage": true,
+          "isQuanto": true,
+          "isInverse": false,
+          "markMethod": "FairPrice",
+          "fairMethod": "FundingRate",
+          "fundingBaseSymbol": ".XBTINT8H",
+          "fundingQuoteSymbol": ".USDTINT8H",
+          "fundingRateSymbol": ".XBTUSDTMFPI8H",
+          "indexSymbol": ".KXBTUSDT",
+          "settlementSymbol": "",
+          "status": "Open",
+          "fundingFeeRate": 6.4e-05,
+          "predictedFundingFeeRate": null,
+          "dailyInterestRate": 0.0003,
+          "fundingRateGranularity": 28800000,
+          "fundingRateCap": 0.003,
+          "fundingRateFloor": -0.003,
+          "period": 1,
+          "effectiveFundingRateCycleStartTime": 1750147200000,
+          "currentFundingRateGranularity": 28800000,
+          "openInterest": "10217386",
+          "turnoverOf24h": 556684127.6782,
+          "volumeOf24h": 8226.94,
+          "markPrice": 66173.73,
+          "indexPrice": 66204.09,
+          "lastTradePrice": 66151.6,
+          "nextFundingRateTime": 5710169,
+          "nextFundingRateDateTime": 1794672000000,
+          "maxLeverage": 125,
+          "sourceExchanges": [
+            "okex",
+            "binance",
+            "kucoin",
+            "bybit",
+            "gateio"
+          ],
+          "premiumsSymbol1M": ".XBTUSDTMPI",
+          "premiumsSymbol8H": ".XBTUSDTMPI8H",
+          "fundingBaseSymbol1M": ".XBTINT",
+          "fundingQuoteSymbol1M": ".USDTINT",
+          "lowPrice": 66245.9,
+          "highPrice": 69458.2,
+          "priceChgPct": -0.0394,
+          "priceChg": -2728.1,
+          "k": 490.0,
+          "m": 300.0,
+          "f": 1.3,
+          "mmrLimit": 0.3,
+          "mmrLevConstant": 125.0,
+          "supportCross": true,
+          "buyLimit": 69482.4,
+          "sellLimit": 62865,
+          "adjustK": null,
+          "adjustM": null,
+          "adjustMmrLevConstant": null,
+          "adjustActiveTime": null,
+          "crossRiskLimit": 1500000000.0,
+          "marketStage": "NORMAL",
+          "preMarketToPerpDate": null,
+          "orderPriceRange": 0.05,
+          "marketType": "CRYPTO",
+          "assetClass": "CRYPTO",
+          "subMarketType": null,
+          "commonConfigItems": {},
+          "lastTimeFundingRate": -1.4e-05,
+          "st": false
+        },
+        {
+          "symbol": "ETHUSDTM",
+          "displaySymbol": "ETHUSDTM",
+          "rootSymbol": "USDT",
+          "type": "FFWCSX",
+          "firstOpenDate": 1591086000000,
+          "expireDate": null,
+          "settleDate": null,
+          "baseCurrency": "ETH",
+          "displayBaseCurrency": "ETH",
+          "quoteCurrency": "USDT",
+          "settleCurrency": "USDT",
+          "maxOrderQty": 1000000,
+          "marketMaxOrderQty": 1000000,
+          "maxPrice": 1000000.0,
+          "lotSize": 1,
+          "tickSize": 0.01,
+          "indexPriceTickSize": 0.01,
+          "multiplier": 0.01,
+          "initialMargin": 0.01,
+          "maintainMargin": 0.005,
+          "maxRiskLimit": 500000,
+          "minRiskLimit": 500000,
+          "riskStep": 250000,
+          "makerFeeRate": 0.0002,
+          "takerFeeRate": 0.0006,
+          "takerFixFee": 0.0,
+          "makerFixFee": 0.0,
+          "settlementFee": null,
+          "isDeleverage": true,
+          "isQuanto": true,
+          "isInverse": false,
+          "markMethod": "FairPrice",
+          "fairMethod": "FundingRate",
+          "fundingBaseSymbol": ".ETHINT8H",
+          "fundingQuoteSymbol": ".USDTINT8H",
+          "fundingRateSymbol": ".ETHUSDTMFPI8H",
+          "indexSymbol": ".KETHUSDT",
+          "settlementSymbol": "",
+          "status": "Open",
+          "fundingFeeRate": 2e-06,
+          "predictedFundingFeeRate": null,
+          "dailyInterestRate": 0.0003,
+          "fundingRateGranularity": 28800000,
+          "fundingRateCap": 0.00375,
+          "fundingRateFloor": -0.00375,
+          "period": 1,
+          "effectiveFundingRateCycleStartTime": 1750147200000,
+          "currentFundingRateGranularity": 28800000,
+          "openInterest": "16795728",
+          "turnoverOf24h": 295300447.1146,
+          "volumeOf24h": 154713.14,
+          "markPrice": 1857.17,
+          "indexPrice": 1858.42,
+          "lastTradePrice": 1856.43,
+          "nextFundingRateTime": 5710169,
+          "nextFundingRateDateTime": 1794672000000,
+          "maxLeverage": 100,
+          "sourceExchanges": [
+            "okex",
+            "binance",
+            "kucoin",
+            "gateio",
+            "bybit",
+            "bitget"
+          ],
+          "premiumsSymbol1M": ".ETHUSDTMPI",
+          "premiumsSymbol8H": ".ETHUSDTMPI8H",
+          "fundingBaseSymbol1M": ".ETHINT",
+          "fundingQuoteSymbol1M": ".USDTINT",
+          "lowPrice": 1858.29,
+          "highPrice": 1972.05,
+          "priceChgPct": -0.0491,
+          "priceChg": -96.44,
+          "k": 6610.0,
+          "m": 4110.0,
+          "f": 1.3,
+          "mmrLimit": 0.3,
+          "mmrLevConstant": 100.0,
+          "supportCross": true,
+          "buyLimit": 1950.03,
+          "sellLimit": 1764.31,
+          "adjustK": null,
+          "adjustM": null,
+          "adjustMmrLevConstant": null,
+          "adjustActiveTime": null,
+          "crossRiskLimit": 900000000.0,
+          "marketStage": "NORMAL",
+          "preMarketToPerpDate": null,
+          "orderPriceRange": 0.05,
+          "marketType": "CRYPTO",
+          "assetClass": "CRYPTO",
+          "subMarketType": null,
+          "commonConfigItems": {},
+          "lastTimeFundingRate": 1e-06,
+          "st": false
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/kucoin/risk.json",
+    "Venue": "kucoin",
+    "Channel": "risk",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "200000",
+      "data": [
+        {
+          "symbol": "XBTUSDTM",
+          "level": 1,
+          "maxRiskLimit": 250000,
+          "minRiskLimit": 0,
+          "maxLeverage": 125,
+          "initialMargin": 0.008,
+          "maintainMargin": 0.004
+        },
+        {
+          "symbol": "XBTUSDTM",
+          "level": 2,
+          "maxRiskLimit": 600000,
+          "minRiskLimit": 250000,
+          "maxLeverage": 100,
+          "initialMargin": 0.01,
+          "maintainMargin": 0.005
+        },
+        {
+          "symbol": "XBTUSDTM",
+          "level": 3,
+          "maxRiskLimit": 2500000,
+          "minRiskLimit": 600000,
+          "maxLeverage": 75,
+          "initialMargin": 0.014,
+          "maintainMargin": 0.007
+        },
+        {
+          "symbol": "XBTUSDTM",
+          "level": 4,
+          "maxRiskLimit": 10000000,
+          "minRiskLimit": 2500000,
+          "maxLeverage": 50,
+          "initialMargin": 0.02,
+          "maintainMargin": 0.01
+        },
+        {
+          "symbol": "XBTUSDTM",
+          "level": 5,
+          "maxRiskLimit": 50000000,
+          "minRiskLimit": 10000000,
+          "maxLeverage": 30,
+          "initialMargin": 0.034,
+          "maintainMargin": 0.017
+        },
+        {
+          "symbol": "XBTUSDTM",
+          "level": 6,
+          "maxRiskLimit": 90000000,
+          "minRiskLimit": 50000000,
+          "maxLeverage": 20,
+          "initialMargin": 0.05,
+          "maintainMargin": 0.025
+        },
+        {
+          "symbol": "XBTUSDTM",
+          "level": 7,
+          "maxRiskLimit": 185000000,
+          "minRiskLimit": 90000000,
+          "maxLeverage": 10,
+          "initialMargin": 0.1,
+          "maintainMargin": 0.05
+        },
+        {
+          "symbol": "XBTUSDTM",
+          "level": 8,
+          "maxRiskLimit": 400000000,
+          "minRiskLimit": 185000000,
+          "maxLeverage": 5,
+          "initialMargin": 0.2,
+          "maintainMargin": 0.1
+        },
+        {
+          "symbol": "XBTUSDTM",
+          "level": 9,
+          "maxRiskLimit": 500000000,
+          "minRiskLimit": 400000000,
+          "maxLeverage": 4,
+          "initialMargin": 0.25,
+          "maintainMargin": 0.125
+        },
+        {
+          "symbol": "XBTUSDTM",
+          "level": 10,
+          "maxRiskLimit": 650000000,
+          "minRiskLimit": 500000000,
+          "maxLeverage": 3,
+          "initialMargin": 0.334,
+          "maintainMargin": 0.167
+        },
+        {
+          "symbol": "XBTUSDTM",
+          "level": 11,
+          "maxRiskLimit": 1000000000,
+          "minRiskLimit": 650000000,
+          "maxLeverage": 2,
+          "initialMargin": 0.5,
+          "maintainMargin": 0.25
+        },
+        {
+          "symbol": "XBTUSDTM",
+          "level": 12,
+          "maxRiskLimit": 1500000000,
+          "minRiskLimit": 1000000000,
+          "maxLeverage": 1,
+          "initialMargin": 1.0,
+          "maintainMargin": 0.5
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/mexc/detail.json",
+    "Venue": "mexc",
+    "Channel": "detail",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "success": true,
+      "code": 0,
+      "data": [
+        {
+          "symbol": "BTC_USDT",
+          "displayName": "BTC_USDT永续",
+          "displayNameEn": "BTC_USDT PERPETUAL",
+          "positionOpenType": 3,
+          "baseCoin": "BTC",
+          "quoteCoin": "USDT",
+          "baseCoinName": "BTC",
+          "quoteCoinName": "USDT",
+          "futureType": 1,
+          "settleCoin": "USDT",
+          "contractSize": 0.0001,
+          "minLeverage": 1,
+          "maxLeverage": 500,
+          "countryConfigContractMaxLeverage": 0,
+          "priceScale": 1,
+          "volScale": 0,
+          "amountScale": 4,
+          "priceUnit": 0.1,
+          "volUnit": 1,
+          "minVol": 1,
+          "maxVol": 400000,
+          "bidLimitPriceRate": 0.1,
+          "askLimitPriceRate": 0.1,
+          "takerFeeRate": 0.0002,
+          "makerFeeRate": 0,
+          "maintenanceMarginRate": 0.001,
+          "initialMarginRate": 0.002,
+          "riskBaseVol": 19000000,
+          "riskIncrVol": 0,
+          "riskLongShortSwitch": 0,
+          "riskIncrMmr": 0,
+          "riskIncrImr": 0,
+          "riskLevelLimit": 1,
+          "priceCoefficientVariation": 0.004,
+          "indexOrigin": [
+            "BITGET",
+            "BYBIT",
+            "BINANCE",
+            "HTX",
+            "UPBIT",
+            "OKX",
+            "MEXC",
+            "KUCOIN"
+          ],
+          "state": 0,
+          "isNew": false,
+          "isHot": false,
+          "isHidden": false,
+          "conceptPlate": [
+            "mc-trade-zone-mainly",
+            "mc-trade-zone-layer2",
+            "mc-trade-zone-pow"
+          ],
+          "conceptPlateId": [
+            50,
+            5,
+            12
+          ],
+          "riskLimitType": "BY_VOLUME",
+          "maxNumOrders": [
+            200,
+            50
+          ],
+          "marketOrderMaxLevel": 20,
+          "marketOrderPriceLimitRate1": 0.1,
+          "marketOrderPriceLimitRate2": 0.005,
+          "triggerProtect": 0.1,
+          "appraisal": 0,
+          "showAppraisalCountdown": 0,
+          "automaticDelivery": 0,
+          "apiAllowed": true,
+          "depthStepList": [
+            "0.1",
+            "1",
+            "10",
+            "100"
+          ],
+          "limitMaxVol": 2500000,
+          "threshold": 0,
+          "baseCoinIconUrl": "https://public.mocortech.com/coin/F20250612182226438Ba037qttKoGcrm.png",
+          "id": 10,
+          "vid": "128f589271cb4951b03e71e6323eb7be",
+          "baseCoinId": "febc9973be4d4d53bb374476239eb219",
+          "createTime": 1591242684000,
+          "openingTime": 0,
+          "openingCountdownOption": 1,
+          "showBeforeOpen": true,
+          "isMaxLeverage": true,
+          "isZeroFeeRate": false,
+          "riskLimitMode": "CUSTOM",
+          "isZeroFeeSymbol": false,
+          "riskLimitCustom": [
+            {
+              "level": 1,
+              "maxVol": 120000,
+              "mmr": 0.001,
+              "imr": 0.002,
+              "maxLeverage": 500
+            },
+            {
+              "level": 2,
+              "maxVol": 310000,
+              "mmr": 0.004,
+              "imr": 0.005,
+              "maxLeverage": 200
+            },
+            {
+              "level": 3,
+              "maxVol": 480000,
+              "mmr": 0.005,
+              "imr": 0.01,
+              "maxLeverage": 100
+            },
+            {
+              "level": 4,
+              "maxVol": 2800000,
+              "mmr": 0.01,
+              "imr": 0.02,
+              "maxLeverage": 50
+            },
+            {
+              "level": 5,
+              "maxVol": 17500000,
+              "mmr": 0.02,
+              "imr": 0.05,
+              "maxLeverage": 20
+            },
+            {
+              "level": 6,
+              "maxVol": 19000000,
+              "mmr": 0.05,
+              "imr": 0.1,
+              "maxLeverage": 10
+            }
+          ],
+          "liquidationFeeRate": 0.0004,
+          "feeRateMode": "NORMAL",
+          "leverageFeeRates": [],
+          "tieredFeeRates": [],
+          "type": 1,
+          "stopOnlyFair": false,
+          "preMarket": false,
+          "typeLabel": 0,
+          "fn": "BTC_USDT永续",
+          "feeRateType": "BASE",
+          "tagIdList": [
+            5,
+            8
+          ],
+          "tempMaxLeverageLimited": false,
+          "regularMaxLeverage": 500
+        },
+        {
+          "symbol": "ETH_USDT",
+          "displayName": "ETH_USDT永续",
+          "displayNameEn": "ETH_USDT PERPETUAL",
+          "positionOpenType": 3,
+          "baseCoin": "ETH",
+          "quoteCoin": "USDT",
+          "baseCoinName": "ETH",
+          "quoteCoinName": "USDT",
+          "futureType": 1,
+          "settleCoin": "USDT",
+          "contractSize": 0.01,
+          "minLeverage": 1,
+          "maxLeverage": 500,
+          "countryConfigContractMaxLeverage": 0,
+          "priceScale": 2,
+          "volScale": 0,
+          "amountScale": 4,
+          "priceUnit": 0.01,
+          "volUnit": 1,
+          "minVol": 1,
+          "maxVol": 70000,
+          "bidLimitPriceRate": 0.2,
+          "askLimitPriceRate": 0.2,
+          "takerFeeRate": 0.0001,
+          "makerFeeRate": 0,
+          "maintenanceMarginRate": 0.001,
+          "initialMarginRate": 0.002,
+          "riskBaseVol": 4800000,
+          "riskIncrVol": 0,
+          "riskLongShortSwitch": 0,
+          "riskIncrMmr": 0,
+          "riskIncrImr": 0,
+          "riskLevelLimit": 1,
+          "priceCoefficientVariation": 0.004,
+          "indexOrigin": [
+            "BITGET",
+            "BYBIT",
+            "BINANCE",
+            "HTX",
+            "UPBIT",
+            "OKX",
+            "MEXC",
+            "KUCOIN"
+          ],
+          "state": 0,
+          "isNew": false,
+          "isHot": false,
+          "isHidden": false,
+          "conceptPlate": [
+            "mc-trade-zone-mainly",
+            "mc-trade-zone-layer2",
+            "mc-trade-zone-0fees"
+          ],
+          "conceptPlateId": [
+            50,
+            5,
+            45
+          ],
+          "riskLimitType": "BY_VOLUME",
+          "maxNumOrders": [
+            200,
+            50
+          ],
+          "marketOrderMaxLevel": 20,
+          "marketOrderPriceLimitRate1": 0.2,
+          "marketOrderPriceLimitRate2": 0.005,
+          "triggerProtect": 0.1,
+          "appraisal": 0,
+          "showAppraisalCountdown": 0,
+          "automaticDelivery": 0,
+          "apiAllowed": true,
+          "depthStepList": [
+            "0.01",
+            "0.1",
+            "1",
+            "10"
+          ],
+          "limitMaxVol": 200000,
+          "threshold": 0,
+          "baseCoinIconUrl": "https://public.mocortech.com/coin/F20260804122808443J4xIQYfgHkrjvT.png",
+          "id": 11,
+          "vid": "128f589271cb4951b03e71e6323eb7be",
+          "baseCoinId": "93c38b0169214f8689763ce9a63a73ff",
+          "createTime": 1591243107000,
+          "openingTime": 0,
+          "openingCountdownOption": 1,
+          "showBeforeOpen": true,
+          "isMaxLeverage": true,
+          "isZeroFeeRate": false,
+          "riskLimitMode": "CUSTOM",
+          "isZeroFeeSymbol": false,
+          "riskLimitCustom": [
+            {
+              "level": 1,
+              "maxVol": 37000,
+              "mmr": 0.001,
+              "imr": 0.002,
+              "maxLeverage": 500
+            },
+            {
+              "level": 2,
+              "maxVol": 107000,
+              "mmr": 0.004,
+              "imr": 0.005,
+              "maxLeverage": 200
+            },
+            {
+              "level": 3,
+              "maxVol": 150000,
+              "mmr": 0.005,
+              "imr": 0.01,
+              "maxLeverage": 100
+            },
+            {
+              "level": 4,
+              "maxVol": 860000,
+              "mmr": 0.01,
+              "imr": 0.02,
+              "maxLeverage": 50
+            },
+            {
+              "level": 5,
+              "maxVol": 4100000,
+              "mmr": 0.02,
+              "imr": 0.05,
+              "maxLeverage": 20
+            },
+            {
+              "level": 6,
+              "maxVol": 4800000,
+              "mmr": 0.05,
+              "imr": 0.1,
+              "maxLeverage": 10
+            }
+          ],
+          "liquidationFeeRate": 0.0001,
+          "feeRateMode": "NORMAL",
+          "leverageFeeRates": [],
+          "tieredFeeRates": [],
+          "type": 1,
+          "stopOnlyFair": false,
+          "preMarket": false,
+          "typeLabel": 0,
+          "fn": "ETH_USDT永续",
+          "feeRateType": "BASE",
+          "tagIdList": [
+            5,
+            8
+          ],
+          "tempMaxLeverageLimited": false,
+          "regularMaxLeverage": 500
+        },
+        {
+          "symbol": "AKE_USDT",
+          "displayName": "AKE_USDT永续",
+          "displayNameEn": "AKE_USDT PERPETUAL",
+          "positionOpenType": 3,
+          "baseCoin": "AKE",
+          "quoteCoin": "USDT",
+          "baseCoinName": "AKE",
+          "quoteCoinName": "USDT",
+          "futureType": 1,
+          "settleCoin": "USDT",
+          "contractSize": 1000,
+          "minLeverage": 1,
+          "maxLeverage": 20,
+          "countryConfigContractMaxLeverage": 0,
+          "priceScale": 6,
+          "volScale": 0,
+          "amountScale": 4,
+          "priceUnit": 1e-06,
+          "volUnit": 1,
+          "minVol": 1,
+          "maxVol": 1300,
+          "bidLimitPriceRate": 0.2,
+          "askLimitPriceRate": 0.2,
+          "takerFeeRate": 0,
+          "makerFeeRate": 0,
+          "maintenanceMarginRate": 0.02,
+          "initialMarginRate": 0.05,
+          "riskBaseVol": 1300,
+          "riskIncrVol": 0,
+          "riskLongShortSwitch": 0,
+          "riskIncrMmr": 0.01,
+          "riskIncrImr": 0.01,
+          "riskLevelLimit": 1,
+          "priceCoefficientVariation": 0.4,
+          "indexOrigin": [
+            "LBANK",
+            "BINANCE_FUTURE",
+            "BINANCETICKER",
+            "MEXC",
+            "KUCOIN"
+          ],
+          "state": 0,
+          "isNew": false,
+          "isHot": false,
+          "isHidden": false,
+          "conceptPlate": [
+            "mc-trade-zone-ai",
+            "mc-trade-zone-0fees"
+          ],
+          "conceptPlateId": [
+            23,
+            45
+          ],
+          "riskLimitType": "BY_VOLUME",
+          "maxNumOrders": [
+            200,
+            50
+          ],
+          "marketOrderMaxLevel": 20,
+          "marketOrderPriceLimitRate1": 0.2,
+          "marketOrderPriceLimitRate2": 0.005,
+          "triggerProtect": 0.1,
+          "appraisal": 0,
+          "showAppraisalCountdown": 0,
+          "automaticDelivery": 0,
+          "apiAllowed": true,
+          "depthStepList": [
+            "0.000001",
+            "0.00001"
+          ],
+          "limitMaxVol": 1300,
+          "threshold": 0,
+          "baseCoinIconUrl": "https://public.mocortech.com/coin/F20250819161813110g70HJdG0E4Mt7T.png",
+          "id": 1428,
+          "vid": "128f589271cb4951b03e71e6323eb7be",
+          "baseCoinId": "c20d4f570e2148c3b3d3a77a75773103",
+          "createTime": 1755675381000,
+          "openingTime": 1755778200000,
+          "openingCountdownOption": 1,
+          "showBeforeOpen": true,
+          "isMaxLeverage": false,
+          "isZeroFeeRate": true,
+          "riskLimitMode": "INCREASE",
+          "isZeroFeeSymbol": true,
+          "liquidationFeeRate": 0.0002,
+          "feeRateMode": "NORMAL",
+          "leverageFeeRates": [],
+          "tieredFeeRates": [],
+          "type": 1,
+          "stopOnlyFair": false,
+          "preMarket": false,
+          "typeLabel": 0,
+          "fn": "AKE_USDT永续",
+          "feeRateType": "BASE",
+          "tagIdList": [
+            8
+          ],
+          "tempMaxLeverageLimited": false,
+          "regularMaxLeverage": 20
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/okx/response0.json",
+    "Venue": "okx",
+    "Channel": "response0",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "0",
+      "data": [
+        [
+          "1794666000000",
+          "2.7612690634109248"
+        ],
+        [
+          "1794665700000",
+          "2.7854681459068751"
+        ]
+      ],
+      "msg": ""
+    }
+  },
+  {
+    "Fixture": "testdata/okx/response1.json",
+    "Venue": "okx",
+    "Channel": "response1",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "0",
+      "data": [
+        [
+          "1794666000000",
+          "1.9897470950102529"
+        ],
+        [
+          "1794665700000",
+          "2.0033898305084746"
+        ]
+      ],
+      "msg": ""
+    }
+  },
+  {
+    "Fixture": "testdata/okx/response2.json",
+    "Venue": "okx",
+    "Channel": "response2",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "0",
+      "data": [
+        [
+          "1794666000000",
+          "0.8907710295163117"
+        ],
+        [
+          "1794665700000",
+          "0.8890672139403812"
+        ]
+      ],
+      "msg": ""
+    }
+  },
+  {
+    "Fixture": "testdata/okx/response3.json",
+    "Venue": "okx",
+    "Channel": "response3",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "0",
+      "data": [
+        [
+          "1794666000000",
+          "8464.47999999999956",
+          "6781.25"
+        ],
+        [
+          "1794665700000",
+          "18266.5600000000013",
+          "45318.4400000000023"
+        ]
+      ],
+      "msg": ""
+    }
+  },
+  {
+    "Fixture": "testdata/okx/response4.json",
+    "Venue": "okx",
+    "Channel": "response4",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "0",
+      "data": [
+        [
+          "1794666000000",
+          "2.95"
+        ],
+        [
+          "1794665700000",
+          "2.95"
+        ]
+      ],
+      "msg": ""
+    }
+  },
+  {
+    "Fixture": "testdata/okx/response5.json",
+    "Venue": "okx",
+    "Channel": "response5",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "0",
+      "data": [
+        {
+          "baseMaxLoan": "",
+          "imr": "0.01",
+          "instFamily": "BTC-USDT",
+          "instId": "",
+          "maxLever": "100",
+          "maxSz": "1000",
+          "minSz": "0",
+          "mmr": "0.004",
+          "optMgnFactor": "0",
+          "quoteMaxLoan": "",
+          "tier": "1",
+          "uly": "BTC-USDT"
+        },
+        {
+          "baseMaxLoan": "",
+          "imr": "0.015",
+          "instFamily": "BTC-USDT",
+          "instId": "",
+          "maxLever": "66.66",
+          "maxSz": "5000",
+          "minSz": "1000.01",
+          "mmr": "0.005",
+          "optMgnFactor": "0",
+          "quoteMaxLoan": "",
+          "tier": "2",
+          "uly": "BTC-USDT"
+        }
+      ],
+      "msg": ""
+    }
+  },
+  {
+    "Fixture": "testdata/okx/response6.json",
+    "Venue": "okx",
+    "Channel": "response6",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "0",
+      "data": [
+        {
+          "alias": "",
+          "auctionEndTime": "",
+          "baseCcy": "",
+          "category": "1",
+          "contTdSwTime": "1611916860000",
+          "ctMult": "1",
+          "ctType": "inverse",
+          "ctVal": "100",
+          "ctValCcy": "USD",
+          "expTime": "",
+          "floatPxLmtPct": "0.005",
+          "freq": "",
+          "futureSettlement": false,
+          "groupId": "4",
+          "initPxLmtPct": "0.02",
+          "instCategory": "1",
+          "instFamily": "BTC-USD",
+          "instId": "BTC-USD-SWAP",
+          "instIdCode": 10458,
+          "instType": "SWAP",
+          "lever": "100",
+          "listTime": "1535424203000",
+          "longPosRemainingQuota": "",
+          "lotSz": "0.1",
+          "maxIcebergSz": "100000000.0000000000000000",
+          "maxLmtAmt": "20000000",
+          "maxLmtSz": "100000000",
+          "maxMktAmt": "",
+          "maxMktSz": "49000",
+          "maxPlatOICoinLmt": "",
+          "maxPlatOILmt": "",
+          "maxPxLmtPct": "0.01",
+          "maxStopSz": "49000",
+          "maxTriggerSz": "100000000.0000000000000000",
+          "maxTwapSz": "100000000.0000000000000000",
+          "method": "",
+          "minSz": "0.1",
+          "openType": "call_auction",
+          "optType": "",
+          "posLmtAmt": "250000",
+          "posLmtPct": "30",
+          "preMktSwTime": "",
+          "quoteCcy": "",
+          "rpiMinLevel": "2",
+          "rpiMinPxBand": "20",
+          "ruleType": "normal",
+          "seriesId": "",
+          "settleCcy": "BTC",
+          "shortPosRemainingQuota": "",
+          "state": "live",
+          "stk": "",
+          "tickSz": "0.1",
+          "tradeQuoteCcyList": [],
+          "uly": "BTC-USD",
+          "upcChg": []
+        },
+        {
+          "alias": "",
+          "auctionEndTime": "",
+          "baseCcy": "",
+          "category": "1",
+          "contTdSwTime": "1611916860000",
+          "ctMult": "1",
+          "ctType": "inverse",
+          "ctVal": "10",
+          "ctValCcy": "USD",
+          "expTime": "",
+          "floatPxLmtPct": "0.01",
+          "freq": "",
+          "futureSettlement": false,
+          "groupId": "4",
+          "initPxLmtPct": "0.02",
+          "instCategory": "1",
+          "instFamily": "ETH-USD",
+          "instId": "ETH-USD-SWAP",
+          "instIdCode": 10460,
+          "instType": "SWAP",
+          "lever": "100",
+          "listTime": "1545378827000",
+          "longPosRemainingQuota": "",
+          "lotSz": "1",
+          "maxIcebergSz": "100000000.0000000000000000",
+          "maxLmtAmt": "20000000",
+          "maxLmtSz": "100000000",
+          "maxMktAmt": "",
+          "maxMktSz": "300000",
+          "maxPlatOICoinLmt": "",
+          "maxPlatOILmt": "",
+          "maxPxLmtPct": "0.02",
+          "maxStopSz": "300000",
+          "maxTriggerSz": "100000000.0000000000000000",
+          "maxTwapSz": "100000000.0000000000000000",
+          "method": "",
+          "minSz": "1",
+          "openType": "call_auction",
+          "optType": "",
+          "posLmtAmt": "250000",
+          "posLmtPct": "30",
+          "preMktSwTime": "",
+          "quoteCcy": "",
+          "rpiMinLevel": "2",
+          "rpiMinPxBand": "20",
+          "ruleType": "normal",
+          "seriesId": "",
+          "settleCcy": "ETH",
+          "shortPosRemainingQuota": "",
+          "state": "live",
+          "stk": "",
+          "tickSz": "0.01",
+          "tradeQuoteCcyList": [],
+          "uly": "ETH-USD",
+          "upcChg": []
+        }
+      ],
+      "msg": ""
+    }
+  }
+]

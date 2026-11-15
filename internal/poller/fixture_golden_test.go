@@ -1,0 +1,74 @@
+package poller
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+)
+
+type fixtureGoldenRecord struct {
+	Fixture                string
+	Venue, Channel, Symbol string
+	RecvWall               int64
+	Meta                   map[string]any
+	Payload                json.RawMessage
+}
+
+// TestFixtureRecordGolden uses the generic snapshot producer on every captured
+// response. The golden was generated with commit 71267c2 (before policies).
+func TestFixtureRecordGolden(t *testing.T) {
+	paths, err := filepath.Glob("testdata/*/*.json")
+	if err != nil || len(paths) == 0 {
+		t.Fatal(err)
+	}
+	var got []fixtureGoldenRecord
+	clock := &fakeClock{time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		venue := filepath.Base(filepath.Dir(path))
+		channel := strings.TrimSuffix(filepath.Base(path), ".json")
+		fetch := SnapshotFetch(venue, channel, clock, SnapshotSpec{Mode: SnapshotPerSymbol, Fetch: func(context.Context, string) ([]byte, error) { return raw, nil }})
+		sink := &memorySink{}
+		channelSpec := Channel{Venue: venue, Name: channel, Fetch: func(ctx context.Context, _ string) ([]Record, error) { return fetch(ctx, "FIXTURE") }}
+		scheduler, err := NewScheduler([]Channel{channelSpec}, sink, clock, "", 240)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := scheduler.Step(context.Background()); err != nil {
+			t.Fatal(path, err)
+		}
+		for _, r := range sink.records {
+			got = append(got, fixtureGoldenRecord{path, r.Venue, r.Channel, r.Symbol, r.RecvWall, r.Meta, r.Payload})
+		}
+	}
+	encoded, err := json.MarshalIndent(got, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden := "testdata/records-golden.jsonl.txt"
+	if os.Getenv("GENERATE_FIXTURE_GOLDEN") == "1" {
+		if err = os.WriteFile(golden, append(encoded, '\n'), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded []fixtureGoldenRecord
+	if err = json.Unmarshal(want, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, decoded) {
+		t.Fatal("fixture records differ from pre-policy golden")
+	}
+}
