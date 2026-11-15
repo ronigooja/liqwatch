@@ -27,14 +27,20 @@ var topics = []string{"deal", "fair.price", "index.price", "ticker", "funding.ra
 
 // Field tables describe recorded items; unspecified fields are retained and counted.
 var keepFields = map[string]map[string]bool{
-	"trade":   {"p": true, "v": true, "T": true, "O": true, "M": true, "t": true, "i": true, "cts": true},                                               // trades
-	"mark":    {"symbol": true, "price": true},                                                                                                          // mark price
-	"index":   {"symbol": true, "price": true},                                                                                                          // index price
-	"funding": {"symbol": true, "rate": true, "nextSettleTime": true},                                                                                   // funding
-	"ticker":  {"symbol": true, "fairPrice": true, "indexPrice": true, "holdVol": true, "fundingRate": true, "nextSettleTime": true, "timestamp": true}, // prices, open interest, funding
+	"trade":    {"p": true, "v": true, "T": true, "O": true, "t": true, "i": true, "cts": true},
+	"mark":     {"price": true},
+	"index":    {"price": true},
+	"funding":  {"rate": true, "nextSettleTime": true},
+	"ticker":   {"fairPrice": true, "indexPrice": true, "holdVol": true, "fundingRate": true, "nextSettleTime": true, "timestamp": true},
+	"contract": {"contractSize": true, "minLeverage": true, "maxLeverage": true, "maintenanceMarginRate": true, "initialMarginRate": true, "riskBaseVol": true, "riskIncrVol": true, "riskIncrMmr": true, "riskIncrImr": true, "riskLevelLimit": true, "riskLongShortSwitch": true, "riskLimitType": true, "riskLimitMode": true, "openingTime": true, "riskLimitCustom": true},
 }
 var dropFields = map[string]map[string]bool{
-	"ticker": {"lastPrice": true, "riseFallRate": true, "volume24": true, "amount24": true, "maxBidPrice": true, "minAskPrice": true, "lower24Price": true, "high24Price": true, "bid1": true, "ask1": true, "riseFallValue": true, "zone": true, "riseFallRates": true, "riseFallRatesOfTimezone": true}, // quote and statistics
+	"trade":    {"symbol": true, "M": true},
+	"mark":     {"symbol": true},
+	"index":    {"symbol": true},
+	"funding":  {"symbol": true},
+	"ticker":   {"symbol": true, "lastPrice": true, "riseFallRate": true, "volume24": true, "amount24": true, "maxBidPrice": true, "minAskPrice": true, "lower24Price": true, "high24Price": true, "bid1": true, "ask1": true, "riseFallValue": true, "zone": true, "riseFallRates": true, "riseFallRatesOfTimezone": true},
+	"contract": {"symbol": true, "displayName": true, "displayNameEn": true, "positionOpenType": true, "baseCoin": true, "quoteCoin": true, "baseCoinName": true, "quoteCoinName": true, "futureType": true, "settleCoin": true, "priceScale": true, "volScale": true, "amountScale": true, "priceUnit": true, "volUnit": true, "minVol": true, "maxVol": true, "limitMaxVol": true, "bidLimitPriceRate": true, "askLimitPriceRate": true, "takerFeeRate": true, "makerFeeRate": true, "liquidationFeeRate": true, "feeRateMode": true, "priceCoefficientVariation": true, "indexOrigin": true, "state": true, "isNew": true, "isHot": true, "isHidden": true, "conceptPlate": true, "conceptPlateId": true, "tagIdList": true, "maxNumOrders": true, "depthStepList": true, "openingCountdownOption": true, "triggerProtect": true, "apiAllowed": true, "baseCoinIconUrl": true, "baseCoinId": true, "vid": true, "id": true, "fn": true, "isMaxLeverage": true, "isZeroFeeRate": true, "isZeroFeeSymbol": true, "showBeforeOpen": true, "marketOrderMaxLevel": true, "marketOrderPriceLimitRate1": true, "marketOrderPriceLimitRate2": true, "appraisal": true, "showAppraisalCountdown": true, "automaticDelivery": true, "stopOnlyFair": true, "threshold": true, "type": true, "typeLabel": true, "preMarket": true, "feeRateType": true, "leverageFeeRates": true, "tieredFeeRates": true, "createTime": true, "countryConfigContractMaxLeverage": true},
 }
 
 var samples = struct {
@@ -105,6 +111,70 @@ func (a *Adapter) filterObject(ch string, data []byte) ([]byte, error) {
 		}
 		if !keepFields[ch][name] {
 			a.unknown.Add(1)
+		}
+		if !first {
+			out.WriteByte(',')
+		}
+		first = false
+		k, _ := json.Marshal(name)
+		out.Write(k)
+		out.WriteByte(':')
+		out.Write(value)
+	}
+	out.WriteByte('}')
+	return out.Bytes(), nil
+}
+
+// filterFrame removes envelope routing fields after symbol extraction and filters each data object.
+func (a *Adapter) filterFrame(ch string, msg, data []byte) ([]byte, error) {
+	var filtered []byte
+	if ch == "trade" && len(data) > 0 && data[0] == '[' {
+		var items []json.RawMessage
+		if err := json.Unmarshal(data, &items); err != nil {
+			return nil, err
+		}
+		filtered = append(filtered, '[')
+		for i, item := range items {
+			obj, err := a.filterObject(ch, item)
+			if err != nil {
+				return nil, err
+			}
+			if i > 0 {
+				filtered = append(filtered, ',')
+			}
+			filtered = append(filtered, obj...)
+		}
+		filtered = append(filtered, ']')
+	} else {
+		var err error
+		filtered, err = a.filterObject(ch, data)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// Preserve source order and raw values, including envelope extensions and ts.
+	d := json.NewDecoder(bytes.NewReader(msg))
+	if _, err := d.Token(); err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	out.WriteByte('{')
+	first := true
+	for d.More() {
+		key, err := d.Token()
+		if err != nil {
+			return nil, err
+		}
+		var value json.RawMessage
+		if err := d.Decode(&value); err != nil {
+			return nil, err
+		}
+		name := key.(string)
+		if name == "symbol" || name == "channel" {
+			continue
+		}
+		if name == "data" {
+			value = filtered
 		}
 		if !first {
 			out.WriteByte(',')
@@ -255,53 +325,28 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 		case "push.contract":
 			ch = "contract"
 		case "push.contract.extra.update":
-			ch = "contractextra"
+			return nil
 		case "push.contract.marketOrderSetting.update":
 			ch = "ordersetting"
 		}
-		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: f.symbol, Payload: msg}})
-	}
-	ch := map[string]string{"push.deal": "trade", "push.fair.price": "mark", "push.index.price": "index", "push.ticker": "ticker", "push.funding.rate": "funding"}[f.channel]
-	if ch != "" && len(f.data) > 0 && string(f.data) != "null" && f.symbol != "" {
-		if ch == "trade" {
-			if f.data[0] == '{' {
-				f.tradeFields = [][]scanField{f.fields}
-			} else if f.data[0] != '[' {
+		payload := msg
+		if ch == "contract" {
+			var err error
+			payload, err = a.filterFrame(ch, msg, f.data)
+			if err != nil {
 				a.fallbacks.Add(1)
 				return a.legacySplit(sh, msg)
 			}
-			for _, fields := range f.tradeFields {
-				for _, field := range fields {
-					if !dropFields[ch][field.key] && !keepFields[ch][field.key] {
-						a.unknown.Add(1)
-					}
-				}
-			}
-			return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: f.symbol, Payload: msg}})
 		}
-		if f.data[0] != '{' {
+		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: f.symbol, Payload: payload}})
+	}
+	ch := map[string]string{"push.deal": "trade", "push.fair.price": "mark", "push.index.price": "index", "push.ticker": "ticker", "push.funding.rate": "funding"}[f.channel]
+	if ch != "" && len(f.data) > 0 && string(f.data) != "null" && f.symbol != "" {
+		payload, err := a.filterFrame(ch, msg, f.data)
+		if err != nil {
 			a.fallbacks.Add(1)
 			return a.legacySplit(sh, msg)
 		}
-		filtered := make([]byte, 0, len(f.data))
-		filtered = append(filtered, '{')
-		for _, field := range f.fields {
-			if dropFields[ch][field.key] {
-				continue
-			}
-			if !keepFields[ch][field.key] {
-				a.unknown.Add(1)
-			}
-			if len(filtered) > 1 {
-				filtered = append(filtered, ',')
-			}
-			filtered = append(filtered, field.rawKey...)
-			filtered = append(filtered, ':')
-			filtered = append(filtered, field.value...)
-		}
-		filtered = append(filtered, '}')
-		idx := bytes.Index(msg, f.data)
-		payload := append(append(append([]byte{}, msg[:idx]...), filtered...), msg[idx+len(f.data):]...)
 		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: f.symbol, Payload: payload}})
 	}
 	if (len(f.data) == 0 || string(f.data) == "null") && !strings.HasPrefix(f.channel, "push.") {
@@ -344,39 +389,26 @@ func (a *Adapter) legacySplit(sh venue.Shard, msg []byte) []rawlog.Record {
 		case "push.contract":
 			ch = "contract"
 		case "push.contract.extra.update":
-			ch = "contractextra"
+			return nil
 		case "push.contract.marketOrderSetting.update":
 			ch = "ordersetting"
 		}
-		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: msg}})
+		payload := msg
+		if ch == "contract" {
+			var e error
+			payload, e = a.filterFrame(ch, msg, v.Data)
+			if e != nil {
+				return a.invalidFrame(msg)
+			}
+		}
+		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: payload}})
 	}
 	channels := map[string]string{"push.deal": "trade", "push.fair.price": "mark", "push.index.price": "index", "push.ticker": "ticker", "push.funding.rate": "funding"}
 	ch, known := channels[v.Channel]
 	if err == nil && known && len(v.Data) > 0 && string(v.Data) != "null" && v.Symbol != "" {
-		payload := msg
-		if ch != "trade" {
-			filtered, e := a.filterObject(ch, v.Data)
-			if e != nil {
-				goto gap
-			}
-			// Replace only data, preserving the envelope and its order.
-			idx := bytes.Index(msg, v.Data)
-			if idx < 0 {
-				goto gap
-			}
-			payload = append(append(append([]byte{}, msg[:idx]...), filtered...), msg[idx+len(v.Data):]...)
-		} else {
-			var items []json.RawMessage
-			if len(v.Data) > 0 && v.Data[0] == '[' {
-				_ = json.Unmarshal(v.Data, &items)
-			} else {
-				items = []json.RawMessage{v.Data}
-			}
-			for _, item := range items {
-				if _, e := a.filterObject(ch, item); e != nil {
-					goto gap
-				}
-			}
+		payload, e := a.filterFrame(ch, msg, v.Data)
+		if e != nil {
+			goto gap
 		}
 		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: payload}})
 	}
@@ -384,6 +416,11 @@ func (a *Adapter) legacySplit(sh venue.Shard, msg []byte) []rawlog.Record {
 		return nil
 	}
 gap:
+	p, _ := json.Marshal(map[string]any{"event": "unrecognized_frame", "bytes": len(msg), "head": string(msg[:min(len(msg), 4096)])})
+	return []rawlog.Record{{Channel: "gap", Payload: p}}
+}
+
+func (a *Adapter) invalidFrame(msg []byte) []rawlog.Record {
 	p, _ := json.Marshal(map[string]any{"event": "unrecognized_frame", "bytes": len(msg), "head": string(msg[:min(len(msg), 4096)])})
 	return []rawlog.Record{{Channel: "gap", Payload: p}}
 }
