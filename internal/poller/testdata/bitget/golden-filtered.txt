@@ -1,0 +1,183 @@
+[
+  {
+    "Fixture": "testdata/bitget/account-long-short.json",
+    "Venue": "bitget",
+    "Channel": "account-long-short",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "00000",
+      "msg": "success",
+      "requestTime": 1794666296294,
+      "data": [
+        {
+          "longAccountRatio": "0.8118",
+          "shortAccountRatio": "0.1882",
+          "longShortAccountRatio": "4.3134",
+          "ts": "1794657000000"
+        },
+        {
+          "longAccountRatio": "0.812",
+          "shortAccountRatio": "0.188",
+          "longShortAccountRatio": "4.3191",
+          "ts": "1794657300000"
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/bitget/contracts.json",
+    "Venue": "bitget",
+    "Channel": "contracts",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "data": [
+        {
+          "symbol": "BTCUSDT",
+          "baseCoin": "BTC",
+          "quoteCoin": "USDT",
+          "symbolType": "perpetual",
+          "symbolStatus": "normal",
+          "fundInterval": "8",
+          "minLever": "1",
+          "maxLever": "150"
+        },
+        {
+          "symbol": "ETHUSDT",
+          "baseCoin": "ETH",
+          "quoteCoin": "USDT",
+          "symbolType": "perpetual",
+          "symbolStatus": "normal",
+          "fundInterval": "8",
+          "minLever": "1",
+          "maxLever": "150"
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/bitget/long-short.json",
+    "Venue": "bitget",
+    "Channel": "long-short",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "00000",
+      "msg": "success",
+      "requestTime": 1794666294939,
+      "data": [
+        {
+          "longRatio": "0.7915",
+          "shortRatio": "0.2085",
+          "longShortRatio": "3.7961",
+          "ts": "1794657000000"
+        },
+        {
+          "longRatio": "0.7916",
+          "shortRatio": "0.2084",
+          "longShortRatio": "3.7984",
+          "ts": "1794657300000"
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/bitget/position-long-short.json",
+    "Venue": "bitget",
+    "Channel": "position-long-short",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "00000",
+      "msg": "success",
+      "requestTime": 1794666297601,
+      "data": [
+        {
+          "longPositionRatio": "0.4929",
+          "shortPositionRatio": "0.5071",
+          "longShortPositionRatio": "0.9719",
+          "ts": "1794657000000"
+        },
+        {
+          "longPositionRatio": "0.4929",
+          "shortPositionRatio": "0.5071",
+          "longShortPositionRatio": "0.9719",
+          "ts": "1794657300000"
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/bitget/query-position-lever.json",
+    "Venue": "bitget",
+    "Channel": "query-position-lever",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "00000",
+      "msg": "success",
+      "requestTime": 1794666300256,
+      "data": [
+        {
+          "symbol": "BTCUSDT",
+          "level": "1",
+          "startUnit": "0",
+          "endUnit": "200000",
+          "leverage": "150",
+          "keepMarginRate": "0.0040"
+        },
+        {
+          "symbol": "BTCUSDT",
+          "level": "2",
+          "startUnit": "200000",
+          "endUnit": "1000000",
+          "leverage": "100",
+          "keepMarginRate": "0.0050"
+        }
+      ]
+    }
+  },
+  {
+    "Fixture": "testdata/bitget/taker-buy-sell.json",
+    "Venue": "bitget",
+    "Channel": "taker-buy-sell",
+    "Symbol": "FIXTURE",
+    "RecvWall": 1794700800000000000,
+    "Meta": {
+      "snapshot": true
+    },
+    "Payload": {
+      "code": "00000",
+      "msg": "success",
+      "requestTime": 1794666298922,
+      "data": [
+        {
+          "sellVolume": "6.5172",
+          "buyVolume": "9.5182",
+          "ts": "1794657300000"
+        },
+        {
+          "sellVolume": "24.1524",
+          "buyVolume": "10.5525",
+          "ts": "1794657600000"
+        }
+      ]
+    }
+  }
+]
