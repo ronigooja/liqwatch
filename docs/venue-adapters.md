@@ -8,6 +8,8 @@ Verified in [adapter.go](../internal/venue/adapter.go): `Symbols` discovers venu
 
 Verified in [collector](../internal/collector/collector.go): optional `ConnLifecycle` signals open and close. The collector reads, runs heartbeats and monitors stalls while a goroutine writes subscriptions; the stall clock starts on the first frame or last subscription, whichever comes first. A subscription write error ends the connection with that error.
 
+Verified in [adapters](../internal/venue/), [poller](../internal/poller/venue.go), [backfill](../internal/backfill/backfill.go) and [discovery](../internal/symbols/symbols.go): REST requests use `Mozilla/5.0` as User-Agent. Measured: OKX Cloudflare returned HTTP 403, code 1010, for a non-browser User-Agent (owner report, 2026-11-15). WebDAV and metrics checks are unchanged.
+
 Verified in [adapter.go](../internal/venue/adapter.go): `Split` produces filtered data payloads or per-symbol envelopes; the collector supplies receive metadata. Control frames return nil, unknown data becomes a gap record, and `Classes` selects droppable classes; unmatched channels have no assigned drop class. Symbol filtering is specified in [venue map](venue-map.md).
 
 ## Implementations

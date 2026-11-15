@@ -80,6 +80,8 @@ Move an item to "Verified" with source and date once checked.
 | Question | Evidence |
 |---|---|
 | Inferred: can redundant `venue`, `ch`, `sym` envelope fields be dropped later? | Owner deferred this; verified in [rawlog](../internal/rawlog/). |
+| Unknown: who sent the Gate connection resets? | Inferred: unread frames during subscription are the most likely explanation, not proven; [measurements](recording-results.md#seven-venue-load-and-recording). |
+| Unknown: does the Binance poller deduplicate on a real second fetch? | Measured: the [second-run check](recording-results.md#seven-venue-load-and-recording) did not fetch because jobs were not due. |
 | Unknown: how do OKX, Bitget and Gate sources finalize newest buckets? | Verified deferral implementation: [history](../internal/poller/history.go). |
 | Unknown: how should KuCoin Chinese-named symbols be handled? | Measured: none in the captured contract list, [fixture](../internal/venue/kucoin/testdata/README.txt), 2026-11-13. |
 | Unknown: why is Gate WebSocket `contract_stats` discontinuous and `mark_price` zero? | Measured capture: [fixture](../internal/venue/gate/testdata/README.txt); REST coverage: [poller](poller.md). |

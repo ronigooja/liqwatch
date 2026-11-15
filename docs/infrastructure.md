@@ -4,10 +4,11 @@ Hosts and storage. Credentials are never written in this repo. Provider choice i
 
 ## Hosts
 
-| Role | Address | Spec (probed 2026-11-01) | Notes |
+| Role | Address | Spec | Notes |
 |---|---|---|---|
 | Recorder (P0) | 136.0.11.159, Japan, hostname EV02OK | 2 vCPU, ~3.9 GB RAM, 30 GB disk (~25 GB free), Debian 12, 2 GB swap | [Down; outage and open recovery questions](p0-rollout.md#recorder-outage). Reinstalled clean by the owner on 2026-11-01 and confirmed as the recorder. Still to do: timezone is Asia/Shanghai, uses systemd-timesyncd (no chrony), open-file limit 1024, no Go. Docker, python3, curl, zstd present |
-| Linux build and test | 64.118.141.231, Singapore | 1 core, 1.8 GB RAM | Verified: test machine; current collector and poller code is built and merged, not deployed. |
+| Linux build, test and live recording measurement | 64.118.141.231, Singapore | 1 core, 1.8 GB RAM | Verified: test machine; live measurements run with nothing else running (owner report, 2026-11-15); current collector and poller code is built and merged, not deployed. |
+| Linux build and test | 38.47.101.8, Hong Kong | Debian 12, 1 core, 1.9 GB RAM | Verified: shared with permanent services `xboard-node` and `3proxy`; rsync installed 2026-11-15 (owner report). Never use for CPU measurements. |
 | REST poller | 154.19.187.117 | Shared host | `liqwatchpoll.service` stopped, disabled and deleted by the owner on 2026-11-12; other services untouched. Its 55 data files are kept only on the Mac outside the repo. Verified in code: current poller is Go ([poller](poller.md)); its deployment is not established. |
 | Storage gateway | 45.45.217.235 | 2 vCPU, ~3.9 GB RAM, 19 GB disk (~6 GB free), Debian 12 | Runs OpenList (127.0.0.1:5244, behind nginx), Docker services (including a MySQL port), and other processes; shared host |
 | Processing and training | Vultr, on demand. `liq-proc` (LA, 4 vCPU, 16 GB) was used 2026-11-09 to 2026-11-12 for Parquet conversion and the liquidation-model runs, and deleted on 2026-11-12 (owner). Nothing is running there. Results and the liquidation Parquet (about 15 MB) are kept on the Mac in `$HOME/Agents/liqwatch-results/liqproc/` (not in the repo); trades, mark and depth Parquet and the raw files were not kept and can be rebuilt from the archive (raw hourly files for 2026-11-04..10, now on the unreachable recorder and WebDAV). The block storage `liq-data` (100 GB) was deleted the same day (owner); Vultr holds no instance and no storage | Full conversion to Parquet, labels, LightGBM. Until a new instance is opened the Mac runs small samples |

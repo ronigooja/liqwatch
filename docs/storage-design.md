@@ -66,7 +66,7 @@ peak  ~ two days of raw + one day of compressed (when compression or upload lags
 |---|---:|---:|---:|---:|
 | Binance, 10-minute trial scaled by 144 (extrapolation, not a full day) | about 14 GB | about 1.4 GB | about 16 GB | about 30 GB |
 
-The historical estimate predates multi-venue filtering; current full-day volume is unmeasured. Venues that push every trade, not merged trades like Binance `aggTrade`, may produce more records (inferred). The compressed figure comes from 5-second frames; whole-file compression ratio is unmeasured.
+Measured: the [seven-venue 5-minute sample](recording-results.md#seven-venue-load-and-recording) linearly extrapolates to about 138 GB raw per day; Gate is unreliable due to missing symbols. The earlier roughly 160 GB/day estimate from an earlier 5-minute sample is superseded (owner report, 2026-11-14). Full-day volume and staging-disk sizing remain unmeasured; the compressed figure above uses 5-second frames, not whole-file compression.
 
 ## Charting needs no raw window
 
@@ -94,7 +94,7 @@ Mark-price A included contracts outside the 522 (TRADIFI and others) and B did n
 | Other six venues' volume | Full-day volume remains unmeasured; adapters are built |
 | Upload of about 3,200 packs per day | Per-day time and failure rate unmeasured on WebDAV; [infrastructure.md](infrastructure.md) states WebDAV suits few large files |
 | Many open append files per process | Descriptor and IO load unmeasured |
-| Peak and busy days | Only a 10-minute sample exists |
+| Peak and busy days | Unmeasured; short-run samples are linked in [recording results](recording-results.md#seven-venue-load-and-recording) |
 | Recorder host | Japan host not chosen; the 2026-11-02 recorder is down ([p0-rollout.md](p0-rollout.md)) |
 | OneDrive quota | Unchecked; the archive is a single copy |
 
