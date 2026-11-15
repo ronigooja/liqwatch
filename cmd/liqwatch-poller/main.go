@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -79,6 +80,11 @@ func run(ctx context.Context, args []string, client poller.HTTPDoer) error {
 		return err
 	}
 	env.Bind(scheduler)
+	scheduler.OnSweep = func() {
+		for _, line := range unknownFieldLines(channels, poller.UnknownFields) {
+			fmt.Fprintln(os.Stderr, line)
+		}
+	}
 	if *once {
 		return scheduler.RunOnce(ctx)
 	}
@@ -87,6 +93,23 @@ func run(ctx context.Context, args []string, client poller.HTTPDoer) error {
 		return nil
 	}
 	return err
+}
+
+func unknownFieldLines(channels []poller.Channel, count func(string, string) uint64) []string {
+	seen := make(map[string]bool)
+	var lines []string
+	for _, c := range channels {
+		key := c.Venue + "\x00" + c.Name
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if n := count(c.Venue, c.Name); n > 0 {
+			lines = append(lines, fmt.Sprintf("poller unknown fields venue=%s channel=%s count=%d", c.Venue, c.Name, n))
+		}
+	}
+	sort.Strings(lines)
+	return lines
 }
 
 func validSymbol(s string) bool {

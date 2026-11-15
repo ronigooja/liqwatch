@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -95,6 +96,8 @@ type Scheduler struct {
 	seen                 map[string]map[int64]map[[32]byte]bool
 	Duplicates           atomic.Uint64
 	Revisions            atomic.Uint64
+	// OnSweep is called after a RunOnce sweep or when Run reaches an idle pass.
+	OnSweep func()
 }
 
 func NewScheduler(channels []Channel, sink Sink, clock Clock, path string, weight float64) (*Scheduler, error) {
@@ -263,13 +266,23 @@ func (s *Scheduler) dedup(r *Record) bool {
 					var v struct {
 						Payload json.RawMessage `json:"p"`
 						Meta    struct {
-							TS int64 `json:"last_row_timestamp"`
+							TS      int64  `json:"last_row_timestamp"`
+							RawHash string `json:"unfiltered_payload_sha256"`
 						} `json:"meta"`
 					}
 					if json.Unmarshal(sc.Bytes(), &v) != nil || v.Meta.TS <= 0 {
 						continue
 					}
-					addHash(m, v.Meta.TS, v.Payload)
+					if hash, err := hex.DecodeString(v.Meta.RawHash); err == nil && len(hash) == sha256.Size {
+						var sum [32]byte
+						copy(sum[:], hash)
+						if m[v.Meta.TS] == nil {
+							m[v.Meta.TS] = map[[32]byte]bool{}
+						}
+						m[v.Meta.TS][sum] = true
+					} else {
+						addHash(m, v.Meta.TS, v.Payload)
+					}
 				}
 				f.Close()
 			}
@@ -412,6 +425,10 @@ func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
 				return 0, nil
 			}
 			for _, r := range records {
+				if s.dedup(&r) {
+					continue
+				}
+				original := r.Payload
 				payload, record, err := ApplyPolicy(r.Venue, r.Channel, r.Payload)
 				if err != nil {
 					return 0, fmt.Errorf("filter %s/%s: %w", r.Venue, r.Channel, err)
@@ -419,10 +436,16 @@ func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
 				if !record {
 					continue
 				}
-				r.Payload = payload
-				if !s.dedup(&r) {
-					s.Sink.Write(r)
+				if _, history := r.Meta["last_row_timestamp"].(int64); history && !bytes.Equal(original, payload) {
+					var compact bytes.Buffer
+					if err := json.Compact(&compact, original); err != nil {
+						return 0, err
+					}
+					hash := sha256.Sum256(compact.Bytes())
+					r.Meta["unfiltered_payload_sha256"] = hex.EncodeToString(hash[:])
 				}
+				r.Payload = payload
+				s.Sink.Write(r)
 			}
 			if f := s.failures[key]; f != nil {
 				s.gap(c, sym, "poll_recovered", "", f)
@@ -457,6 +480,9 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			return err
 		}
 		if d > 0 {
+			if s.OnSweep != nil {
+				s.OnSweep()
+			}
 			if err = s.Clock.Sleep(ctx, d); err != nil {
 				return err
 			}
@@ -466,6 +492,9 @@ func (s *Scheduler) Run(ctx context.Context) error {
 
 // RunOnce attempts each job due at the start of the sweep at most once.
 func (s *Scheduler) RunOnce(ctx context.Context) error {
+	if s.OnSweep != nil {
+		defer s.OnSweep()
+	}
 	seen := map[string]bool{}
 	for {
 		original := s.Channels

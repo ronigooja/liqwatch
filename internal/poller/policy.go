@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -13,8 +14,11 @@ import (
 // Policy classifies members of a JSON object or positional array. Unclassified
 // members are retained and counted. Nested paths are rooted at the payload;
 // append [] to an array field to classify its object/array elements.
-// TimestampKey or TimestampIndex declares the history cursor member, which
-// must not be dropped. DropChannel suppresses the record, not cursor updates.
+// TimestampPath locates the object or array containing the history cursor;
+// empty means the payload itself. TimestampKey or TimestampIndex identifies
+// the member. A nonempty keep list at that level must include it: otherwise
+// it would be retained but counted as unknown. DropChannel suppresses the
+// record, not cursor updates.
 type Policy struct {
 	Keep, Drop               []string
 	KeepIndexes, DropIndexes []int
@@ -22,6 +26,7 @@ type Policy struct {
 	DropChannel              bool
 	TimestampKey             string
 	TimestampIndex           *int
+	TimestampPath            string
 }
 
 type policyKey struct{ venue, channel string }
@@ -76,6 +81,39 @@ func RegisterPolicy(venue, channel string, p Policy) error {
 	}
 	if err := validate(p); err != nil {
 		return err
+	}
+	if p.TimestampKey != "" && p.TimestampIndex != nil {
+		return fmt.Errorf("policy: timestamp cannot be both key and index")
+	}
+	if p.TimestampPath != "" && p.TimestampKey == "" && p.TimestampIndex == nil {
+		return fmt.Errorf("policy: timestamp path without timestamp")
+	}
+	if p.TimestampKey != "" || p.TimestampIndex != nil {
+		level := p
+		path := ""
+		if p.TimestampPath != "" {
+			for _, part := range strings.Split(p.TimestampPath, ".") {
+				key := strings.TrimSuffix(part, "[]")
+				if key == "" || hasString(level.Drop, key) {
+					return fmt.Errorf("policy: timestamp ancestor %q dropped or invalid", key)
+				}
+				if path != "" {
+					path += "."
+				}
+				path += part
+				var ok bool
+				level, ok = p.Nested[path]
+				if !ok {
+					return fmt.Errorf("policy: timestamp path %q missing policy", path)
+				}
+			}
+		}
+		if p.TimestampKey != "" && (hasString(level.Drop, p.TimestampKey) || len(level.Keep) > 0 && !hasString(level.Keep, p.TimestampKey)) {
+			return fmt.Errorf("policy: timestamp key %q not kept at %q", p.TimestampKey, path)
+		}
+		if p.TimestampIndex != nil && (hasIndex(level.DropIndexes, *p.TimestampIndex) || len(level.KeepIndexes) > 0 && !hasIndex(level.KeepIndexes, *p.TimestampIndex)) {
+			return fmt.Errorf("policy: timestamp index %d not kept at %q", *p.TimestampIndex, path)
+		}
 	}
 	policies.Lock()
 	defer policies.Unlock()
