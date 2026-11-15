@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func referenceFilterObject(src []byte, keep, drop map[string]bool) ([]byte, error) {
+func referenceFilterObject(src []byte, keep, drop map[string]bool, utaOuter bool) ([]byte, error) {
 	var values map[string]json.RawMessage
 	if err := json.Unmarshal(src, &values); err != nil || values == nil {
 		return nil, fmt.Errorf("invalid object")
@@ -37,11 +37,11 @@ func referenceFilterObject(src []byte, keep, drop map[string]bool) ([]byte, erro
 		if drop[key] {
 			continue
 		}
-		if !keep[key] {
+		if !keep[key] && !(utaOuter && key == "P") {
 			unknownFields.Add(1)
 		}
 		if key == "data" || key == "d" {
-			value, err = referenceFilterObject(value, keep, drop)
+			value, err = referenceFilterObject(value, keep, drop, false)
 			if err != nil {
 				return nil, err
 			}
@@ -58,7 +58,7 @@ func referenceFilterObject(src []byte, keep, drop map[string]bool) ([]byte, erro
 }
 
 func referenceFiltered(sh venue.Shard, channel, symbol string, msg []byte, keep, drop map[string]bool) []rawlog.Record {
-	p, err := referenceFilterObject(msg, keep, drop)
+	p, err := referenceFilterObject(msg, keep, drop, channel == "utamark")
 	if err != nil {
 		return referenceGap(msg)
 	}

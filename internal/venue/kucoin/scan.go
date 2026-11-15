@@ -285,14 +285,14 @@ func scan(msg []byte) (scanFrame, bool) {
 	}
 	return f, true
 }
-func scanFilter(fields []scanField, keep, drop map[string]bool) ([]byte, uint64, bool) {
+func scanFilter(fields []scanField, keep, drop, outerKeep map[string]bool) ([]byte, uint64, bool) {
 	out := []byte{'{'}
 	var unknown uint64
 	for _, f := range fields {
 		if drop[f.key] {
 			continue
 		}
-		if !keep[f.key] {
+		if !keep[f.key] && !outerKeep[f.key] {
 			unknown++
 		}
 		value := f.value
@@ -302,7 +302,7 @@ func scanFilter(fields []scanField, keep, drop map[string]bool) ([]byte, uint64,
 			}
 			var n uint64
 			var ok bool
-			value, n, ok = scanFilter(f.child, keep, drop)
+			value, n, ok = scanFilter(f.child, keep, drop, nil)
 			if !ok {
 				return nil, 0, false
 			}

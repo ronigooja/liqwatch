@@ -34,6 +34,7 @@ var markDrop = fields("topic type subject granularity period")
 
 // UTA mark, index, open interest and funding items; ticker statistics are not recorded.
 var utaKeep = fields("d symbol mp ip oi ts fundingRate nextFundingTime fr nft")
+var utaOuterKeep = fields("P")
 var utaDrop = fields("T s bp bq ap aq bidPrice bidSize askPrice askSize bestBid bestAsk bestBidSize bestAskSize vol volume turnover high low priceChange priceChangePercent lastPrice last p v h l")
 
 func fields(s string) map[string]bool {
@@ -69,7 +70,7 @@ func sample(shard, channel string, msg []byte) []byte {
 }
 
 // filterObject uses the decoder's input offsets to retain source order and raw values.
-func filterObject(src []byte, keep, drop map[string]bool) ([]byte, error) {
+func filterObject(src []byte, keep, drop, outerKeep map[string]bool) ([]byte, error) {
 	var values map[string]json.RawMessage
 	if err := json.Unmarshal(src, &values); err != nil || values == nil {
 		return nil, fmt.Errorf("invalid object")
@@ -97,11 +98,11 @@ func filterObject(src []byte, keep, drop map[string]bool) ([]byte, error) {
 		if drop[key] {
 			continue
 		}
-		if !keep[key] {
+		if !keep[key] && !outerKeep[key] {
 			unknownFields.Add(1)
 		}
 		if key == "data" || key == "d" {
-			value, err = filterObject(value, keep, drop)
+			value, err = filterObject(value, keep, drop, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -117,8 +118,8 @@ func filterObject(src []byte, keep, drop map[string]bool) ([]byte, error) {
 	return append(out, '}'), nil
 }
 
-func filtered(sh venue.Shard, channel, symbol string, msg []byte, keep, drop map[string]bool) []rawlog.Record {
-	p, err := filterObject(msg, keep, drop)
+func filtered(sh venue.Shard, channel, symbol string, msg []byte, keep, drop, outerKeep map[string]bool) []rawlog.Record {
+	p, err := filterObject(msg, keep, drop, outerKeep)
 	if err != nil {
 		return gap(msg)
 	}
@@ -344,12 +345,15 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 			}
 			if channel != "" {
 				keep, drop := utaKeep, utaDrop
+				outerKeep := utaOuterKeep
 				if channel == "trade" {
 					keep, drop = tradeKeep, tradeDrop
+					outerKeep = nil
 				} else if channel == "mark" {
 					keep, drop = markKeep, markDrop
+					outerKeep = nil
 				}
-				if p, n, valid := scanFilter(f.fields, keep, drop); valid {
+				if p, n, valid := scanFilter(f.fields, keep, drop, outerKeep); valid {
 					unknownFields.Add(n)
 					out := []rawlog.Record{{Channel: channel, Symbol: symbol, Payload: p}}
 					if p := sample(sh.Name, channel, msg); p != nil {
@@ -400,7 +404,7 @@ func (a *Adapter) legacySplit(sh venue.Shard, msg []byte) []rawlog.Record {
 		return nil
 	}
 	if f.T == "mark-price" && f.D.Symbol != "" {
-		return filtered(sh, "utamark", f.D.Symbol, msg, utaKeep, utaDrop)
+		return filtered(sh, "utamark", f.D.Symbol, msg, utaKeep, utaDrop, utaOuterKeep)
 	}
 	if f.Type == "message" {
 		parts := strings.SplitN(f.Topic, ":", 2)
@@ -418,9 +422,9 @@ func (a *Adapter) legacySplit(sh venue.Shard, msg []byte) []rawlog.Record {
 			}
 			if ch != "" {
 				if ch == "trade" {
-					return filtered(sh, ch, parts[1], msg, tradeKeep, tradeDrop)
+					return filtered(sh, ch, parts[1], msg, tradeKeep, tradeDrop, nil)
 				}
-				return filtered(sh, ch, parts[1], msg, markKeep, markDrop)
+				return filtered(sh, ch, parts[1], msg, markKeep, markDrop, nil)
 			}
 		}
 		return gap(msg)
