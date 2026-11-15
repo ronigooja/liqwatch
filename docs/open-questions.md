@@ -83,7 +83,11 @@ Move an item to "Verified" with source and date once checked.
 | Unknown: why did Bybit peak RSS increase? | Measured: the newer run's maximum exceeded the 2026-11-14 run; cause not investigated; [recording results](recording-results.md#seven-venue-load-and-recording). |
 | Unknown: does sub-universe trade coverage reflect market activity? | Measured: Bitget, Gate, Bybit and KuCoin had incomplete trade coverage; not checked against market activity; [recording results](recording-results.md#seven-venue-load-and-recording). |
 | Unknown: how should subscription errors be counted? | Measured: collector subscription-error counters were not exposed; [recording results](recording-results.md#seven-venue-load-and-recording). |
-| Inferred: can redundant `venue`, `ch`, `sym` envelope fields be dropped later? | Owner deferred this; verified in [rawlog](../internal/rawlog/). |
+| Unknown: can redundant `venue`, `ch`, `sym` envelope fields be dropped later? | Verified: owner deferred this; measurement and scope: [0016](decisions/0016-drop-unneeded-payload-fields.md#why). |
+| Unknown: should duplicate values be recorded from both Bitget ticker and funding, MEXC ticker and mark/index/funding, or KuCoin mark and utamark? | Measured: KuCoin classic and UTA matched on 248 timestamps for one symbol only (field review sub-agent reports, 2026-11-15). |
+| Unknown: which polled-channel payload fields can be removed? | Verified: no poller sample was available for the field review; audit needs a recorded poller sample (field review sub-agent reports, 2026-11-15). |
+| Unknown: why do Gate `lsr_account` and `lsr_taker` official descriptions disagree with their names? | Verified: use the official description pending resolution (field review sub-agent reports, 2026-11-15). |
+| Unknown: where is KuCoin next-funding time available? | Measured: the WebSocket sample showed no next-funding-time field (field review sub-agent reports, 2026-11-15). |
 | Unknown: who sent the Gate connection resets? | Inferred: unread frames during subscription are the most likely explanation, not proven; [measurements](recording-results.md#seven-venue-load-and-recording). |
 | Unknown: does the Binance poller deduplicate on a real second fetch? | Measured: the [second-run check](recording-results.md#seven-venue-load-and-recording) did not fetch because jobs were not due. |
 | Unknown: how do OKX, Bitget and Gate sources finalize newest buckets? | Verified deferral implementation: [history](../internal/poller/history.go). |

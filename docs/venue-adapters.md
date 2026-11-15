@@ -1,6 +1,6 @@
 # Venue adapters
 
-Design and verified implementation status of collector adapters; governed by [0011](decisions/0011-no-alert-narrower-recording.md), [0013](decisions/0013-no-dex-recording.md), and [0014](decisions/0014-daily-pack-storage.md), and [0015](decisions/0015-recording-scope-and-granularity.md). API observations and limitations: [venue APIs](venue-apis.md#live-adapter-captures).
+Design and verified implementation status of collector adapters; governed by [0011](decisions/0011-no-alert-narrower-recording.md), [0013](decisions/0013-no-dex-recording.md), [0014](decisions/0014-daily-pack-storage.md), [0015](decisions/0015-recording-scope-and-granularity.md), and [0016](decisions/0016-drop-unneeded-payload-fields.md). API observations: [venue APIs](venue-apis.md#live-adapter-captures).
 
 ## Contract
 
@@ -81,7 +81,9 @@ Verified in the linked code: each table describes configured subscriptions, not 
 
 ## Recorded content
 
-Verified in the linked adapter code: explicit per-channel keep/drop field tables are authoritative; unknown fields are retained and counted. Eligible frames produce a complete `{"sample":...}` frame at most once per channel and shard per hour. Subscribe errors become `gap` records with `event=subscribe_error` and the frame; acknowledgements are counted.
+Verified in the linked adapter code: unknown fields are retained and counted. Eligible frames produce a complete `{"sample":...}` frame at most once per channel and shard per hour. Subscribe errors become `gap` records with `event=subscribe_error` and the frame; acknowledgements are counted.
+
+Verified: the per-venue field filter and explicit Binance and MEXC trade tables are specified in [0016](decisions/0016-drop-unneeded-payload-fields.md#consequences); not built until the code branches merge. The main session updates this status after merge.
 
 Verified in [Bybit](../internal/venue/bybit/bybit.go): ticker state is per connection and symbol and released on close, fixing the former overlap contamination window. A partial record is suppressed while another open connection of the shard has complete state for that symbol; otherwise it is marked `partial` until a snapshot.
 
