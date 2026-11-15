@@ -243,22 +243,37 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 	}
 	log.Printf("shard %s conn %s open (%d streams)", sh.Name, k.id, len(sh.Streams))
 
-	for i, msg := range c.adapter.Subscribe(sh) {
-		if i > 0 && sh.SubscribeSpacing > 0 {
-			t := time.NewTimer(sh.SubscribeSpacing)
-			select {
-			case <-ctx.Done():
-				t.Stop()
-				return ctx.Err()
-			case <-t.C:
+	ctx, cancel := context.WithCancel(ctx)
+	var workers sync.WaitGroup
+	defer func() { cancel(); workers.Wait() }()
+	var last atomic.Int64
+	writeErr := make(chan error, 1)
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		for i, msg := range c.adapter.Subscribe(sh) {
+			if i > 0 && sh.SubscribeSpacing > 0 {
+				t := time.NewTimer(sh.SubscribeSpacing)
+				select {
+				case <-ctx.Done():
+					t.Stop()
+					return
+				case <-t.C:
+				}
+			}
+			if err := ws.Write(ctx, websocket.MessageText, msg); err != nil {
+				writeErr <- err
+				cancel()
+				return
 			}
 		}
-		if err := ws.Write(ctx, websocket.MessageText, msg); err != nil {
-			return err
-		}
-	}
+		// Start the stall clock on the first frame or the last subscription, whichever comes first.
+		last.CompareAndSwap(0, time.Now().UnixNano())
+	}()
 	if every, frame := c.adapter.Heartbeat(sh); every > 0 && frame != nil {
+		workers.Add(1)
 		go func() {
+			defer workers.Done()
 			t := time.NewTicker(every)
 			defer t.Stop()
 			for {
@@ -276,20 +291,18 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		}()
 	}
 
-	var last atomic.Int64
-	last.Store(time.Now().UnixNano())
 	if sh.Stall > 0 {
-		wctx, wcancel := context.WithCancel(ctx)
-		defer wcancel()
+		workers.Add(1)
 		go func() {
+			defer workers.Done()
 			t := time.NewTicker(sh.Stall / 4)
 			defer t.Stop()
 			for {
 				select {
-				case <-wctx.Done():
+				case <-ctx.Done():
 					return
 				case <-t.C:
-					if time.Since(time.Unix(0, last.Load())) > sh.Stall {
+					if seen := last.Load(); seen != 0 && time.Since(time.Unix(0, seen)) > sh.Stall {
 						c.Stalls.Add(1)
 						log.Printf("shard %s conn %s stalled, replacing", sh.Name, k.id)
 						k.cancel()
@@ -304,6 +317,11 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		_, data, err := ws.Read(ctx)
 		rw := time.Now()
 		if err != nil {
+			select {
+			case err := <-writeErr:
+				return err
+			default:
+			}
 			if ctx.Err() != nil {
 				return fmt.Errorf("stopped")
 			}
