@@ -93,7 +93,7 @@ func TestVenueEnvUniverseUserAgentBaseURLAndLimits(t *testing.T) {
 		if _, err = s.Step(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		clock.t = clock.t.Add(time.Second)
+		clock.t = clock.t.Add(3 * time.Second)
 	}
 	if len(rec.seen) != 2 || rec.seen[0] != "Mozilla/5.0|/ping?s=BTC-USDT-SWAP" || rec.seen[1] != "Mozilla/5.0|/ping?s=ETH-USDT-SWAP" {
 		t.Fatalf("requests %v", rec.seen)

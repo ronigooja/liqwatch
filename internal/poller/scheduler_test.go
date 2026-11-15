@@ -54,6 +54,11 @@ func TestBudgetAndEndpointBlocking(t *testing.T) {
 	s, _ := NewScheduler(channels, sink, c, "", 2)
 	s.Step(context.Background())
 	s.Step(context.Background())
+	if b != 0 {
+		t.Fatal("startup budget burst")
+	}
+	c.t = c.t.Add(30 * time.Second)
+	s.Step(context.Background())
 	if a != 1 || b != 1 {
 		t.Fatalf("a=%d b=%d", a, b)
 	}

@@ -358,7 +358,7 @@ func (e *Env) HistoryChannel(name string, s HistorySpec) Channel {
 	skip := func(sym string) bool {
 		return !s.SkipNoData && e.Scheduler != nil && e.Scheduler.NoDataSkip(e.Venue, name, sym)
 	}
-	return e.Channel(name, ChannelSpec{PerSymbol: true, Period: s.Period, Weight: s.Weight, RPS: s.RPS, Skip: skip,
+	c := e.Channel(name, ChannelSpec{PerSymbol: true, Period: s.Period, Weight: s.Weight, RPS: s.RPS, Skip: skip,
 		Fetch: func(ctx context.Context, sym string) ([]Record, error) {
 			h := &History{Venue: e.Venue, Channel: name, Symbol: sym, Clock: e.Clock, Sched: e.Scheduler,
 				Overlap: e.Overlap, Lookback: e.Lookback, Retention: s.Retention, MaxLookback: s.MaxLookback,
@@ -366,6 +366,8 @@ func (e *Env) HistoryChannel(name string, s HistorySpec) Channel {
 				Fetch: func(ctx context.Context, start, end int64) ([]Row, error) { return s.Fetch(ctx, sym, start, end) }}
 			return h.Run(ctx)
 		}})
+	c.History = true
+	return c
 }
 
 // SnapshotChannel builds a daily snapshot channel (no dedup); see SnapshotMode.

@@ -360,6 +360,7 @@ func BinanceChannels(b *Binance) []Channel {
 			c.Daily = true
 		}
 		if isHistory(n) {
+			c.History = true
 			c.Skip = func(sym string) bool { return b.Scheduler != nil && b.Scheduler.NoDataSkip("binance", n, sym) }
 		}
 		if n == "openInterest" {

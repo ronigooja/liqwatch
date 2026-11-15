@@ -288,6 +288,8 @@ func TestOKXCurrencyUnknownTokenCooldown(t *testing.T) {
 			e := &Env{Venue: "okx", Doer: uaDoer{server.Client()}, Clock: clock, BaseURL: server.URL, Lookback: 20 * time.Minute, Universe: func() []string { return []string{"CT-USDT-SWAP", "BTC-USDT-SWAP"} }}
 			ch := okxFactory(e)[4]
 			ch.Period = time.Hour
+			// This fixture tests unsupported-token cooldown, not phase eligibility.
+			ch.History = false
 			sink := &memorySink{}
 			path := t.TempDir() + "/state.json"
 			s, err := NewScheduler([]Channel{ch}, sink, clock, path, 240)

@@ -20,6 +20,7 @@ type Symbol = string
 type Channel struct {
 	Venue, Name string
 	PerSymbol   bool
+	History     bool // Replayable history may defer its first fetch to its phase; snapshots may not.
 	Period      time.Duration
 	Daily       bool
 	Weight      float64
@@ -73,8 +74,7 @@ type state struct {
 	Symbols          []string            `json:"symbols,omitempty"`
 }
 type bucket struct {
-	tokens  float64
-	updated time.Time
+	next time.Time
 }
 type failure struct {
 	attempts int
@@ -95,6 +95,7 @@ type Scheduler struct {
 	failures             map[string]*failure
 	stopped              map[string]bool
 	seen                 map[string]map[int64]map[[32]byte]bool
+	capacityReported     map[string]string
 	Duplicates           atomic.Uint64
 	Revisions            atomic.Uint64
 	// OnSweep is called after a RunOnce sweep or when Run reaches an idle pass.
@@ -209,24 +210,6 @@ func (s *Scheduler) save() error {
 	}
 	return os.Rename(name, s.StatePath)
 }
-func due(c Channel, last int64, now time.Time) bool {
-	if last == 0 {
-		return true
-	}
-	t := time.Unix(0, last).UTC()
-	now = now.UTC()
-	if c.Daily {
-		boundary := time.Date(now.Year(), now.Month(), now.Day(), 0, 5, 0, 0, time.UTC)
-		if now.Before(boundary) {
-			boundary = boundary.Add(-24 * time.Hour)
-		}
-		return t.Before(boundary)
-	}
-	if c.Period <= 0 {
-		return false
-	}
-	return now.Truncate(c.Period).After(t.Truncate(c.Period))
-}
 func (s *Scheduler) available(c Channel, now time.Time) time.Duration {
 	endpoint := c.Venue + "/" + c.Name
 	wait := s.blocked[endpoint].Sub(now)
@@ -237,33 +220,145 @@ func (s *Scheduler) available(c Channel, now time.Time) time.Duration {
 	}
 	b := s.buckets[c.Venue]
 	if b == nil {
-		b = &bucket{tokens: s.WeightPerMinute, updated: now}
+		b = &bucket{}
 		s.buckets[c.Venue] = b
 	}
-	if now.After(b.updated) {
-		b.tokens += now.Sub(b.updated).Minutes() * s.WeightPerMinute
-		if b.tokens > s.WeightPerMinute {
-			b.tokens = s.WeightPerMinute
-		}
-		b.updated = now
-	}
-	w := c.Weight
-	if w <= 0 {
-		w = 1
-	}
-	if w > s.WeightPerMinute {
-		return 24 * time.Hour
-	}
-	if b.tokens < w {
-		d := time.Duration((w - b.tokens) / s.WeightPerMinute * float64(time.Minute))
-		if d > wait {
-			wait = d
-		}
+	if d := b.next.Sub(now); d > wait {
+		wait = d
 	}
 	if wait < 0 {
 		return 0
 	}
 	return wait
+}
+
+// charge paces weighted work without banked idle/startup credit. A request reserves
+// its cost AFTER its start, so even costs above a minute's budget remain runnable.
+// A rolling interval can include one boundary request; no token-bucket burst is allowed.
+func (s *Scheduler) charge(c Channel, now time.Time) {
+	w := c.Weight
+	if w <= 0 {
+		w = 1
+	}
+	d := time.Duration(float64(time.Minute) * w / s.WeightPerMinute)
+	if d < time.Nanosecond {
+		d = time.Nanosecond
+	}
+	s.buckets[c.Venue].next = now.Add(d)
+	s.lastRequest[c.Venue+"/"+c.Name] = now
+}
+
+type scheduledJob struct {
+	c        Channel
+	sym, key string
+	deadline time.Time
+	order    int
+}
+
+func cadence(c Channel) time.Duration {
+	if c.Daily {
+		return 24 * time.Hour
+	}
+	return c.Period
+}
+
+// schedule assigns evenly spaced, collision-free ranks to canonical keys within
+// each venue/cadence. For an unchanged universe/config, phases survive restart
+// without new state. Daily windows still open at 00:05 UTC. The next lattice slot
+// is always <= one period after success; missed slots coalesce, never catch up.
+// These are eligibility deadlines, NOT HTTP-success bounds under overload/failure.
+func (s *Scheduler) schedule(symbols []string) []scheduledJob {
+	groups := map[string][]scheduledJob{}
+	for order, c := range s.Channels {
+		if channelDropped(c.Venue, c.Name) {
+			continue
+		}
+		syms := []string{""}
+		if c.PerSymbol {
+			syms = symbols
+		}
+		for _, sym := range syms {
+			group := fmt.Sprintf("%s/%d/%t", c.Venue, cadence(c), c.Daily)
+			groups[group] = append(groups[group], scheduledJob{c: c, sym: sym, key: jobKey(c, sym), order: order})
+		}
+	}
+	var jobs []scheduledJob
+	for _, group := range groups {
+		sort.Slice(group, func(i, j int) bool { return group[i].key < group[j].key })
+		for i, j := range group {
+			p := cadence(j.c)
+			last := s.state.Jobs[j.key].LastSuccess
+			j.deadline = time.UnixMilli(s.state.RecordingStartMS)
+			if p > 0 && (last != 0 || j.c.History) {
+				offset := time.Duration(float64(p) * float64(i) / float64(len(group)))
+				if j.c.Daily {
+					offset += 5 * time.Minute
+				}
+				after := j.deadline
+				if last != 0 {
+					after = time.Unix(0, last)
+				}
+				j.deadline = after.Add(-offset).Truncate(p).Add(offset)
+				if j.deadline.Before(after) || last != 0 {
+					j.deadline = j.deadline.Add(p)
+				}
+			} else if last != 0 {
+				continue // A nonpositive period is one-shot, as in legacy state.
+			}
+			if f := s.failures[j.key]; f != nil {
+				j.deadline = f.next // Retrying an old slot must not jump ahead of regular work.
+			}
+			jobs = append(jobs, j)
+		}
+	}
+	sort.Slice(jobs, func(i, j int) bool {
+		if jobs[i].deadline.Equal(jobs[j].deadline) {
+			// Preserve factory order for equally urgent bootstrap dependencies
+			// (notably exchangeInfo, which discovers the Binance universe).
+			if jobs[i].order != jobs[j].order {
+				return jobs[i].order < jobs[j].order
+			}
+			return jobs[i].key < jobs[j].key
+		}
+		return jobs[i].deadline.Before(jobs[j].deadline)
+	})
+	return jobs
+}
+
+// reportCapacity flags configurations impossible even with one HTTP request per
+// job. Pagination, latency and failures can exceed capacity below this lower bound.
+func (s *Scheduler) reportCapacity(jobs []scheduledJob, now time.Time) {
+	venueLoad, endpointLoad := map[string]float64{}, map[string]float64{}
+	for _, j := range jobs {
+		p := cadence(j.c)
+		if p <= 0 {
+			continue
+		}
+		w := j.c.Weight
+		if w <= 0 {
+			w = 1
+		}
+		venueLoad[j.c.Venue] += w * float64(time.Minute) / float64(p)
+		endpointLoad[j.c.Venue+"/"+j.c.Name] += float64(time.Second) / float64(p)
+	}
+	if s.capacityReported == nil {
+		s.capacityReported = map[string]string{}
+	}
+	for _, j := range jobs {
+		endpoint := j.c.Venue + "/" + j.c.Name
+		msg := ""
+		if load := venueLoad[j.c.Venue]; load > s.WeightPerMinute {
+			msg = fmt.Sprintf("minimum venue weight/min %.6g exceeds configured %.6g", load, s.WeightPerMinute)
+		}
+		if load := endpointLoad[endpoint]; j.c.RPS > 0 && load > j.c.RPS {
+			msg += fmt.Sprintf(" minimum endpoint requests/sec %.6g exceeds configured %.6g", load, j.c.RPS)
+		}
+		if msg != "" && s.capacityReported[endpoint] != msg {
+			p, _ := json.Marshal(map[string]any{"event": "schedule_over_capacity", "channel": j.c.Name, "err": msg})
+			s.Sink.Write(Record{Venue: j.c.Venue, Channel: "gap", RecvWall: now.UnixNano(), RecvMono: time.Since(monoOrigin).Nanoseconds(), Payload: p})
+		}
+		s.capacityReported[endpoint] = msg
+	}
 }
 
 // dedup reconstructs recent output before accepting a history row.
@@ -345,12 +440,7 @@ func (s *Scheduler) waitRequest(ctx context.Context, venue, name string) error {
 				now := s.Clock.Now()
 				d := s.available(c, now)
 				if d <= 0 {
-					w := c.Weight
-					if w <= 0 {
-						w = 1
-					}
-					s.buckets[venue].tokens -= w
-					s.lastRequest[venue+"/"+name] = now
+					s.charge(c, now)
 					return nil
 				}
 				if err := s.Clock.Sleep(ctx, d); err != nil {
@@ -375,110 +465,97 @@ func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
 	if s.Universe != nil {
 		symbols = s.Universe()
 	}
-	sort.Strings(symbols)
-	for _, c := range s.Channels {
-		if channelDropped(c.Venue, c.Name) {
+	jobs := s.schedule(symbols)
+	s.reportCapacity(jobs, now)
+	for _, j := range jobs {
+		c, sym, key := j.c, j.sym, j.key
+		if s.stopped[key] || (c.Skip != nil && c.Skip(sym)) {
 			continue
 		}
-		syms := []string{""}
-		if c.PerSymbol {
-			syms = symbols
+		if now.Before(j.deadline) {
+			if d := j.deadline.Sub(now); d < wait {
+				wait = d
+			}
+			continue
 		}
-		for _, sym := range syms {
-			key := jobKey(c, sym)
-			if s.stopped[key] || !due(c, s.state.Jobs[key].LastSuccess, now) || (c.Skip != nil && c.Skip(sym)) {
-				continue
+		if d := s.available(c, now); d > 0 {
+			if d < wait {
+				wait = d
 			}
-			if f := s.failures[key]; f != nil && now.Before(f.next) {
-				if d := f.next.Sub(now); d < wait {
-					wait = d
-				}
-				continue
+			continue
+		}
+		s.charge(c, now)
+		endpoint := c.Venue + "/" + c.Name
+		records, err := c.Fetch(ctx, sym)
+		if err != nil {
+			f := s.failures[key]
+			if f == nil {
+				f = &failure{since: now}
+				s.failures[key] = f
 			}
-			if d := s.available(c, now); d > 0 {
-				if d < wait {
-					wait = d
+			f.attempts++
+			s.gap(c, sym, "poll_failed", err.Error(), f)
+			var permanent *PermanentError
+			if errors.As(err, &permanent) {
+				p := permanent.Payload
+				if !json.Valid(p) {
+					p, _ = json.Marshal(string(p))
 				}
-				continue
-			}
-			w := c.Weight
-			if w <= 0 {
-				w = 1
-			}
-			s.buckets[c.Venue].tokens -= w
-			endpoint := c.Venue + "/" + c.Name
-			s.lastRequest[endpoint] = now
-			records, err := c.Fetch(ctx, sym)
-			if err != nil {
-				f := s.failures[key]
-				if f == nil {
-					f = &failure{since: now}
-					s.failures[key] = f
-				}
-				f.attempts++
-				s.gap(c, sym, "poll_failed", err.Error(), f)
-				var permanent *PermanentError
-				if errors.As(err, &permanent) {
-					p := permanent.Payload
-					if !json.Valid(p) {
-						p, _ = json.Marshal(string(p))
-					}
-					s.Sink.Write(Record{Venue: c.Venue, Symbol: sym, Channel: "brackets_error", RecvWall: now.UnixNano(), RecvMono: time.Since(monoOrigin).Nanoseconds(), Payload: p})
-					s.stopped[key] = true
-					return 0, nil
-				}
-				d := time.Second << min(f.attempts-1, 8)
-				if d > 300*time.Second {
-					d = 300 * time.Second
-				}
-				var retry *RetryError
-				failedAt := s.Clock.Now()
-				if errors.As(err, &retry) {
-					if retry.After > d {
-						d = retry.After
-					}
-					s.blocked[endpoint] = failedAt.Add(retry.After)
-				}
-				f.next = failedAt.Add(d)
+				s.Sink.Write(Record{Venue: c.Venue, Symbol: sym, Channel: "brackets_error", RecvWall: now.UnixNano(), RecvMono: time.Since(monoOrigin).Nanoseconds(), Payload: p})
+				s.stopped[key] = true
 				return 0, nil
 			}
-			for _, r := range records {
-				payload, record, err := ApplyPolicy(r.Venue, r.Channel, r.Payload)
-				if err != nil {
-					return 0, fmt.Errorf("filter %s/%s: %w", r.Venue, r.Channel, err)
-				}
-				if !record {
-					continue
-				}
-				r.Payload = payload
-				// A policy change can cause one extra revision per row on the first fetch.
-				if s.dedup(&r) {
-					continue
-				}
-				s.Sink.Write(r)
+			d := time.Second << min(f.attempts-1, 8)
+			if d > 300*time.Second {
+				d = 300 * time.Second
 			}
-			if f := s.failures[key]; f != nil {
-				s.gap(c, sym, "poll_recovered", "", f)
-				delete(s.failures, key)
-			}
-			st := s.state.Jobs[key]
-			st.LastSuccess = s.Clock.Now().UnixNano()
-			for _, r := range records {
-				if ts, ok := r.Meta["last_row_timestamp"].(int64); ok && ts > st.RowTimestamp {
-					st.RowTimestamp = ts
+			var retry *RetryError
+			failedAt := s.Clock.Now()
+			if errors.As(err, &retry) {
+				if retry.After > d {
+					d = retry.After
 				}
+				s.blocked[endpoint] = failedAt.Add(retry.After)
 			}
-			s.state.Jobs[key] = st
-			if x, ok := s.Sink.(interface{ Flush() error }); ok {
-				if err := x.Flush(); err != nil {
-					return 0, err
-				}
-			}
-			if err := s.save(); err != nil {
-				return 0, fmt.Errorf("save poll state: %w", err)
-			}
+			f.next = failedAt.Add(d)
 			return 0, nil
 		}
+		for _, r := range records {
+			payload, record, err := ApplyPolicy(r.Venue, r.Channel, r.Payload)
+			if err != nil {
+				return 0, fmt.Errorf("filter %s/%s: %w", r.Venue, r.Channel, err)
+			}
+			if !record {
+				continue
+			}
+			r.Payload = payload
+			// A policy change can cause one extra revision per row on the first fetch.
+			if s.dedup(&r) {
+				continue
+			}
+			s.Sink.Write(r)
+		}
+		if f := s.failures[key]; f != nil {
+			s.gap(c, sym, "poll_recovered", "", f)
+			delete(s.failures, key)
+		}
+		st := s.state.Jobs[key]
+		st.LastSuccess = s.Clock.Now().UnixNano()
+		for _, r := range records {
+			if ts, ok := r.Meta["last_row_timestamp"].(int64); ok && ts > st.RowTimestamp {
+				st.RowTimestamp = ts
+			}
+		}
+		s.state.Jobs[key] = st
+		if x, ok := s.Sink.(interface{ Flush() error }); ok {
+			if err := x.Flush(); err != nil {
+				return 0, err
+			}
+		}
+		if err := s.save(); err != nil {
+			return 0, fmt.Errorf("save poll state: %w", err)
+		}
+		return 0, nil
 	}
 	return wait, nil
 }
@@ -506,6 +583,7 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 		defer s.OnSweep()
 	}
 	seen := map[string]bool{}
+	start := s.Clock.Now()
 	for {
 		original := s.Channels
 		var channels []Channel
@@ -514,9 +592,6 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 				continue
 			}
 			cc := c
-			if !c.PerSymbol && seen[jobKey(c, "")] {
-				continue
-			}
 			fetch := c.Fetch
 			cc.Fetch = func(ctx context.Context, sym string) ([]Record, error) {
 				seen[jobKey(cc, sym)] = true
@@ -554,22 +629,13 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 		}
 		if d > 0 {
 			pending := false
-			for _, c := range original {
-				if channelDropped(c.Venue, c.Name) {
-					continue
-				}
-				syms := []string{""}
-				if c.PerSymbol {
-					if oldUniverse != nil {
-						syms = oldUniverse()
-					} else {
-						syms = s.Symbols()
-					}
-				}
-				for _, sym := range syms {
-					if !seen[jobKey(c, sym)] && due(c, s.state.Jobs[jobKey(c, sym)].LastSuccess, s.Clock.Now()) && !(c.Skip != nil && c.Skip(sym)) {
-						pending = true
-					}
+			syms := s.Symbols()
+			if oldUniverse != nil {
+				syms = oldUniverse()
+			}
+			for _, j := range s.schedule(syms) {
+				if !seen[j.key] && !s.stopped[j.key] && !j.deadline.After(start) && !(j.c.Skip != nil && j.c.Skip(j.sym)) {
+					pending = true
 				}
 			}
 			if !pending {
