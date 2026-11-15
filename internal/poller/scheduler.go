@@ -407,13 +407,14 @@ func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
 					d = 300 * time.Second
 				}
 				var retry *RetryError
+				failedAt := s.Clock.Now()
 				if errors.As(err, &retry) {
 					if retry.After > d {
 						d = retry.After
 					}
-					s.blocked[endpoint] = now.Add(retry.After)
+					s.blocked[endpoint] = failedAt.Add(retry.After)
 				}
-				f.next = now.Add(d)
+				f.next = failedAt.Add(d)
 				return 0, nil
 			}
 			for _, r := range records {
