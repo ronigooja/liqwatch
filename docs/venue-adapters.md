@@ -4,7 +4,9 @@ Design and verified implementation status of collector adapters; governed by [00
 
 ## Contract
 
-Verified in [adapter.go](../internal/venue/adapter.go): `Symbols` discovers venue-form instruments, `Shards` defines connections (including optional dial headers), and `Subscribe` and `Heartbeat` define outbound frames. Call `Symbols`, then `Shards`, before `Split`; state shared across connections must be concurrency-safe.
+Verified in [adapter.go](../internal/venue/adapter.go): `Symbols` discovers venue-form instruments, `Shards` defines connections, and `Subscribe` and `Heartbeat` define outbound frames. Call `Symbols`, then `Shards`, before `Split` or optional `ConnSplitter.SplitConn`; shared state must be concurrency-safe.
+
+Verified in [collector](../internal/collector/collector.go): optional `ConnLifecycle` signals open and close. The collector reads, runs heartbeats and monitors stalls while a goroutine writes subscriptions; the stall clock starts on the first frame or last subscription, whichever comes first. A subscription write error ends the connection with that error.
 
 Verified in [adapter.go](../internal/venue/adapter.go): `Split` produces filtered data payloads or per-symbol envelopes; the collector supplies receive metadata. Control frames return nil, unknown data becomes a gap record, and `Classes` selects droppable classes; unmatched channels have no assigned drop class. Symbol filtering is specified in [venue map](venue-map.md).
 
@@ -28,7 +30,7 @@ Verified in the linked code: each table describes configured subscriptions, not 
 | Channels | `publicTrade`, `tickers`, `allLiquidation` → trade, mark, liquidation |
 | Drop classes | trade → trade; mark → mark |
 | Shards | Up to 90 subscriptions and 21,000 argument characters per connection |
-| Cadence and deviations | Measured: [capture](venue-apis.md#live-adapter-captures); ticker deltas are merged into per-symbol state; see [open issue](open-questions.md#recording-open-issues) |
+| Cadence and deviations | Measured: [capture](venue-apis.md#live-adapter-captures); ticker state isolation: [recorded content](#recorded-content) |
 
 ### OKX
 
@@ -54,7 +56,7 @@ Verified in the linked code: each table describes configured subscriptions, not 
 |---|---|
 | Channels | Trades, tickers, contract stats, contract info and global liquidations |
 | Drop classes | trades → trade; tickers → mark |
-| Shards | Up to 100 symbols per market shard; separate global shard; decimal-size dial header |
+| Shards | Up to 100 symbols per market shard; separate global shard; decimal-size dial header; subscription spacing 100 ms for market, 700 ms for all |
 | Cadence and deviations | Measured: [capture](venue-apis.md#live-adapter-captures); stats batching rejected, no stats update observed |
 
 ### MEXC
@@ -79,7 +81,9 @@ Verified in the linked code: each table describes configured subscriptions, not 
 
 Verified in the linked adapter code: explicit per-channel keep/drop field tables are authoritative; unknown fields are retained and counted. Eligible frames produce a complete `{"sample":...}` frame at most once per channel and shard per hour. Subscribe errors become `gap` records with `event=subscribe_error` and the frame; acknowledgements are counted.
 
-Verified in [Bybit](../internal/venue/bybit/bybit.go): ticker deltas merge into per-symbol state, marked `partial` until a snapshot. Verified in [Bitget](../internal/venue/bitget/bitget.go): consecutive identical filtered ticker payloads are deduplicated, with forced emission after 60 seconds.
+Verified in [Bybit](../internal/venue/bybit/bybit.go): ticker state is per connection and symbol and released on close, fixing the former overlap contamination window. A partial record is suppressed while another open connection of the shard has complete state for that symbol; otherwise it is marked `partial` until a snapshot.
+
+Verified in [Bitget](../internal/venue/bitget/bitget.go): consecutive identical filtered ticker payloads are deduplicated, with forced emission after 60 seconds.
 
 Verified in [MEXC](../internal/venue/mexc/mexc.go): mapped symbols only receive `contract`, `contractextra`, `ordersetting`, and `contractmeta` metadata. Verified in [Gate](../internal/venue/gate/gate.go): `Shard.Header` sets `X-Gate-Size-Decimal: 1`. Verified in [OKX](../internal/venue/okx/okx.go): WebSocket uses port 443.
 

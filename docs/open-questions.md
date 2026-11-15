@@ -79,11 +79,9 @@ Move an item to "Verified" with source and date once checked.
 
 | Question | Evidence |
 |---|---|
-| Inferred: can a late old Bybit connection frame contaminate merged state during replacement overlap? | Verified in [collector](../internal/collector/) and [adapter](../internal/venue/bybit/bybit.go): overlap occurs without connection identity in `Split`. |
 | Inferred: can redundant `venue`, `ch`, `sym` envelope fields be dropped later? | Owner deferred this; verified in [rawlog](../internal/rawlog/). |
 | Unknown: how do OKX, Bitget and Gate sources finalize newest buckets? | Verified deferral implementation: [history](../internal/poller/history.go). |
 | Unknown: how should KuCoin Chinese-named symbols be handled? | Measured: none in the captured contract list, [fixture](../internal/venue/kucoin/testdata/README.txt), 2026-11-13. |
 | Unknown: why is Gate WebSocket `contract_stats` discontinuous and `mark_price` zero? | Measured capture: [fixture](../internal/venue/gate/testdata/README.txt); REST coverage: [poller](poller.md). |
 | Unknown: will Bitget's connection-per-IP limit constrain deployment? | Verified: [official quick start](https://www.bitget.com/docs/uta/quick-start), as linked in [fixture](../internal/venue/bitget/testdata/README.txt), 2026-11-13. |
-| Unknown: should Bybit, Bitget, Gate and KuCoin REST discovery set an explicit User-Agent as a precaution? | Verified in [venue adapters](../internal/venue/); this is not a claim of failed requests. |
 | Unknown: what staging disk and CPU are needed over a full day? | Inferred: short-run estimates are extrapolations, not full-day measurements; [storage design](storage-design.md#local-disk-size). |
