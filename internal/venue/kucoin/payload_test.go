@@ -3,17 +3,20 @@ package kucoin
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ronigooja/liqwatch/internal/rawlog"
 	"github.com/ronigooja/liqwatch/internal/venue"
 )
 
 func TestPayloadFields(t *testing.T) {
 	oldNow, oldLast := samples.now, samples.last
 	defer func() { samples.now, samples.last = oldNow, oldLast }()
-	var trade, mark, funding []byte
+	var trade, mark, funding, uta []byte
 	for _, f := range fixtureFrames(t) {
 		s := string(f)
 		switch {
@@ -23,6 +26,8 @@ func TestPayloadFields(t *testing.T) {
 			mark = f
 		case funding == nil && strings.Contains(s, `"subject":"funding.rate"`):
 			funding = f
+		case uta == nil && strings.Contains(s, `"T":"mark-price"`):
+			uta = f
 		}
 	}
 	cases := []struct {
@@ -33,7 +38,7 @@ func TestPayloadFields(t *testing.T) {
 		{"trade", "XBTUSDTM", "data", trade, []string{"topic", "type", "subject", "data.symbol"}, []string{"data.side", "data.size", "data.price", "data.tradeId", "data.ts"}},
 		{"mark", "XBTUSDTM", "data", mark, []string{"topic", "type", "subject"}, []string{"data.markPrice", "data.indexPrice", "data.timestamp"}},
 		{"funding", "0GUSDTM", "data", funding, []string{"topic", "type", "subject"}, []string{"data.fundingRate", "data.timestamp"}},
-		{"utamark", "XBTUSDTM", "d", []byte(`{"T":"mark-price","P":123,"d":{"s":"XBTUSDTM","mp":1.2300,"ip":"2","oi":"3","ts":123}}`), []string{"T", "d.s"}, []string{"P", "d.mp", "d.ip", "d.oi", "d.ts"}},
+		{"utamark", "SOLUSDTM", "d", uta, []string{"T", "d.s"}, []string{"P", "d.mp", "d.ip", "d.oi", "d.ts"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -98,6 +103,38 @@ func TestPayloadFields(t *testing.T) {
 			}
 			if got := unknownFields.Load() - before; got != wantUnknown {
 				t.Errorf("unknown count %d, want %d", got, wantUnknown)
+			}
+		})
+	}
+}
+
+func TestUTAMarkRealGolden(t *testing.T) {
+	data, err := os.ReadFile("testdata/utamark.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	frames := strings.Split(strings.TrimSpace(string(data)), "\n")
+	want := []rawlog.Record{
+		{Channel: "utamark", Symbol: "SOLUSDTM", Payload: []byte(`{"P":1794706499432698555,"d":{"mp":"68.247","ip":"68.287","oi":"16305024","ts":1794706499000}}`)},
+		{Channel: "utamark", Symbol: "ETHUSDTM", Payload: []byte(`{"P":1794706500350034897,"d":{"mp":"1720.92","ip":"1721.53","oi":"18332669","ts":1794706500000}}`)},
+		{Channel: "utamark", Symbol: "XBTUSDTM", Payload: []byte(`{"P":1794706499494869441,"d":{"mp":"62410.1","ip":"62440.41","oi":"9301076","ts":1794706499000}}`)},
+	}
+	if len(frames) != len(want) {
+		t.Fatalf("got %d frames", len(frames))
+	}
+	oldNow, oldLast := samples.now, samples.last
+	defer func() { samples.now, samples.last = oldNow, oldLast }()
+	for i, frame := range frames {
+		t.Run(want[i].Symbol, func(t *testing.T) {
+			samples.last = map[string]time.Time{}
+			before := unknownFields.Load()
+			got := (&Adapter{}).Split(venue.Shard{Name: "golden"}, []byte(frame))
+			sample := rawlog.Record{Channel: "utamark", Symbol: want[i].Symbol, Payload: []byte(`{"sample":` + frame + `}`)}
+			if !reflect.DeepEqual(got, []rawlog.Record{want[i], sample}) {
+				t.Fatalf("got %#v", got)
+			}
+			if n := unknownFields.Load() - before; n != 1 {
+				t.Fatalf("unknown fields = %d, want 1", n)
 			}
 		})
 	}
