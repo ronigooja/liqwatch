@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -361,6 +362,7 @@ func TestSubscribeHeartbeatAndControlLiveness(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { c.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
 	var first, second received
 	select {
 	case first = <-frames:
@@ -368,9 +370,23 @@ func TestSubscribeHeartbeatAndControlLiveness(t *testing.T) {
 		t.Fatal("missing first subscription")
 	}
 	select {
-	case second = <-frames:
+	case f := <-frames:
+		if f.msg != "ping" {
+			t.Fatalf("heartbeat during subscription: %+v", f)
+		}
 	case <-time.After(time.Second):
-		t.Fatal("missing second subscription")
+		t.Fatal("missing heartbeat during subscription")
+	}
+	deadline := time.After(time.Second)
+	for second.msg != "two" {
+		select {
+		case second = <-frames:
+			if second.msg != "ping" && second.msg != "two" {
+				t.Fatalf("unexpected frame: %+v", second)
+			}
+		case <-deadline:
+			t.Fatal("missing second subscription")
+		}
 	}
 	if first.msg != "one" || second.msg != "two" || second.at.Sub(first.at) < 50*time.Millisecond {
 		t.Fatalf("subscriptions: %+v %+v", first, second)
@@ -387,11 +403,204 @@ func TestSubscribeHeartbeatAndControlLiveness(t *testing.T) {
 	if c.Stalls.Load() != 0 || c.Reconnects.Load() != 0 {
 		t.Fatalf("control liveness: stalls=%d reconnects=%d", c.Stalls.Load(), c.Reconnects.Load())
 	}
-	cancel()
-	<-done
 	sink.mu.Lock()
 	defer sink.mu.Unlock()
 	if len(sink.records) != 0 {
 		t.Fatalf("control frames recorded: %+v", sink.records)
+	}
+}
+
+type slowAdapter struct {
+	fakeAdapter
+	count     int
+	heartbeat time.Duration
+	seen      chan string
+}
+
+func (a *slowAdapter) Subscribe(venue.Shard) [][]byte {
+	msgs := make([][]byte, a.count)
+	for i := range msgs {
+		msgs[i] = []byte("subscribe")
+	}
+	return msgs
+}
+func (a *slowAdapter) Heartbeat(venue.Shard) (time.Duration, func() (int, []byte)) {
+	return a.heartbeat, func() (int, []byte) { return int(websocket.MessageText), []byte("ping") }
+}
+func (a *slowAdapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
+	if a.seen != nil {
+		a.seen <- string(msg)
+	}
+	return nil
+}
+
+func TestReadDuringSubscribe(t *testing.T) {
+	a := &slowAdapter{count: 20, seen: make(chan string, 256)}
+	beforeLast := make(chan int, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.CloseNow()
+		go func() {
+			t := time.NewTicker(10 * time.Millisecond)
+			defer t.Stop()
+			for i := 0; ; i++ {
+				select {
+				case <-r.Context().Done():
+					return
+				case <-t.C:
+					if ws.Write(r.Context(), websocket.MessageText, []byte(fmt.Sprint(i))) != nil {
+						return
+					}
+				}
+			}
+		}()
+		for i := 0; i < a.count-1; i++ {
+			if _, _, err := ws.Read(r.Context()); err != nil {
+				return
+			}
+		}
+		beforeLast <- len(a.seen)
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	c := New(nopSink{}, a, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	k := c.start(ctx, Shard{Name: "slow", SubscribeSpacing: 50 * time.Millisecond}, srv.URL, 1)
+	defer func() { cancel(); <-k.done }()
+	select {
+	case n := <-beforeLast:
+		if n < 5 {
+			t.Fatalf("only %d frames read before last subscription", n)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("subscriptions timed out")
+	}
+	for i := 0; len(a.seen) > 0; i++ {
+		if got := <-a.seen; got != fmt.Sprint(i) {
+			t.Fatalf("frame %d = %q", i, got)
+		}
+	}
+}
+
+func TestCancelDuringSubscribe(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.CloseNow()
+		for {
+			if _, _, err := ws.Read(r.Context()); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+	c := New(nopSink{}, &slowAdapter{count: 20}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	k := c.start(ctx, Shard{Name: "cancel", SubscribeSpacing: time.Second}, srv.URL, 1)
+	<-k.opened
+	cancel()
+	select {
+	case <-k.done:
+	case <-time.After(time.Second):
+		t.Fatal("cancel did not stop connection")
+	}
+}
+
+func TestSubscribeDisconnectReconnect(t *testing.T) {
+	connections := make(chan struct{}, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.CloseNow()
+		connections <- struct{}{}
+		if _, _, err := ws.Read(r.Context()); err != nil {
+			return
+		}
+	}))
+	defer srv.Close()
+	c := New(nopSink{}, &slowAdapter{count: 20}, []Shard{{Name: "drop", URL: srv.URL, SubscribeSpacing: 50 * time.Millisecond}})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { c.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	for i := 0; i < 2; i++ {
+		select {
+		case <-connections:
+		case <-time.After(4 * time.Second):
+			t.Fatal("missing reconnect")
+		}
+	}
+	if c.Reconnects.Load() == 0 {
+		t.Fatal("disconnect did not count as reconnect")
+	}
+}
+
+func TestStallDuringAndAfterSubscribe(t *testing.T) {
+	for _, send := range []bool{false, true} {
+		t.Run(fmt.Sprint(send), func(t *testing.T) {
+			last := make(chan struct{})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ws, err := websocket.Accept(w, r, nil)
+				if err != nil {
+					return
+				}
+				defer ws.CloseNow()
+				if send {
+					go func() {
+						tick := time.NewTicker(15 * time.Millisecond)
+						defer tick.Stop()
+						for {
+							select {
+							case <-last:
+								return
+							case <-r.Context().Done():
+								return
+							case <-tick.C:
+								if ws.Write(r.Context(), websocket.MessageText, []byte("ack")) != nil {
+									return
+								}
+							}
+						}
+					}()
+				}
+				for i := 0; i < 8; i++ {
+					if _, _, err := ws.Read(r.Context()); err != nil {
+						return
+					}
+				}
+				close(last)
+				<-r.Context().Done()
+			}))
+			defer srv.Close()
+			c := New(nopSink{}, &slowAdapter{count: 8}, nil)
+			ctx, cancel := context.WithCancel(context.Background())
+			k := c.start(ctx, Shard{Name: "stall", Stall: 100 * time.Millisecond, SubscribeSpacing: 40 * time.Millisecond}, srv.URL, 1)
+			defer func() { cancel(); <-k.done }()
+			select {
+			case <-last:
+			case <-k.done:
+				t.Fatal("stalled before subscriptions finished")
+			case <-time.After(time.Second):
+				t.Fatal("subscriptions timed out")
+			}
+			if c.Stalls.Load() != 0 {
+				t.Fatal("premature stall")
+			}
+			select {
+			case <-k.done:
+			case <-time.After(time.Second):
+				t.Fatal("stall did not fire")
+			}
+			if c.Stalls.Load() != 1 {
+				t.Fatalf("stalls = %d", c.Stalls.Load())
+			}
+		})
 	}
 }
