@@ -20,3 +20,7 @@ Verified: the official single-ticker page states a 1 s push when trades occur;
 the observed approximately 2.45 s average differs from that statement.
 Verified: official futures documentation describes deal compression, ping and
 contract updates at https://www.mexc.com/api-docs/futures/websocket-api/ .
+
+In ordinary contract records, `tempMaxLeverageLimited` and
+`regularMaxLeverage` are retained and counted as unknown: their meaning is not
+defined by the official documentation. `riskLimitCustom` is kept unchanged.

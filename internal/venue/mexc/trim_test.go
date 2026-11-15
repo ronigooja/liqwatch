@@ -65,7 +65,7 @@ var expectedFields = map[string]struct{ keep, drop string }{
 	"index":    {"price", "symbol"},
 	"funding":  {"rate nextSettleTime", "symbol"},
 	"ticker":   {"fairPrice indexPrice holdVol fundingRate nextSettleTime timestamp", "symbol lastPrice riseFallRate volume24 amount24 maxBidPrice minAskPrice lower24Price high24Price bid1 ask1 riseFallValue zone riseFallRates riseFallRatesOfTimezone"},
-	"contract": {"contractSize minLeverage maxLeverage maintenanceMarginRate initialMarginRate riskBaseVol riskIncrVol riskIncrMmr riskIncrImr riskLevelLimit riskLongShortSwitch riskLimitType riskLimitMode openingTime", "symbol displayName displayNameEn positionOpenType baseCoin quoteCoin baseCoinName quoteCoinName futureType settleCoin priceScale volScale amountScale priceUnit volUnit minVol maxVol limitMaxVol bidLimitPriceRate askLimitPriceRate takerFeeRate makerFeeRate liquidationFeeRate feeRateMode priceCoefficientVariation indexOrigin state isNew isHot isHidden conceptPlate conceptPlateId tagIdList maxNumOrders depthStepList openingCountdownOption triggerProtect"},
+	"contract": {"contractSize minLeverage maxLeverage maintenanceMarginRate initialMarginRate riskBaseVol riskIncrVol riskIncrMmr riskIncrImr riskLevelLimit riskLongShortSwitch riskLimitType riskLimitMode openingTime riskLimitCustom", "symbol displayName displayNameEn positionOpenType baseCoin quoteCoin baseCoinName quoteCoinName futureType settleCoin priceScale volScale amountScale priceUnit volUnit minVol maxVol limitMaxVol bidLimitPriceRate askLimitPriceRate takerFeeRate makerFeeRate liquidationFeeRate feeRateMode priceCoefficientVariation indexOrigin state isNew isHot isHidden conceptPlate conceptPlateId tagIdList maxNumOrders depthStepList openingCountdownOption triggerProtect apiAllowed baseCoinIconUrl baseCoinId vid id fn isMaxLeverage isZeroFeeRate isZeroFeeSymbol showBeforeOpen marketOrderMaxLevel marketOrderPriceLimitRate1 marketOrderPriceLimitRate2 appraisal showAppraisalCountdown automaticDelivery stopOnlyFair threshold type typeLabel preMarket feeRateType leverageFeeRates tieredFeeRates createTime countryConfigContractMaxLeverage"},
 }
 
 func TestFieldTableEntries(t *testing.T) {
@@ -205,6 +205,14 @@ func TestContractFixtureAndDiscovery(t *testing.T) {
 	}
 	if a.UnknownFields() != unknown {
 		t.Errorf("unknown %d want %d", a.UnknownFields(), unknown)
+	}
+	for _, name := range []string{"tempMaxLeverageLimited", "regularMaxLeverage"} {
+		if keepFields["contract"][name] || dropFields["contract"][name] || !reflect.DeepEqual(before[name], after[name]) || before[name] == nil {
+			t.Errorf("unknown field %s not retained and counted", name)
+		}
+	}
+	if len(before["riskLimitCustom"]) == 0 || !reflect.DeepEqual(before["riskLimitCustom"], after["riskLimitCustom"]) {
+		t.Error("custom risk tiers not preserved")
 	}
 	// Discovery must still apply every REST filter even though those fields are dropped from records.
 	cases := `{"success":true,"code":0,"data":[{"symbol":"OK","state":0,"futureType":1,"quoteCoin":"USDT","settleCoin":"USDT"},{"symbol":"STATE","state":1,"futureType":1,"quoteCoin":"USDT","settleCoin":"USDT"},{"symbol":"TYPE","state":0,"futureType":2,"quoteCoin":"USDT","settleCoin":"USDT"},{"symbol":"QUOTE","state":0,"futureType":1,"quoteCoin":"USD","settleCoin":"USDT"},{"symbol":"SETTLE","state":0,"futureType":1,"quoteCoin":"USDT","settleCoin":"USD"}]}`
