@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	gatevenue "github.com/ronigooja/liqwatch/internal/venue/gate"
 )
@@ -112,42 +111,4 @@ func TestGatePolicyTimestampAndDedup(t *testing.T) {
 	}
 }
 
-func TestGatePolicyGolden(t *testing.T) {
-	var got []byte
-	for _, ch := range []string{"contractStats", "riskLimitTiers", "contracts"} {
-		raw := gateSample(t, ch)
-		clock := &fakeClock{time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}
-		sink := &memorySink{}
-		c := Channel{Venue: "gate", Name: ch, Fetch: func(context.Context, string) ([]Record, error) {
-			return []Record{{Venue: "gate", Channel: ch, Symbol: "BTC_USDT", RecvWall: clock.Now().UnixNano(), Meta: map[string]any{"sample": true}, Payload: raw}}, nil
-		}}
-		s, err := NewScheduler([]Channel{c}, sink, clock, "", 240)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := s.Step(context.Background()); err != nil {
-			t.Fatal(err)
-		}
-		for _, r := range sink.records {
-			b, err := json.Marshal(fixtureGoldenRecord{"testdata/gate/" + ch + ".sample.jsonl", r.Venue, r.Channel, r.Symbol, r.RecvWall, r.Meta, r.Payload})
-			if err != nil {
-				t.Fatal(err)
-			}
-			got = append(got, b...)
-			got = append(got, '\n')
-		}
-	}
-	if os.Getenv("GENERATE_GATE_GOLDEN") == "1" {
-		if err := os.WriteFile("testdata/gate/golden-filtered.txt", got, 0600); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-	want, err := os.ReadFile("testdata/gate/golden-filtered.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatal("Gate golden differs")
-	}
-}
+func TestGatePolicyGolden(t *testing.T) { assertVenueGolden(t, "gate") }

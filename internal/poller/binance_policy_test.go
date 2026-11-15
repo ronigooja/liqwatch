@@ -42,6 +42,7 @@ func binanceSamples(t *testing.T) []binanceSample {
 }
 
 func TestBinancePolicyGolden(t *testing.T) {
+	assertFixtureCoverage(t, "binance")
 	var lines [][]byte
 	for _, sample := range binanceSamples(t) {
 		s := sample
@@ -69,6 +70,12 @@ func TestBinancePolicyGolden(t *testing.T) {
 	}
 	sort.Slice(lines, func(i, j int) bool { return bytes.Compare(lines[i], lines[j]) < 0 })
 	got := append(bytes.Join(lines, []byte("\n")), '\n')
+	if os.Getenv("GENERATE_VENUE_GOLDEN") == "binance" {
+		if err := os.WriteFile("testdata/binance/golden-filtered.txt", got, 0600); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	want, err := os.ReadFile("testdata/binance/golden-filtered.txt")
 	if err != nil {
 		t.Fatal(err)

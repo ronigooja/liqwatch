@@ -2,7 +2,7 @@
   {
     "Fixture": "testdata/mexc/detail.json",
     "Venue": "mexc",
-    "Channel": "detail",
+    "Channel": "contractDetail",
     "Symbol": "FIXTURE",
     "RecvWall": 1794700800000000000,
     "Meta": {

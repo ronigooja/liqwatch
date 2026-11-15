@@ -49,12 +49,22 @@ func fixtureGolden(t *testing.T, venue string) []byte {
 	var got []fixtureGoldenRecord
 	clock := &fakeClock{time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}
 	for _, path := range paths {
+		venue := filepath.Base(filepath.Dir(path))
+		channel := strings.TrimSuffix(filepath.Base(path), ".json")
+		if !policiesDisabled {
+			var ok bool
+			channel, ok = fixtureChannels[venue][filepath.Base(path)]
+			if !ok {
+				t.Fatalf("unmapped fixture: %s", path)
+			}
+			if channel == "unregistered" {
+				continue
+			}
+		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		venue := filepath.Base(filepath.Dir(path))
-		channel := strings.TrimSuffix(filepath.Base(path), ".json")
 		fetch := SnapshotFetch(venue, channel, clock, SnapshotSpec{Mode: SnapshotPerSymbol, Fetch: func(context.Context, string) ([]byte, error) { return raw, nil }})
 		sink := &memorySink{}
 		channelSpec := Channel{Venue: venue, Name: channel, Fetch: func(ctx context.Context, _ string) ([]Record, error) { return fetch(ctx, "FIXTURE") }}

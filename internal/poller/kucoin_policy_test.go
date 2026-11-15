@@ -2,13 +2,11 @@ package poller
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
-	"time"
 )
 
 // checkKucoinRecord is independent of the registered policy tables.
@@ -168,46 +166,8 @@ func TestKucoinPolicyMutations(t *testing.T) {
 		}
 	}
 }
-func TestKucoinPolicyGolden(t *testing.T) {
-	// Preserve the shared fixture coverage and append real capture scheduler records.
-	got := fixtureGolden(t, "kucoin")
-	for _, ch := range []string{"contracts", "riskLimit"} {
-		raw := kucoinSample(t, ch)
-		clock := &fakeClock{time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}
-		sink := &memorySink{}
-		fetch := SnapshotFetch("kucoin", ch, clock, SnapshotSpec{Mode: SnapshotPerSymbol, Fetch: func(context.Context, string) ([]byte, error) { return raw, nil }})
-		c := Channel{Venue: "kucoin", Name: ch, Fetch: func(ctx context.Context, _ string) ([]Record, error) { return fetch(ctx, "FIXTURE") }}
-		scheduler, err := NewScheduler([]Channel{c}, sink, clock, "", 240)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err = scheduler.Step(context.Background()); err != nil {
-			t.Fatal(err)
-		}
-		for _, r := range sink.records {
-			b, err := json.Marshal(fixtureGoldenRecord{"testdata/kucoin/" + ch + ".sample.jsonl", r.Venue, r.Channel, r.Symbol, r.RecvWall, r.Meta, r.Payload})
-			if err != nil {
-				t.Fatal(err)
-			}
-			got = append(got, b...)
-			got = append(got, '\n')
-		}
-	}
-	path := "testdata/kucoin/golden-filtered.txt"
-	if os.Getenv("GENERATE_VENUE_GOLDEN") == "kucoin" {
-		if err := os.WriteFile(path, got, 0600); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatal("KuCoin filtered golden differs")
-	}
-}
+func TestKucoinPolicyGolden(t *testing.T) { assertVenueGolden(t, "kucoin") }
+
 func TestKucoinPolicyRegistrationAndDedup(t *testing.T) {
 	for _, ch := range []string{"contracts", "riskLimit"} {
 		policies.RLock()
