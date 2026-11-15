@@ -3,14 +3,12 @@ package poller
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
-	"strconv"
 	"testing"
 	"time"
 )
 
-func TestPolicyDedupUsesOriginalRows(t *testing.T) {
+func TestPolicyDedupUsesFilteredRows(t *testing.T) {
 	var bybit bybitResponse
 	b, err := os.ReadFile("testdata/bybit/ratio-fixture.json")
 	if err != nil {
@@ -75,13 +73,11 @@ func TestPolicyDedupUsesOriginalRows(t *testing.T) {
 			}
 			before, bd, br, bc := run("unfiltered")
 			after, ad, ar, ac := run("filtered")
-			if len(before) != 2 || len(after) != 2 || bd != ad || br != 1 || br != ar || bc != ac || bc != tc.ts {
+			if len(before) != 2 || bd != 0 || br != 1 || len(after) != 1 || ad != 1 || ar != 0 || bc != ac || bc != tc.ts {
 				t.Fatalf("before %d/%d/%d/%d after %d/%d/%d/%d", len(before), bd, br, bc, len(after), ad, ar, ac)
 			}
-			for i := range before {
-				if fmt.Sprint(before[i].Meta["last_row_timestamp"], before[i].Meta["revised"]) != fmt.Sprint(after[i].Meta["last_row_timestamp"], after[i].Meta["revised"]) {
-					t.Fatal("meta mismatch", strconv.Itoa(i))
-				}
+			if _, ok := after[0].Meta["unfiltered_payload_sha256"]; ok {
+				t.Fatal("unexpected unfiltered hash metadata")
 			}
 		})
 	}
