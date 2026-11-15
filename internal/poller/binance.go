@@ -147,7 +147,6 @@ func (b *Binance) history(ctx context.Context, name, sym string) ([]Record, erro
 	return h.Run(ctx)
 }
 func (b *Binance) requestPage(ctx context.Context, name, sym string, start, end int64) ([]Record, error) {
-	now := b.Clock.Now()
 	base := b.Config.BaseURL
 	if base == "" {
 		base = "https://fapi.binance.com"
@@ -211,7 +210,7 @@ func (b *Binance) requestPage(ctx context.Context, name, sym string, start, end 
 		if n, e := strconv.ParseFloat(value, 64); e == nil {
 			delay = time.Duration(n * float64(time.Second))
 		} else if t, e := http.ParseTime(value); e == nil {
-			delay = t.Sub(now)
+			delay = t.Sub(b.Clock.Now())
 		}
 		if delay < time.Second {
 			delay = time.Second
