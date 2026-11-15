@@ -4,7 +4,7 @@ import "testing"
 
 func TestSplitAllMarket(t *testing.T) {
 	tests := []struct{ name, input, symbol, channel, payload string }{
-		{"mark", `{"stream":"!markPrice@arr@1s","data":[{"s":"BTCUSDT","p":"1"},{"s":"OUTUSDT"}]}`, "BTCUSDT", "markPrice_all", `{"stream":"!markPrice@arr@1s","data":{"s":"BTCUSDT","p":"1"}}`},
+		{"mark", `{"stream":"!markPrice@arr@1s","data":[{"s":"BTCUSDT","p":"1"},{"s":"OUTUSDT"}]}`, "BTCUSDT", "markPrice_all", `{"data":{"p":"1"}}`},
 		{"liquidation", `{"stream":"!forceOrder@arr","data":{"o":{"s":"BTCUSDT"}}}`, "BTCUSDT", "forceOrder_all", `{"stream":"!forceOrder@arr","data":{"o":{"s":"BTCUSDT"}}}`},
 		{"out of scope", `{"stream":"!forceOrder@arr","data":{"o":{"s":"OUTUSDT"}}}`, "", "", ""},
 		{"empty", `{"stream":"!markPrice@arr@1s","data":[]}`, "", "", ""},

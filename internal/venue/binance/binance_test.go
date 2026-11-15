@@ -19,8 +19,8 @@ func TestAdapterSplit(t *testing.T) {
 		input string
 		want  []rawlog.Record
 	}{
-		{`{"stream":"btcusdt@aggTrade","data":{"e":"aggTrade","s":"BTCUSDT","a":42}}`, []rawlog.Record{{Channel: "aggTrade", Symbol: "BTCUSDT", Payload: []byte(`{"stream":"btcusdt@aggTrade","data":{"e":"aggTrade","s":"BTCUSDT","a":42}}`)}}},
-		{`{"stream":"!markPrice@arr@1s","data":[{"s":"BTCUSDT","p":"1"},{"s":"OUT"}]}`, []rawlog.Record{{Channel: "markPrice_all", Symbol: "BTCUSDT", Payload: []byte(`{"stream":"!markPrice@arr@1s","data":{"s":"BTCUSDT","p":"1"}}`)}}},
+		{`{"stream":"btcusdt@aggTrade","data":{"e":"aggTrade","s":"BTCUSDT","a":42}}`, []rawlog.Record{{Channel: "aggTrade", Symbol: "BTCUSDT", Payload: []byte(`{"data":{"a":42}}`)}}},
+		{`{"stream":"!markPrice@arr@1s","data":[{"s":"BTCUSDT","p":"1"},{"s":"OUT"}]}`, []rawlog.Record{{Channel: "markPrice_all", Symbol: "BTCUSDT", Payload: []byte(`{"data":{"p":"1"}}`)}}},
 		{`{"stream":"!forceOrder@arr","data":{"o":{"s":"BTCUSDT"}}}`, []rawlog.Record{{Channel: "forceOrder_all", Symbol: "BTCUSDT", Payload: []byte(`{"stream":"!forceOrder@arr","data":{"o":{"s":"BTCUSDT"}}}`)}}},
 		{`{"result":null,"id":1}`, nil},
 		{`{"hello":"world"}`, nil},
