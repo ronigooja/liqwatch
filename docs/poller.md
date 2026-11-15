@@ -1,6 +1,6 @@
 # REST poller
 
-Verified in [code](../internal/poller/): the Go poller records REST data separately from the collector; governed by [0014](decisions/0014-daily-pack-storage.md) and [0015](decisions/0015-recording-scope-and-granularity.md). Deployment: [infrastructure](infrastructure.md).
+Verified in [code](../internal/poller/): the Go poller records REST data separately from the collector; governed by [0014](decisions/0014-daily-pack-storage.md), [0015](decisions/0015-recording-scope-and-granularity.md) and [0017](decisions/0017-poller-field-policies.md). Deployment: [infrastructure](infrastructure.md).
 
 ## Operation
 
@@ -9,6 +9,16 @@ Verified in [main](../cmd/liqwatch-poller/main.go): `liqwatch-poller -config /et
 Verified in [history.go](../internal/poller/history.go): cursor and overlap support backward, forward, and window paging, coverage-based paging, deduplication and revision marking; `source_gap`, `retention_gap`, and daily `no_data` records describe missing data. An unfinished newest bucket is deferred until `ts + Step + Grace <= now`.
 
 Verified in [poller implementations](../internal/poller/): default initial lookback is 2 h, without historical backfill. Periods are daily except Bitget history hourly; Gate `contractStats` uses 1-minute data. No venue polls open-interest history except Binance; funding history is polled only by Binance; insurance is not polled.
+
+## Field policies
+
+Verified: [0017](decisions/0017-poller-field-policies.md#consequences) identifies recorded and dropped channels, authoritative field tables, cursor and deduplication behavior. Nested paths use `[]` for root-array members and append `[]` for array fields; for example `[].tiers[]` ([policy.go](../internal/poller/policy.go)).
+
+Verified in [main](../cmd/liqwatch-poller/main.go): each sweep logs `poller unknown fields venue=<venue> channel=<channel> count=<n>` for each channel with a nonzero cumulative count.
+
+Verified in [test helpers](../internal/poller/policy_helpers_test.go): `withoutPolicies`, `assertVenueGolden`, and `assertVenueDedup` support baseline, filtered golden and dedup tests. When adding samples, never modify or add `*.json` under `internal/poller/testdata/<venue>/`: [TestFixtureRecordGolden](../internal/poller/fixture_golden_test.go) scans them. Use `.jsonl` or `.txt` for new samples.
+
+## Configured channels
 
 | Venue | Verified channels and endpoint paths in linked code; default daily unless noted |
 |---|---|

@@ -7,6 +7,12 @@ Measured adapter profiling and capture results; recording scope: [0015](decision
 | How did Bitget filtering optimization change CPU? | Measured: one-core CPU over a 60 s live run after 90 s warm-up, before and after. | 57.83% before; 35.19% after; one run each; spread not reported and traffic varies. | 2026-11-13 | Commit `558c48d`, commit message; exact command and traffic not recorded. |
 | What did adapter captures observe? | Measured: live venue captures; details and sample sizes in each source. | See source; completeness is not established. | 2026-11-13 | [Bybit](../internal/venue/bybit/testdata/README.txt), [OKX](../internal/venue/okx/testdata/README.txt), [Bitget](../internal/venue/bitget/testdata/README.txt), [Gate](../internal/venue/gate/testdata/README.txt), [MEXC](../internal/venue/mexc/testdata/README.txt), [KuCoin](../internal/venue/kucoin/testdata/README.txt). |
 
+## Poller field review
+
+| Question | Method | Numbers, sample size and spread | Date | Reproducible source |
+|---|---|---|---|---|
+| What poller sample supported field review? | Measured: sampled REST poller data across venues; initial lookback 26 h. | 40,770,860 bytes, 12 symbols per venue; one sample, spread unreported. | 2026-11-15 | `root@64.118.133.169:/root/ps/data`, not in repo; exact command and commit not reported. |
+
 ## Seven-venue load and recording
 
 | Question | Method | Numbers, sample size and spread | Date | Reproducible source |

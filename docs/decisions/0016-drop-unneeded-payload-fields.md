@@ -15,7 +15,7 @@ Verified: owner decision, 2026-11-15; refines the field filter in [0015](0015-re
 
 ## Consequences
 
-Verified: field filters are built; the linked code tables are authoritative for the complete keep/drop lists. Unknown fields are retained and counted. The rows highlight removals and exceptions, not exhaustive lists except for Gate's listed policies. Binance forceOrder and MEXC ordersetting/contractmeta remain unfiltered; see linked code.
+Verified: field filters are built; the linked code tables are authoritative for the complete keep/drop lists. Unknown fields are retained and counted. The rows highlight removals and exceptions, not exhaustive lists except for Gate's listed policies. Binance forceOrder remains unfiltered; MEXC metadata changes are refined by [0017](0017-poller-field-policies.md#consequences).
 
 | Venue | Channel | Removed fields |
 |---|---|---|

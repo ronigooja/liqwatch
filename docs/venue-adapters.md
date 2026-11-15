@@ -89,7 +89,7 @@ Verified in [Bybit](../internal/venue/bybit/bybit.go): ticker state is per conne
 
 Verified in [Bitget](../internal/venue/bitget/bitget.go): consecutive identical filtered ticker payloads are deduplicated, with forced emission after 60 seconds.
 
-Verified in [MEXC](../internal/venue/mexc/mexc.go): mapped symbols only receive `contract`, `ordersetting`, and `contractmeta` metadata; `contractextra` is not recorded. Verified in [Gate](../internal/venue/gate/gate.go): `Shard.Header` sets `X-Gate-Size-Decimal: 1`. Verified in [OKX](../internal/venue/okx/okx.go): WebSocket uses port 443.
+Verified: [0017](decisions/0017-poller-field-policies.md#consequences) specifies polled channels and MEXC WebSocket alignment. Verified in [Gate](../internal/venue/gate/gate.go): `Shard.Header` sets `X-Gate-Size-Decimal: 1`. Verified in [OKX](../internal/venue/okx/okx.go): WebSocket uses port 443.
 
 ## Throttling
 
