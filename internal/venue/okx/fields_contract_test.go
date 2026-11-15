@@ -95,3 +95,33 @@ func TestOrdinaryFieldContract(t *testing.T) {
 		})
 	}
 }
+
+// TestFieldRuleMutations verifies every table entry changes observable filtering
+// or unknown-field accounting when temporarily removed.
+func TestFieldRuleMutations(t *testing.T) {
+	for channel, rule := range fieldRules {
+		for field := range rule.drop {
+			t.Run(channel+"/drop/"+field, func(t *testing.T) {
+				input, _ := json.Marshal(map[string]string{field: "value"})
+				delete(rule.drop, field)
+				defer func() { rule.drop[field] = true }()
+				got, err := filterItem(channel, input)
+				if err != nil || !strings.Contains(string(got), `"`+field+`"`) {
+					t.Fatalf("drop mutation undetected: %s %v", got, err)
+				}
+			})
+		}
+		for field := range rule.keep {
+			t.Run(channel+"/keep/"+field, func(t *testing.T) {
+				input, _ := json.Marshal(map[string]string{field: "value"})
+				delete(rule.keep, field)
+				defer func() { rule.keep[field] = true }()
+				before := unknownFields.Load()
+				_, err := filterItem(channel, input)
+				if err != nil || unknownFields.Load()-before != 1 {
+					t.Fatalf("keep mutation undetected: %v", err)
+				}
+			})
+		}
+	}
+}
