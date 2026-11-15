@@ -2,10 +2,12 @@ package poller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestPolicyShapes(t *testing.T) {
@@ -86,5 +88,33 @@ func TestPolicyUnregisteredFixtures(t *testing.T) {
 				t.Fatalf("fixture changed: %v", err)
 			}
 		})
+	}
+}
+
+func TestPolicySchedulerIntegration(t *testing.T) {
+	const venue = "policy-test-scheduler"
+	if err := RegisterPolicy(venue, "history", Policy{Keep: []string{"ts"}, Drop: []string{"discard"}, TimestampKey: "ts"}); err != nil {
+		t.Fatal(err)
+	}
+	clock := &fakeClock{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	sink := &memorySink{}
+	c := Channel{Venue: venue, Name: "history", Fetch: func(context.Context, string) ([]Record, error) {
+		return []Record{{Venue: venue, Channel: "history", Meta: map[string]any{"last_row_timestamp": int64(42)}, Payload: []byte(`{"ts":42,"discard":1,"unknown":2}`)}}, nil
+	}}
+	s, err := NewScheduler([]Channel{c}, sink, clock, "", 240)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.records) != 1 || string(sink.records[0].Payload) != `{"ts":42,"unknown":2}` {
+		t.Fatalf("records: %+v", sink.records)
+	}
+	if got := s.RowTimestamp(venue, "history", ""); got != 42 {
+		t.Fatalf("cursor=%d", got)
+	}
+	if got := UnknownFields(venue, "history"); got != 1 {
+		t.Fatalf("unknown=%d", got)
 	}
 }
