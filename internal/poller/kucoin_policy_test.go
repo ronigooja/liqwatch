@@ -15,7 +15,7 @@ func TestKucoinPolicyRecords(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.channel, func(t *testing.T) {
-			raw, err := os.ReadFile("testdata/kucoin/" + tc.channel + ".json")
+			raw, err := os.ReadFile("testdata/kucoin/" + tc.channel + ".sample.jsonl")
 			if err != nil {
 				t.Fatal(err)
 			}
