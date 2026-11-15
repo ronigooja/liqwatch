@@ -96,11 +96,7 @@ func TestPayloadFields(t *testing.T) {
 					t.Errorf("%s: got %s want %s", path, got, want)
 				}
 			}
-			// P is deliberately unknown in the existing table, as are the injected fields.
 			wantUnknown := uint64(2)
-			if tc.name == "utamark" {
-				wantUnknown++
-			}
 			if got := unknownFields.Load() - before; got != wantUnknown {
 				t.Errorf("unknown count %d, want %d", got, wantUnknown)
 			}
@@ -132,6 +128,28 @@ func TestUTAMarkRealGolden(t *testing.T) {
 			sample := rawlog.Record{Channel: "utamark", Symbol: want[i].Symbol, Payload: []byte(`{"sample":` + frame + `}`)}
 			if !reflect.DeepEqual(got, []rawlog.Record{want[i], sample}) {
 				t.Fatalf("got %#v", got)
+			}
+			if n := unknownFields.Load() - before; n != 0 {
+				t.Fatalf("unknown fields = %d, want 0", n)
+			}
+		})
+	}
+}
+
+func TestUTAMarkNestedPIsUnknown(t *testing.T) {
+	frame := []byte(`{"T":"mark-price","P":123,"d":{"s":"XBTUSDTM","P":456}}`)
+	for _, legacy := range []bool{false, true} {
+		t.Run(map[bool]string{false: "fast", true: "legacy"}[legacy], func(t *testing.T) {
+			before := unknownFields.Load()
+			a := &Adapter{}
+			var got []rawlog.Record
+			if legacy {
+				got = a.legacySplit(venue.Shard{Name: "nested"}, frame)
+			} else {
+				got = a.Split(venue.Shard{Name: "nested"}, frame)
+			}
+			if len(got) == 0 || string(got[0].Payload) != `{"P":123,"d":{"P":456}}` {
+				t.Fatalf("records: %v", got)
 			}
 			if n := unknownFields.Load() - before; n != 1 {
 				t.Fatalf("unknown fields = %d, want 1", n)
