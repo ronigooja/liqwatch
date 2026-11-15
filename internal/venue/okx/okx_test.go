@@ -144,7 +144,7 @@ func TestFilterAndSampling(t *testing.T) {
 	if len(r) != 3 || a.UnknownFields() != before+1 {
 		t.Fatalf("records/count: %+v %d", r, a.UnknownFields()-before)
 	}
-	if string(r[0].Payload) != `{"arg":{"channel":"index-tickers","instId":"BTC-USDT"},"data":[{"instId":"BTC-USDT","idxPx":"1.2300","future":"\u0031","ts":"123"}]}` {
+	if string(r[0].Payload) != `{"data":[{"instId":"BTC-USDT","idxPx":"1.2300","future":"\u0031","ts":"123"}]}` {
 		t.Fatalf("filtered: %s", r[0].Payload)
 	}
 	if string(r[1].Payload) != `{"sample":`+string(frame)+`}` {
