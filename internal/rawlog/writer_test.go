@@ -106,6 +106,8 @@ func TestCompactEnvelope(t *testing.T) {
 		{Venue: "okx", Symbol: "BTC-USDT-SWAP", Channel: "trade", Conn: "diagnostic", CSeq: 7, RecvWal: 1767225600000000000, RecvMon: 12, Payload: []byte(`{"ts":42,"price":"1.2300"}`)},
 		{Venue: "kucoin", Channel: "contracts", CSeq: 8, RecvWal: 1767225600000000000, RecvMon: 13, Payload: []byte(`{"data":[{"symbol":"XBTUSDTM"},{"symbol":"ETHUSDTM"}]}`)},
 		{Venue: "okx", Channel: "gap", CSeq: 9, RecvWal: 1767225600000000000, RecvMon: 14, Payload: []byte(`{"event":"conn_closed","streams":["trades:BTC-USDT-SWAP"]}`)},
+		{Venue: "mexc", Symbol: "BTC_USDT", Channel: "ticker", CSeq: 10, RecvWal: 1767225600000000000, RecvMon: 15, Payload: []byte(`{"t":42,"data":{"cts":43}}`)},
+		{Venue: "mexc", Symbol: "BTC_USDT", Channel: "sample", CSeq: 11, RecvWal: 1767225600000000000, RecvMon: 16, Payload: []byte(`{"sample":{"channel":"push.ticker","symbol":"BTC_USDT","t":42,"data":{"cts":43}}}`)},
 	} {
 		w.Write(GroupTrade, r)
 	}
@@ -114,6 +116,8 @@ func TestCompactEnvelope(t *testing.T) {
 		{"okx/BTC-USDT-SWAP/20260101/trade.a.jsonl", `{"v":2,"wseq":1,"cseq":7,"rw":1767225600000000000,"rm":12,"p":{"ts":42,"price":"1.2300"}}`},
 		{"kucoin/_all/20260101/contracts.a.jsonl", `{"v":2,"wseq":2,"cseq":8,"rw":1767225600000000000,"rm":13,"p":{"data":[{"symbol":"XBTUSDTM"},{"symbol":"ETHUSDTM"}]}}`},
 		{"okx/gap/20260101/gap.a.jsonl", `{"v":2,"wseq":3,"cseq":9,"rw":1767225600000000000,"rm":14,"p":{"event":"conn_closed","streams":["trades:BTC-USDT-SWAP"]}}`},
+		{"mexc/BTC_USDT/20260101/ticker.a.jsonl", `{"v":2,"wseq":4,"cseq":10,"rw":1767225600000000000,"rm":15,"p":{"t":42,"data":{"cts":43}}}`},
+		{"mexc/BTC_USDT/20260101/sample.a.jsonl", `{"v":2,"wseq":5,"cseq":11,"rw":1767225600000000000,"rm":16,"p":{"sample":{"channel":"push.ticker","symbol":"BTC_USDT","t":42,"data":{"cts":43}}}}`},
 	}
 	for _, tc := range cases {
 		var want map[string]any

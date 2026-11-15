@@ -11,7 +11,8 @@ Verified: owner decision, 2026-11-15; refines the field filter in [0015](0015-re
 ## Why
 
 - Measured: in one seven-venue Singapore run on 2026-11-15, 5 minutes, 1,665,360 lines, 10,656 files and 601.7 MB, envelope `ch`, `sym`, `venue` were 13.58% of recorded bytes. Removing them saved 0.56–2.10% after zstd -3, three representative files per venue; command not recorded.
-- Verified: field classification used the venue-by-venue official API review (field review sub-agent reports, 2026-11-15). The sample was at `root@64.118.141.231:/root/env-sample`, not in the repo; the host is no longer reachable (owner report). Envelope changes are deferred.
+- Verified: field classification used the venue-by-venue official API review (field review sub-agent reports, 2026-11-15). The sample was at `root@64.118.141.231:/root/env-sample`, not in the repo; the host is no longer reachable (owner report).
+- Verified: envelope changes were deferred; only this deferral is superseded by [0018](0018-path-based-raw-envelope.md).
 
 ## Consequences
 
