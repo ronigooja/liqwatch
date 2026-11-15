@@ -106,3 +106,52 @@ func TestRecordedFixtureFields(t *testing.T) {
 		}
 	}
 }
+
+func TestFieldTableContract(t *testing.T) {
+	keeps := map[string][]string{
+		"trade": {"i", "p", "v", "S", "T"}, "ticker": {"ts", "indexPrice", "markPrice", "fundingRate", "openInterest", "nextFundingTime"},
+		"funding": {"ts", "fundingRate", "nextUpdate"}, "tier": {"ts", "list", "leverage", "maxTierValue", "minTierValue", "mmr", "tier"},
+		"liquidation": {"side", "price", "amount", "ts"},
+	}
+	drops := map[string][]string{
+		"arg": {"instType", "topic", "symbol"}, "trade": {"symbol", "L", "isRPI"},
+		"ticker":  {"symbol", "highPrice24h", "lowPrice24h", "openPrice24h", "lastPrice", "turnover24h", "volume24h", "bid1Price", "ask1Price", "bid1Size", "ask1Size", "price24hPcnt", "deliveryTime", "deliveryStartTime", "deliveryStatus"},
+		"funding": {"symbol", "baseInterestRate", "cashDividend", "cashDividendNextUpdate", "fundingRateInterval", "impactMarginNotional", "lastFundingRate", "maxFundingRate", "minFundingRate", "nextFundingRate"},
+		"tier":    {"symbol"}, "liquidation": {"symbol"},
+	}
+	for channel, fields := range keeps {
+		for _, field := range fields {
+			t.Run("keep/"+channel+"/"+field, func(t *testing.T) {
+				a := &Adapter{}
+				out, _, err := a.filterObject(channel, []byte(fmt.Sprintf(`{%q:"value"}`, field)), false)
+				if err != nil || !bytes.Contains(out, []byte(`"value"`)) || a.UnknownFields() != 0 {
+					t.Fatalf("keep: %s unknown=%d err=%v", out, a.UnknownFields(), err)
+				}
+			})
+		}
+	}
+	for channel, fields := range drops {
+		for _, field := range fields {
+			t.Run("drop/"+channel+"/"+field, func(t *testing.T) {
+				a := &Adapter{}
+				out, _, err := a.filterObject(channel, []byte(fmt.Sprintf(`{%q:"value"}`, field)), false)
+				if err != nil || string(out) != "{}" || a.UnknownFields() != 0 {
+					t.Fatalf("drop: %s unknown=%d err=%v", out, a.UnknownFields(), err)
+				}
+			})
+		}
+	}
+}
+
+func TestUnknownArgAndDataRetained(t *testing.T) {
+	for _, frame := range []string{
+		`{"arg":{"instType":"x","topic":"publicTrade","symbol":"BTCUSDT","extraArg":1},"data":[{"i":"1","extraData":2}]}`,
+		`{"arg":{"instType":"x","topic":"position-tier","extraArg":1},"data":{"symbol":"BTCUSDT","list":[{"tier":"1","extraData":2}]}}`,
+	} {
+		a := &Adapter{}
+		r := a.Split(venue.Shard{Name: t.Name() + frame}, []byte(frame))
+		if len(r) == 0 || r[0].Symbol != "BTCUSDT" || !bytes.Contains(r[0].Payload, []byte(`"extraArg":1`)) || !bytes.Contains(r[0].Payload, []byte(`"extraData":2`)) || a.UnknownFields() != 2 {
+			t.Fatalf("records=%+v unknown=%d", r, a.UnknownFields())
+		}
+	}
+}

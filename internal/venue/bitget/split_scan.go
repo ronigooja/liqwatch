@@ -127,6 +127,16 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 		}
 		payload := []byte{'{'}
 		for _, v := range f.fields {
+			if v.key == "arg" {
+				filteredArg, _, err := a.filterObject("arg", v.raw, false)
+				if err != nil {
+					return gap(msg)
+				}
+				if bytes.Equal(filteredArg, []byte("{}")) {
+					continue
+				}
+				v.raw = filteredArg
+			}
 			if len(payload) > 1 {
 				payload = append(payload, ',')
 			}

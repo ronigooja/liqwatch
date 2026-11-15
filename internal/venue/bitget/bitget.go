@@ -20,15 +20,19 @@ import (
 
 // Fields are grouped by recorded item; unlisted fields are retained and counted.
 var keepFields = map[string]map[string]bool{
-	"trade":       {"i": true, "p": true, "v": true, "S": true, "T": true, "L": true, "isRPI": true},                                                       // trades
-	"ticker":      {"symbol": true, "ts": true, "indexPrice": true, "markPrice": true, "fundingRate": true, "openInterest": true, "nextFundingTime": true}, // prices, funding, OI
-	"funding":     {"symbol": true, "ts": true, "fundingRate": true, "nextUpdate": true},                                                                   // funding
-	"tier":        {"symbol": true, "ts": true, "list": true, "leverage": true, "maxTierValue": true, "minTierValue": true, "mmr": true, "tier": true},     // leverage tiers
-	"liquidation": {"symbol": true, "side": true, "price": true, "amount": true, "ts": true},                                                               // liquidations
+	"trade":       {"i": true, "p": true, "v": true, "S": true, "T": true},
+	"ticker":      {"ts": true, "indexPrice": true, "markPrice": true, "fundingRate": true, "openInterest": true, "nextFundingTime": true},
+	"funding":     {"ts": true, "fundingRate": true, "nextUpdate": true},
+	"tier":        {"ts": true, "list": true, "leverage": true, "maxTierValue": true, "minTierValue": true, "mmr": true, "tier": true},
+	"liquidation": {"side": true, "price": true, "amount": true, "ts": true},
 }
 var dropFields = map[string]map[string]bool{
-	"ticker":  {"highPrice24h": true, "lowPrice24h": true, "openPrice24h": true, "lastPrice": true, "turnover24h": true, "volume24h": true, "bid1Price": true, "ask1Price": true, "bid1Size": true, "ask1Size": true, "price24hPcnt": true, "deliveryTime": true, "deliveryStartTime": true, "deliveryStatus": true}, // quotes, statistics, delivery
-	"funding": {"baseInterestRate": true, "cashDividend": true, "cashDividendNextUpdate": true, "fundingRateInterval": true, "impactMarginNotional": true, "lastFundingRate": true, "maxFundingRate": true, "minFundingRate": true, "nextFundingRate": true},                                                         // funding inputs and estimates
+	"arg":         {"instType": true, "topic": true, "symbol": true},
+	"trade":       {"symbol": true, "L": true, "isRPI": true},
+	"ticker":      {"symbol": true, "highPrice24h": true, "lowPrice24h": true, "openPrice24h": true, "lastPrice": true, "turnover24h": true, "volume24h": true, "bid1Price": true, "ask1Price": true, "bid1Size": true, "ask1Size": true, "price24hPcnt": true, "deliveryTime": true, "deliveryStartTime": true, "deliveryStatus": true}, // quotes, statistics, delivery
+	"funding":     {"symbol": true, "baseInterestRate": true, "cashDividend": true, "cashDividendNextUpdate": true, "fundingRateInterval": true, "impactMarginNotional": true, "lastFundingRate": true, "maxFundingRate": true, "minFundingRate": true, "nextFundingRate": true},                                                         // funding inputs and estimates
+	"tier":        {"symbol": true},
+	"liquidation": {"symbol": true},
 }
 
 var samples = struct {
@@ -437,6 +441,15 @@ func (a *Adapter) legacySplit(sh venue.Shard, msg []byte) []rawlog.Record {
 			var value json.RawMessage
 			if dec.Decode(&value) != nil {
 				return gap(msg)
+			}
+			if key == "arg" {
+				value, _, err = a.filterObject("arg", value, false)
+				if err != nil {
+					return gap(msg)
+				}
+				if bytes.Equal(value, []byte("{}")) {
+					continue
+				}
 			}
 			if key == "data" {
 				if array {

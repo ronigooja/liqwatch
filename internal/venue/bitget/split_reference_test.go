@@ -124,6 +124,15 @@ func (a *Adapter) referenceSplit(sh venue.Shard, msg []byte) []rawlog.Record {
 			if dec.Decode(&value) != nil {
 				return gap(msg)
 			}
+			if key == "arg" {
+				value, _, err = a.filterObject("arg", value, false)
+				if err != nil {
+					return gap(msg)
+				}
+				if bytes.Equal(value, []byte("{}")) {
+					continue
+				}
+			}
 			if key == "data" {
 				if array {
 					value = append(append([]byte{'['}, filtered...), ']')
