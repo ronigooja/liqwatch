@@ -104,18 +104,8 @@ func TestFixtureSplit(t *testing.T) {
 		}
 		if v.Channel == "push.contract.extra.update" || v.Channel == "push.contract.marketOrderSetting.update" {
 			counts[v.Channel+":"+v.Symbol]++
-			if v.Symbol != "BTC_USDT" || v.Channel == "push.contract.extra.update" {
-				if len(records) != 0 {
-					t.Fatalf("out-of-universe frame %s records %+v", frame, records)
-				}
-				continue
-			}
-			want := "contractextra"
-			if v.Channel == "push.contract.marketOrderSetting.update" {
-				want = "ordersetting"
-			}
-			if len(records) != 1 || records[0].Channel != want || records[0].Symbol != v.Symbol || string(records[0].Payload) != string(frame) {
-				t.Fatalf("frame %s records %+v", frame, records)
+			if len(records) != 0 {
+				t.Fatalf("ignored frame %s records %+v", frame, records)
 			}
 			continue
 		}
@@ -156,7 +146,7 @@ func TestFixtureSplit(t *testing.T) {
 		t.Fatal(r)
 	}
 	unknownContract := []byte(`{"channel":"push.contract.future.update","symbol":"BTC_USDT","data":{"value":1}}`)
-	if r := a.Split(venue.Shard{}, unknownContract); len(r) < 1 || r[0].Channel != "contractmeta" || r[0].Symbol != "BTC_USDT" || string(r[0].Payload) != string(unknownContract) {
+	if r := a.Split(venue.Shard{}, unknownContract); len(r) != 0 {
 		t.Fatal(r)
 	}
 	if r := a.Split(venue.Shard{}, []byte(strings.ReplaceAll(string(unknownContract), "BTC_USDT", "OTHER"))); len(r) != 0 {
@@ -198,7 +188,7 @@ func TestMetadataUsesShardsSymbolsNotDiscoveredSymbols(t *testing.T) {
 		}{{"BTC_USDT", true}, {"BLKSTOCK_USDT", false}} {
 			frame := fmt.Sprintf(`{"channel":%q,"symbol":%q,"data":{}}`, channel, tc.symbol)
 			got := a.Split(venue.Shard{Name: "metadata-test"}, []byte(frame))
-			if (len(got) > 0) != tc.want {
+			if (len(got) > 0) != (tc.want && channel == "push.contract") {
 				t.Fatalf("%s %s: %+v", channel, tc.symbol, got)
 			}
 		}

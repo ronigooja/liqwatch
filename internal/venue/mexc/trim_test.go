@@ -65,7 +65,7 @@ var expectedFields = map[string]struct{ keep, drop string }{
 	"index":    {"price", "symbol"},
 	"funding":  {"rate nextSettleTime", "symbol"},
 	"ticker":   {"fairPrice indexPrice holdVol fundingRate nextSettleTime timestamp", "symbol lastPrice riseFallRate volume24 amount24 maxBidPrice minAskPrice lower24Price high24Price bid1 ask1 riseFallValue zone riseFallRates riseFallRatesOfTimezone"},
-	"contract": {"contractSize minLeverage maxLeverage maintenanceMarginRate initialMarginRate riskBaseVol riskIncrVol riskIncrMmr riskIncrImr riskLevelLimit riskLongShortSwitch riskLimitType riskLimitMode openingTime riskLimitCustom", "symbol displayName displayNameEn positionOpenType baseCoin quoteCoin baseCoinName quoteCoinName futureType settleCoin priceScale volScale amountScale priceUnit volUnit minVol maxVol limitMaxVol bidLimitPriceRate askLimitPriceRate takerFeeRate makerFeeRate liquidationFeeRate feeRateMode priceCoefficientVariation indexOrigin state isNew isHot isHidden conceptPlate conceptPlateId tagIdList maxNumOrders depthStepList openingCountdownOption triggerProtect apiAllowed baseCoinIconUrl baseCoinId vid id fn isMaxLeverage isZeroFeeRate isZeroFeeSymbol showBeforeOpen marketOrderMaxLevel marketOrderPriceLimitRate1 marketOrderPriceLimitRate2 appraisal showAppraisalCountdown automaticDelivery stopOnlyFair threshold type typeLabel preMarket feeRateType leverageFeeRates tieredFeeRates createTime countryConfigContractMaxLeverage"},
+	"contract": {"contractSize minLeverage maxLeverage maintenanceMarginRate initialMarginRate riskBaseVol riskIncrVol riskIncrMmr riskIncrImr riskLevelLimit riskLongShortSwitch riskLimitType riskLimitMode countryConfigContractMaxLeverage riskLimitCustom", "symbol displayName displayNameEn positionOpenType baseCoin quoteCoin baseCoinName quoteCoinName futureType settleCoin priceScale volScale amountScale priceUnit volUnit minVol maxVol limitMaxVol bidLimitPriceRate askLimitPriceRate takerFeeRate makerFeeRate liquidationFeeRate feeRateMode priceCoefficientVariation indexOrigin state isNew isHot isHidden conceptPlate conceptPlateId tagIdList maxNumOrders depthStepList openingCountdownOption triggerProtect apiAllowed baseCoinIconUrl baseCoinId vid id fn isMaxLeverage isZeroFeeRate isZeroFeeSymbol showBeforeOpen marketOrderMaxLevel marketOrderPriceLimitRate1 marketOrderPriceLimitRate2 appraisal showAppraisalCountdown automaticDelivery stopOnlyFair threshold type typeLabel preMarket feeRateType leverageFeeRates tieredFeeRates createTime openingTime"},
 }
 
 func TestFieldTableEntries(t *testing.T) {
@@ -222,5 +222,66 @@ func TestContractFixtureAndDiscovery(t *testing.T) {
 	got, err := a.Symbols(context.Background())
 	if err != nil || !reflect.DeepEqual(got, []string{"OK"}) {
 		t.Fatalf("filtered discovery %v %v", got, err)
+	}
+}
+
+func TestContractMetadataIgnored(t *testing.T) {
+	a := &Adapter{}
+	a.Shards(context.Background(), []string{"BTC_USDT"})
+	for _, channel := range []string{"push.contract.marketOrderSetting.update", "push.contract.future.update"} {
+		frame := []byte(fmt.Sprintf(`{"channel":%q,"symbol":"BTC_USDT","data":{"level":1}}`, channel))
+		if got := a.Split(venue.Shard{Name: channel}, frame); len(got) != 0 || a.UnknownFields() != 0 {
+			t.Fatalf("%s: %v unknown=%d", channel, got, a.UnknownFields())
+		}
+		if got := a.legacySplit(venue.Shard{Name: channel}, frame); len(got) != 0 {
+			t.Fatalf("legacy %s: %v", channel, got)
+		}
+	}
+}
+
+// TestContractAlignmentMutationResistance checks the independent expected
+// classifications even when the production tables are temporarily changed.
+func TestContractAlignmentMutationResistance(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		keep bool
+	}{{"countryConfigContractMaxLeverage", true}, {"openingTime", false}} {
+		for _, mode := range []string{"remove", "reverse"} {
+			t.Run(tc.name+"/"+mode, func(t *testing.T) {
+				keep, drop := keepFields["contract"], dropFields["contract"]
+				oldKeep, oldDrop := keep[tc.name], drop[tc.name]
+				defer func() {
+					if oldKeep {
+						keep[tc.name] = true
+					} else {
+						delete(keep, tc.name)
+					}
+					if oldDrop {
+						drop[tc.name] = true
+					} else {
+						delete(drop, tc.name)
+					}
+				}()
+				delete(keep, tc.name)
+				delete(drop, tc.name)
+				if mode == "reverse" {
+					if tc.keep {
+						drop[tc.name] = true
+					} else {
+						keep[tc.name] = true
+					}
+				}
+				a := &Adapter{}
+				raw := []byte(fmt.Sprintf(`{"%s":123}`, tc.name))
+				got, err := a.filterObject("contract", raw)
+				want := raw
+				if !tc.keep {
+					want = []byte(`{}`)
+				}
+				if err == nil && string(got) == string(want) && a.UnknownFields() == 0 {
+					t.Fatal("mutated table accepted")
+				}
+			})
+		}
 	}
 }
