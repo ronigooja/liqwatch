@@ -1,5 +1,13 @@
 Bitget live fixture capture, 2026-11-13, Linux host.
 
+Verified in adapter code: ordinary records retain the original envelope fields except
+arg.instType, arg.topic and arg.symbol. An empty arg is omitted; unknown arg fields
+remain. Array data becomes a one-element array per record; object data remains an
+object. data.symbol is omitted; the record symbol is derived first. Unknown item and
+arg fields are retained and counted. Tier data retains the entire list. Hourly sample
+records contain the complete original frame in {"sample":...}. Ticker dedup compares
+filtered data excluding timestamps and forces emission after 60 seconds.
+
 contracts.jsonl: trimmed V2 GET /api/v2/mix/market/contracts?productType=USDT-FUTURES response, three original entries. The complete response contained 885 normal perpetual entries.
 frames.jsonl: one unmodified WebSocket frame per line, selected from V2 and V3 public connections. Includes text pong, subscribe acknowledgements, V3 parameter errors, snapshots, updates, Unicode symbols, and global liquidation. The V3 initial probe used V2 parameter names and generated errors; subsequent V3 probes used instType=usdt-futures, topic, symbol.
 
