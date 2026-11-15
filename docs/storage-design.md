@@ -66,7 +66,7 @@ peak  ~ two days of raw + one day of compressed (when compression or upload lags
 |---|---:|---:|---:|---:|
 | Binance, 10-minute trial scaled by 144 (extrapolation, not a full day) | about 14 GB | about 1.4 GB | about 16 GB | about 30 GB |
 
-Measured: the [seven-venue 5-minute sample](recording-results.md#seven-venue-load-and-recording) linearly extrapolates to about 138 GB raw per day; Gate is unreliable due to missing symbols. The earlier roughly 160 GB/day estimate from an earlier 5-minute sample is superseded (owner report, 2026-11-14). Full-day volume and staging-disk sizing remain unmeasured; the compressed figure above uses 5-second frames, not whole-file compression.
+Measured: the newer [seven-venue 5-minute sample](recording-results.md#seven-venue-load-and-recording) supersedes the earlier sample. Inferred: full-day volume and staging-disk sizing remain unmeasured; the compressed figure above uses 5-second frames, not whole-file compression.
 
 ## Charting needs no raw window
 

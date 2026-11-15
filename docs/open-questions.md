@@ -79,6 +79,10 @@ Move an item to "Verified" with source and date once checked.
 
 | Question | Evidence |
 |---|---|
+| Unknown: is sustained machine CPU saturation a risk? | Measured: one run reached 100% maximum; [recording results](recording-results.md#seven-venue-load-and-recording). |
+| Unknown: why did Bybit peak RSS increase? | Measured: the newer run's maximum exceeded the 2026-11-14 run; cause not investigated; [recording results](recording-results.md#seven-venue-load-and-recording). |
+| Unknown: does sub-universe trade coverage reflect market activity? | Measured: Bitget, Gate, Bybit and KuCoin had incomplete trade coverage; not checked against market activity; [recording results](recording-results.md#seven-venue-load-and-recording). |
+| Unknown: how should subscription errors be counted? | Measured: collector subscription-error counters were not exposed; [recording results](recording-results.md#seven-venue-load-and-recording). |
 | Inferred: can redundant `venue`, `ch`, `sym` envelope fields be dropped later? | Owner deferred this; verified in [rawlog](../internal/rawlog/). |
 | Unknown: who sent the Gate connection resets? | Inferred: unread frames during subscription are the most likely explanation, not proven; [measurements](recording-results.md#seven-venue-load-and-recording). |
 | Unknown: does the Binance poller deduplicate on a real second fetch? | Measured: the [second-run check](recording-results.md#seven-venue-load-and-recording) did not fetch because jobs were not due. |
