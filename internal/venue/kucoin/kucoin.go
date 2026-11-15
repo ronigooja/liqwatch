@@ -25,16 +25,16 @@ const classicSymbols = 25
 const utaSymbols = 50
 
 // Trade item, envelope and timestamps; order metadata is not recorded.
-var tradeKeep = fields("topic type subject data symbol side size price tradeId ts timestamp")
-var tradeDrop = fields("sn sequence takerOrderId makerOrderId")
+var tradeKeep = fields("data side size price tradeId ts timestamp")
+var tradeDrop = fields("topic type subject symbol sn sequence takerOrderId makerOrderId")
 
 // Mark, index and funding items; delivery cadence is not recorded.
-var markKeep = fields("topic type subject data symbol markPrice indexPrice fundingRate nextFundingTime timestamp ts")
-var markDrop = fields("granularity period")
+var markKeep = fields("data symbol markPrice indexPrice fundingRate nextFundingTime timestamp ts")
+var markDrop = fields("topic type subject granularity period")
 
 // UTA mark, index, open interest and funding items; ticker statistics are not recorded.
-var utaKeep = fields("T d s symbol mp ip oi ts fundingRate nextFundingTime fr nft")
-var utaDrop = fields("bp bq ap aq bidPrice bidSize askPrice askSize bestBid bestAsk bestBidSize bestAskSize vol volume turnover high low priceChange priceChangePercent lastPrice last p v h l")
+var utaKeep = fields("d symbol mp ip oi ts fundingRate nextFundingTime fr nft")
+var utaDrop = fields("T s bp bq ap aq bidPrice bidSize askPrice askSize bestBid bestAsk bestBidSize bestAskSize vol volume turnover high low priceChange priceChangePercent lastPrice last p v h l")
 
 func fields(s string) map[string]bool {
 	m := make(map[string]bool)
