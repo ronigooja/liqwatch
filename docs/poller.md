@@ -46,7 +46,7 @@ Verified in the same code: each request start reserves `one minute × channel we
 
 Verified in the same code: startup and idle time accumulate no burst credit. Pacing state is in memory, so restart allows one immediate request before its cost is charged; it is not a persisted rolling-window quota.
 
-Verified in `RunOnce` in the same code: `-once` retains full phase membership and suppresses repeat attempts. It drains jobs eligible at sweep start under pacing, not every future history phase; additional phases may become eligible while due work drains.
+Verified in `RunOnce` in the same code: `-once` preserves all phase-ranking memberships and attempts only jobs due at sweep start, at most once each. Waiting for retry deadlines or request budgets does not admit future phases into the sweep.
 
 Verified in `reportCapacity` in the same code: `schedule_over_capacity` is a `gap` event when minimum configured venue weight/minute or endpoint requests/second exceeds its limit, assuming only one request per job. Cadence is not changed automatically.
 
