@@ -19,8 +19,8 @@ import (
 // TimestampPath locates the object or array containing the history cursor;
 // empty means the payload itself. TimestampKey or TimestampIndex identifies
 // the member. A nonempty keep list at that level must include it: otherwise
-// it would be retained but counted as unknown. DropChannel suppresses the
-// record, not cursor updates.
+// it would be retained but counted as unknown. DropChannel suppresses scheduled
+// requests and output records; existing cursor state is preserved.
 type Policy struct {
 	Keep, Drop               []string
 	KeepIndexes, DropIndexes []int
@@ -157,6 +157,17 @@ func UnknownFields(venue, channel string) uint64 {
 		return 0
 	}
 	return v.(*atomic.Uint64).Load()
+}
+
+// channelDropped reports whether an explicit policy disables scheduled work.
+// Channels without a policy remain enabled, just as in ApplyPolicy.
+func channelDropped(venue, channel string) bool {
+	if policiesDisabled {
+		return false
+	}
+	policies.RLock()
+	defer policies.RUnlock()
+	return policies.m[policyKey{venue, channel}].DropChannel
 }
 
 // ApplyPolicy filters one JSON payload. Without a registered policy it returns

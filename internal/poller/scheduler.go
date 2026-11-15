@@ -352,6 +352,9 @@ func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
 	}
 	sort.Strings(symbols)
 	for _, c := range s.Channels {
+		if channelDropped(c.Venue, c.Name) {
+			continue
+		}
 		syms := []string{""}
 		if c.PerSymbol {
 			syms = symbols
@@ -481,6 +484,9 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 		original := s.Channels
 		var channels []Channel
 		for _, c := range original {
+			if channelDropped(c.Venue, c.Name) {
+				continue
+			}
 			cc := c
 			if !c.PerSymbol && seen[jobKey(c, "")] {
 				continue
@@ -523,6 +529,9 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 		if d > 0 {
 			pending := false
 			for _, c := range original {
+				if channelDropped(c.Venue, c.Name) {
+					continue
+				}
 				syms := []string{""}
 				if c.PerSymbol {
 					if oldUniverse != nil {
