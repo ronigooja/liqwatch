@@ -1,0 +1,1 @@
+{"data":[{"symbol":"BTCUSDT","baseCoin":"BTC","quoteCoin":"USDT","symbolType":"perpetual","symbolStatus":"normal","fundInterval":"8","minLever":"1","maxLever":"150"},{"symbol":"ETHUSDT","baseCoin":"ETH","quoteCoin":"USDT","symbolType":"perpetual","symbolStatus":"normal","fundInterval":"8","minLever":"1","maxLever":"150"}]}
