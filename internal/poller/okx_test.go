@@ -266,3 +266,111 @@ status="auto"
 		t.Fatal("currency derivation")
 	}
 }
+
+func TestOKXCurrencyUnknownTokenCooldown(t *testing.T) {
+	for _, cursor := range []bool{false, true} {
+		t.Run(fmt.Sprint(cursor), func(t *testing.T) {
+			clock := &fakeClock{t: time.Date(2026, 11, 15, 10, 31, 20, 0, time.UTC)}
+			calls := map[string]int{}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				q := r.URL.Query()
+				calls[q.Get("ccy")]++
+				if r.URL.Path != "/api/v5/rubik/stat/contracts/long-short-account-ratio" || q.Get("period") != "5m" || q.Get("begin") == "" || q.Get("end") == "" || q.Get("instId") != "" {
+					t.Errorf("unexpected request %s", r.URL)
+				}
+				if q.Get("ccy") == "CT" {
+					fmt.Fprint(w, `{"code":"51012","msg":"Token does not exist","data":[]}`)
+					return
+				}
+				fmt.Fprintf(w, `{"code":"0","data":[["%d","1.25"]]}`, clock.Now().Add(-15*time.Minute).UnixMilli())
+			}))
+			defer server.Close()
+			e := &Env{Venue: "okx", Doer: uaDoer{server.Client()}, Clock: clock, BaseURL: server.URL, Lookback: 20 * time.Minute, Universe: func() []string { return []string{"CT-USDT-SWAP", "BTC-USDT-SWAP"} }}
+			ch := okxFactory(e)[4]
+			ch.Period = time.Hour
+			sink := &memorySink{}
+			path := t.TempDir() + "/state.json"
+			s, err := NewScheduler([]Channel{ch}, sink, clock, path, 240)
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.Bind(s)
+			if cursor {
+				s.state.Jobs["okx/longShortAccountRatio/CT-USDT-SWAP"] = jobState{RowTimestamp: clock.Now().Add(-15 * time.Minute).UnixMilli()}
+			}
+			for i := 0; i < 7; i++ {
+				if _, err := s.Step(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				clock.t = clock.t.Add(time.Minute)
+			}
+			if calls["CT"] != 1 || calls["BTC"] == 0 || !ch.Skip("CT-USDT-SWAP") || ch.Skip("BTC-USDT-SWAP") {
+				t.Fatalf("calls=%v CT skip=%v BTC skip=%v", calls, ch.Skip("CT-USDT-SWAP"), ch.Skip("BTC-USDT-SWAP"))
+			}
+			unsupported := 0
+			for _, r := range sink.records {
+				if strings.Contains(string(r.Payload), `"unsupported"`) && strings.Contains(string(r.Payload), `"51012"`) {
+					unsupported++
+				}
+				if strings.Contains(string(r.Payload), `"poll_failed"`) {
+					t.Fatalf("retryable failure: %s", r.Payload)
+				}
+			}
+			if unsupported != 1 {
+				t.Fatalf("unsupported diagnostics=%d", unsupported)
+			}
+			s, err = NewScheduler([]Channel{ch}, sink, clock, path, 240)
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.Bind(s)
+			if !ch.Skip("CT-USDT-SWAP") {
+				t.Fatal("cooldown lost on restart")
+			}
+			clock.t = clock.t.Add(24 * time.Hour)
+			if ch.Skip("CT-USDT-SWAP") {
+				t.Fatal("cooldown never expires")
+			}
+			if len(e.Universe()) != 2 {
+				t.Fatal("universe changed")
+			}
+		})
+	}
+}
+
+func TestOKXCurrencyOtherErrorsRemainRetryable(t *testing.T) {
+	for _, code := range []string{"50011", "50040", "59999"} {
+		t.Run(code, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, `{"code":%q,"msg":"failure","data":[]}`, code)
+			}))
+			defer server.Close()
+			clock := &fakeClock{t: time.Now()}
+			e := &Env{Venue: "okx", Doer: uaDoer{server.Client()}, Clock: clock, BaseURL: server.URL, Universe: func() []string { return []string{"CT-USDT-SWAP"} }}
+			ch := okxFactory(e)[4]
+			s, _ := NewScheduler([]Channel{ch}, &memorySink{}, clock, "", 240)
+			e.Bind(s)
+			_, err := ch.Fetch(context.Background(), "CT-USDT-SWAP")
+			if apiErr, ok := err.(*okxError); !ok || apiErr.code != code || ch.Skip("CT-USDT-SWAP") {
+				t.Fatalf("error=%v skip=%v", err, ch.Skip("CT-USDT-SWAP"))
+			}
+		})
+	}
+}
+
+func TestOKXContractUnknownTokenRemainsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("instId") != "CT-USDT-SWAP" || r.URL.Query().Get("ccy") != "" {
+			t.Errorf("unexpected request %s", r.URL)
+		}
+		fmt.Fprint(w, `{"code":"51012","msg":"Token does not exist","data":[]}`)
+	}))
+	defer server.Close()
+	e := &Env{Venue: "okx", Doer: uaDoer{server.Client()}, Clock: RealClock{}, BaseURL: server.URL, Universe: func() []string { return []string{"CT-USDT-SWAP"} }}
+	for _, ch := range okxFactory(e)[:4] {
+		_, err := ch.Fetch(context.Background(), "CT-USDT-SWAP")
+		if apiErr, ok := err.(*okxError); !ok || apiErr.code != "51012" {
+			t.Fatalf("%s error=%v", ch.Name, err)
+		}
+	}
+}

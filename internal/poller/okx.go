@@ -100,6 +100,17 @@ func okxFactory(e *Env) []Channel {
 	const name = "longShortAccountRatio"
 	c := e.HistoryChannel(name, HistorySpec{Step: 5 * time.Minute, Retention: 2 * 24 * time.Hour, Mode: PageWindows, Window: 288, Period: 24 * time.Hour, Fetch: func(ctx context.Context, s string, a, b int64) ([]Row, error) {
 		rows, err := okxRows(ctx, e, "/api/v5/rubik/stat/contracts/long-short-account-ratio", okxCurrency(s), a, b, true)
+		// Only this currency endpoint's explicit unknown-token response is unsupported.
+		// Keep the instrument in all other channels and recheck after the persisted cooldown.
+		if apiErr, ok := err.(*okxError); ok && apiErr.code == "51012" && e.Scheduler != nil {
+			now := e.Clock.Now()
+			if e.Scheduler.Sink != nil {
+				payload, _ := json.Marshal(map[string]any{"event": "unsupported", "channel": name, "symbol": s, "ccy": okxCurrency(s), "code": apiErr.code, "err": apiErr.Error()})
+				e.Scheduler.Sink.Write(Record{Venue: e.Venue, Channel: "gap", Symbol: s, RecvWall: now.UnixNano(), RecvMono: time.Since(monoOrigin).Nanoseconds(), Payload: payload})
+			}
+			e.Scheduler.MarkNoData(e.Venue, name, s, now)
+			return nil, nil
+		}
 		if apiErr, ok := err.(*okxError); ok && apiErr.code == "50030" {
 			if e.Scheduler != nil {
 				e.Scheduler.MarkNoData(e.Venue, name, s, e.Clock.Now())
