@@ -20,12 +20,32 @@ import (
 
 // Per-channel item fields: trades, mark, index, funding, open interest, liquidations.
 var fieldRules = map[string]struct{ keep, drop map[string]bool }{
-	"trades-all":         {fields("instId tradeId px sz side ts source"), fields("")},
-	"mark-price":         {fields("instId instType markPx ts"), fields("")},
-	"index-tickers":      {fields("instId idxPx ts"), fields("open24h high24h low24h sodUtc0 sodUtc8")},
-	"funding-rate":       {fields("formulaType fundingRate fundingTime impactValue instId instType interestRate maxFundingRate method minFundingRate nextFundingRate nextFundingTime premium prevFundingTime settFundingRate settState ts"), fields("")},
-	"open-interest":      {fields("instId instType oi oiCcy oiUsd ts"), fields("")},
-	"liquidation-orders": {fields("details instFamily instId instType uly"), fields("")},
+	"trades-all":          {fields("tradeId px sz side ts"), fields("instId instType source")},
+	"mark-price":          {fields("markPx ts"), fields("instId instType")},
+	"index-tickers":       {fields("instId idxPx ts"), fields("instType open24h high24h low24h sodUtc0 sodUtc8")},
+	"funding-rate":        {fields("fundingRate fundingTime nextFundingTime ts"), fields("instId instType nextFundingRate settFundingRate settState formulaType method impactValue interestRate maxFundingRate minFundingRate premium prevFundingTime")},
+	"open-interest":       {fields("oi oiCcy oiUsd ts"), fields("instId instType")},
+	"liquidation-orders":  {fields("details"), fields("instId instType uly instFamily")},
+	"liquidation-details": {fields("side posSide bkPx sz ts"), fields("ccy bkLoss instType")},
+}
+
+func filterDetails(value []byte) []byte {
+	var details []json.RawMessage
+	if json.Unmarshal(value, &details) != nil || details == nil {
+		return value
+	}
+	for i, detail := range details {
+		filtered, err := filterItem("liquidation-details", detail)
+		if err != nil {
+			return value
+		}
+		details[i] = filtered
+	}
+	result, err := json.Marshal(details)
+	if err != nil {
+		return value
+	}
+	return result
 }
 
 func fields(s string) map[string]bool {
@@ -138,7 +158,11 @@ func filterItem(channel string, entry []byte) ([]byte, error) {
 			out = append(out, name...)
 		}
 		out = append(out, ':')
-		out = append(out, entry[start:end]...)
+		value := entry[start:end]
+		if channel == "liquidation-orders" && key == "details" {
+			value = filterDetails(value)
+		}
+		out = append(out, value...)
 	}
 	return append(out, '}'), nil
 }
@@ -376,8 +400,7 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 			continue
 		}
 		filtered := filterScannedItem(f.channel, item)
-		payload := append([]byte(`{"arg":`), f.arg...)
-		payload = append(payload, `,"data":[`...)
+		payload := []byte(`{"data":[`)
 		payload = append(payload, filtered...)
 		payload = append(payload, ']', '}')
 		out = append(out, rawlog.Record{Channel: ch, Symbol: sym, Payload: payload})
@@ -465,8 +488,7 @@ func (a *Adapter) splitFallback(sh venue.Shard, msg []byte) []rawlog.Record {
 			out = append(out, gap(msg)...)
 			continue
 		}
-		payload := append([]byte(`{"arg":`), e.RawArg...)
-		payload = append(payload, `,"data":[`...)
+		payload := []byte(`{"data":[`)
 		payload = append(payload, filtered...)
 		payload = append(payload, ']', '}')
 		out = append(out, rawlog.Record{Channel: ch, Symbol: sym, Payload: payload})
