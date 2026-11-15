@@ -226,11 +226,15 @@ func TestContractFixtureAndDiscovery(t *testing.T) {
 }
 
 func TestContractMetadataIgnored(t *testing.T) {
- a := &Adapter{}
- a.Shards(context.Background(), []string{"BTC_USDT"})
- for _, channel := range []string{"push.contract.marketOrderSetting.update", "push.contract.future.update"} {
-  frame := []byte(fmt.Sprintf(`{"channel":%q,"symbol":"BTC_USDT","data":{"level":1}}`, channel))
-  if got := a.Split(venue.Shard{Name: channel}, frame); len(got) != 0 || a.UnknownFields() != 0 { t.Fatalf("%s: %v unknown=%d", channel, got, a.UnknownFields()) }
-  if got := a.legacySplit(venue.Shard{Name: channel}, frame); len(got) != 0 { t.Fatalf("legacy %s: %v", channel, got) }
- }
+	a := &Adapter{}
+	a.Shards(context.Background(), []string{"BTC_USDT"})
+	for _, channel := range []string{"push.contract.marketOrderSetting.update", "push.contract.future.update"} {
+		frame := []byte(fmt.Sprintf(`{"channel":%q,"symbol":"BTC_USDT","data":{"level":1}}`, channel))
+		if got := a.Split(venue.Shard{Name: channel}, frame); len(got) != 0 || a.UnknownFields() != 0 {
+			t.Fatalf("%s: %v unknown=%d", channel, got, a.UnknownFields())
+		}
+		if got := a.legacySplit(venue.Shard{Name: channel}, frame); len(got) != 0 {
+			t.Fatalf("legacy %s: %v", channel, got)
+		}
+	}
 }

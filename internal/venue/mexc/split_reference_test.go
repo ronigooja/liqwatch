@@ -79,10 +79,14 @@ func (a *Adapter) referenceSplit(sh venue.Shard, msg []byte) []rawlog.Record {
 		if !ok {
 			return nil
 		}
-		if v.Channel != "push.contract" { return nil }
-        ch := "contract"
-        payload, e := a.filterFrame(ch, msg, v.Data)
-        if e != nil { return a.invalidFrame(msg) }
+		if v.Channel != "push.contract" {
+			return nil
+		}
+		ch := "contract"
+		payload, e := a.filterFrame(ch, msg, v.Data)
+		if e != nil {
+			return a.invalidFrame(msg)
+		}
 		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: payload}})
 	}
 	channels := map[string]string{"push.deal": "trade", "push.fair.price": "mark", "push.index.price": "index", "push.ticker": "ticker", "push.funding.rate": "funding"}

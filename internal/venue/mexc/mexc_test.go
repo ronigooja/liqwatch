@@ -104,7 +104,9 @@ func TestFixtureSplit(t *testing.T) {
 		}
 		if v.Channel == "push.contract.extra.update" || v.Channel == "push.contract.marketOrderSetting.update" {
 			counts[v.Channel+":"+v.Symbol]++
-			if len(records) != 0 { t.Fatalf("ignored frame %s records %+v", frame, records) }
+			if len(records) != 0 {
+				t.Fatalf("ignored frame %s records %+v", frame, records)
+			}
 			continue
 		}
 		if v.Channel == "rs.error" {
@@ -186,7 +188,7 @@ func TestMetadataUsesShardsSymbolsNotDiscoveredSymbols(t *testing.T) {
 		}{{"BTC_USDT", true}, {"BLKSTOCK_USDT", false}} {
 			frame := fmt.Sprintf(`{"channel":%q,"symbol":%q,"data":{}}`, channel, tc.symbol)
 			got := a.Split(venue.Shard{Name: "metadata-test"}, []byte(frame))
-			if (len(got) > 0) != tc.want {
+			if (len(got) > 0) != (tc.want && channel == "push.contract") {
 				t.Fatalf("%s %s: %+v", channel, tc.symbol, got)
 			}
 		}

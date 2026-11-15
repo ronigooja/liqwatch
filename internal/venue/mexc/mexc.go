@@ -32,7 +32,7 @@ var keepFields = map[string]map[string]bool{
 	"index":    {"price": true},
 	"funding":  {"rate": true, "nextSettleTime": true},
 	"ticker":   {"fairPrice": true, "indexPrice": true, "holdVol": true, "fundingRate": true, "nextSettleTime": true, "timestamp": true},
-	"contract": {"contractSize": true, "minLeverage": true, "maxLeverage": true, "maintenanceMarginRate": true, "initialMarginRate": true, "riskBaseVol": true, "riskIncrVol": true, "riskIncrMmr": true, "riskIncrImr": true, "riskLevelLimit": true, "riskLongShortSwitch": true, "riskLimitType": true, "riskLimitMode": true, "openingTime": true, "riskLimitCustom": true},
+	"contract": {"contractSize": true, "minLeverage": true, "maxLeverage": true, "maintenanceMarginRate": true, "initialMarginRate": true, "riskBaseVol": true, "riskIncrVol": true, "riskIncrMmr": true, "riskIncrImr": true, "riskLevelLimit": true, "riskLongShortSwitch": true, "riskLimitType": true, "riskLimitMode": true, "countryConfigContractMaxLeverage": true, "riskLimitCustom": true},
 }
 var dropFields = map[string]map[string]bool{
 	"trade":    {"symbol": true, "M": true},
@@ -40,7 +40,7 @@ var dropFields = map[string]map[string]bool{
 	"index":    {"symbol": true},
 	"funding":  {"symbol": true},
 	"ticker":   {"symbol": true, "lastPrice": true, "riseFallRate": true, "volume24": true, "amount24": true, "maxBidPrice": true, "minAskPrice": true, "lower24Price": true, "high24Price": true, "bid1": true, "ask1": true, "riseFallValue": true, "zone": true, "riseFallRates": true, "riseFallRatesOfTimezone": true},
-	"contract": {"symbol": true, "displayName": true, "displayNameEn": true, "positionOpenType": true, "baseCoin": true, "quoteCoin": true, "baseCoinName": true, "quoteCoinName": true, "futureType": true, "settleCoin": true, "priceScale": true, "volScale": true, "amountScale": true, "priceUnit": true, "volUnit": true, "minVol": true, "maxVol": true, "limitMaxVol": true, "bidLimitPriceRate": true, "askLimitPriceRate": true, "takerFeeRate": true, "makerFeeRate": true, "liquidationFeeRate": true, "feeRateMode": true, "priceCoefficientVariation": true, "indexOrigin": true, "state": true, "isNew": true, "isHot": true, "isHidden": true, "conceptPlate": true, "conceptPlateId": true, "tagIdList": true, "maxNumOrders": true, "depthStepList": true, "openingCountdownOption": true, "triggerProtect": true, "apiAllowed": true, "baseCoinIconUrl": true, "baseCoinId": true, "vid": true, "id": true, "fn": true, "isMaxLeverage": true, "isZeroFeeRate": true, "isZeroFeeSymbol": true, "showBeforeOpen": true, "marketOrderMaxLevel": true, "marketOrderPriceLimitRate1": true, "marketOrderPriceLimitRate2": true, "appraisal": true, "showAppraisalCountdown": true, "automaticDelivery": true, "stopOnlyFair": true, "threshold": true, "type": true, "typeLabel": true, "preMarket": true, "feeRateType": true, "leverageFeeRates": true, "tieredFeeRates": true, "createTime": true, "countryConfigContractMaxLeverage": true},
+	"contract": {"symbol": true, "displayName": true, "displayNameEn": true, "positionOpenType": true, "baseCoin": true, "quoteCoin": true, "baseCoinName": true, "quoteCoinName": true, "futureType": true, "settleCoin": true, "priceScale": true, "volScale": true, "amountScale": true, "priceUnit": true, "volUnit": true, "minVol": true, "maxVol": true, "limitMaxVol": true, "bidLimitPriceRate": true, "askLimitPriceRate": true, "takerFeeRate": true, "makerFeeRate": true, "liquidationFeeRate": true, "feeRateMode": true, "priceCoefficientVariation": true, "indexOrigin": true, "state": true, "isNew": true, "isHot": true, "isHidden": true, "conceptPlate": true, "conceptPlateId": true, "tagIdList": true, "maxNumOrders": true, "depthStepList": true, "openingCountdownOption": true, "triggerProtect": true, "apiAllowed": true, "baseCoinIconUrl": true, "baseCoinId": true, "vid": true, "id": true, "fn": true, "isMaxLeverage": true, "isZeroFeeRate": true, "isZeroFeeSymbol": true, "showBeforeOpen": true, "marketOrderMaxLevel": true, "marketOrderPriceLimitRate1": true, "marketOrderPriceLimitRate2": true, "appraisal": true, "showAppraisalCountdown": true, "automaticDelivery": true, "stopOnlyFair": true, "threshold": true, "type": true, "typeLabel": true, "preMarket": true, "feeRateType": true, "leverageFeeRates": true, "tieredFeeRates": true, "createTime": true, "openingTime": true},
 }
 
 var samples = struct {
@@ -320,23 +320,14 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 		if !ok {
 			return nil
 		}
-		ch := "contractmeta"
-		switch f.channel {
-		case "push.contract":
-			ch = "contract"
-		case "push.contract.extra.update":
+		if f.channel != "push.contract" {
 			return nil
-		case "push.contract.marketOrderSetting.update":
-			ch = "ordersetting"
 		}
-		payload := msg
-		if ch == "contract" {
-			var err error
-			payload, err = a.filterFrame(ch, msg, f.data)
-			if err != nil {
-				a.fallbacks.Add(1)
-				return a.legacySplit(sh, msg)
-			}
+		ch := "contract"
+		payload, err := a.filterFrame(ch, msg, f.data)
+		if err != nil {
+			a.fallbacks.Add(1)
+			return a.legacySplit(sh, msg)
 		}
 		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: f.symbol, Payload: payload}})
 	}
@@ -384,22 +375,13 @@ func (a *Adapter) legacySplit(sh venue.Shard, msg []byte) []rawlog.Record {
 		if !ok {
 			return nil
 		}
-		ch := "contractmeta"
-		switch v.Channel {
-		case "push.contract":
-			ch = "contract"
-		case "push.contract.extra.update":
+		if v.Channel != "push.contract" {
 			return nil
-		case "push.contract.marketOrderSetting.update":
-			ch = "ordersetting"
 		}
-		payload := msg
-		if ch == "contract" {
-			var e error
-			payload, e = a.filterFrame(ch, msg, v.Data)
-			if e != nil {
-				return a.invalidFrame(msg)
-			}
+		ch := "contract"
+		payload, e := a.filterFrame(ch, msg, v.Data)
+		if e != nil {
+			return a.invalidFrame(msg)
 		}
 		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: payload}})
 	}
