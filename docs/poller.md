@@ -8,9 +8,9 @@ Verified in [main](../cmd/liqwatch-poller/main.go): `liqwatch-poller -config /et
 
 Verified in [history.go](../internal/poller/history.go): cursor and overlap support backward, forward, and window paging, coverage-based paging, deduplication and revision marking; `source_gap`, `retention_gap`, and daily `no_data` records describe missing data. An unfinished newest bucket is deferred until `ts + Step + Grace <= now`.
 
-Verified in [scheduler.go](../internal/poller/scheduler.go), implementation commit `2fbe5cb` (pending integration into this documentation base): retry backoff and endpoint `RetryError.After` cooldown start after the failed fetch returns, not before its request/wait time.
+Verified in [scheduler.go](../internal/poller/scheduler.go), implementation commit `2fbe5cb`: retry backoff and endpoint `RetryError.After` cooldown start after the failed fetch returns, not before its request/wait time.
 
-Verified in [binance.go](../internal/poller/binance.go), implementation commit `2ba66e2` (pending integration into this documentation base): Binance history converts HTTP-date `Retry-After` relative to the post-response clock, avoiding double-counting request time.
+Verified in [binance.go](../internal/poller/binance.go), implementation commit `2ba66e2`: Binance HTTP requests convert HTTP-date `Retry-After` relative to the post-response clock, avoiding double-counting request time.
 
 Verified in [okx.go](../internal/poller/okx.go), commit `04ca1ec`: currency account-ratio code `51012` emits `unsupported` and uses the existing persisted 24 h no-data cooldown for that channel/symbol only. Other channels and the mapping remain enabled; [trial evidence](recording-results.md#rest-production-scheduler-trial).
 
@@ -20,7 +20,7 @@ Verified in [poller implementations](../internal/poller/): default initial lookb
 
 Verified: [0017](decisions/0017-poller-field-policies.md#consequences) identifies recorded and dropped channels, authoritative field tables, cursor and deduplication behavior. Nested paths use `[]` for root-array members and append `[]` for array fields; for example `[].tiers[]` ([policy.go](../internal/poller/policy.go)).
 
-Verified in [scheduler.go](../internal/poller/scheduler.go) and [policy.go](../internal/poller/policy.go), implementation commit `375b7a8` (pending integration into this documentation base): `DropChannel` disables scheduled initialization, fetches and retries in continuous and `-once` runs, suppresses output, and preserves existing cursor state.
+Verified in [scheduler.go](../internal/poller/scheduler.go) and [policy.go](../internal/poller/policy.go), implementation commit `375b7a8`: `DropChannel` disables scheduled initialization, fetches and retries in continuous and `-once` runs, suppresses output, and preserves existing cursor state.
 
 Verified in [main](../cmd/liqwatch-poller/main.go): each sweep logs `poller unknown fields venue=<venue> channel=<channel> count=<n>` for each channel with a nonzero cumulative count.
 
