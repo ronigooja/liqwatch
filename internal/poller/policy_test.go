@@ -3,6 +3,8 @@ package poller
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -65,5 +67,24 @@ func TestPolicyUnregistered(t *testing.T) {
 	got, record, err := ApplyPolicy("policy-test-absent", "c", raw)
 	if err != nil || !record || !bytes.Equal(got, raw) {
 		t.Fatalf("got %q %v %v", got, record, err)
+	}
+}
+
+func TestPolicyUnregisteredFixtures(t *testing.T) {
+	paths, err := filepath.Glob("testdata/*/*.json")
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("fixtures: %v", err)
+	}
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, record, err := ApplyPolicy("fixture-no-policy", path, raw)
+			if err != nil || !record || !bytes.Equal(raw, got) {
+				t.Fatalf("fixture changed: %v", err)
+			}
+		})
 	}
 }

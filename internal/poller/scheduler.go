@@ -412,6 +412,14 @@ func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
 				return 0, nil
 			}
 			for _, r := range records {
+				payload, record, err := ApplyPolicy(r.Venue, r.Channel, r.Payload)
+				if err != nil {
+					return 0, fmt.Errorf("filter %s/%s: %w", r.Venue, r.Channel, err)
+				}
+				if !record {
+					continue
+				}
+				r.Payload = payload
 				if !s.dedup(&r) {
 					s.Sink.Write(r)
 				}
