@@ -1,12 +1,12 @@
 # 0017 REST poller field policies
 
-Verified: owner decision, 2026-11-15; refines [0015](0015-recording-scope-and-granularity.md) and [0016](0016-drop-unneeded-payload-fields.md).
+Owner decision, 2026-11-15, except the three exceptions below (proposed by the main session from the owner's rules, not confirmed one by one); refines [0015](0015-recording-scope-and-granularity.md) and [0016](0016-drop-unneeded-payload-fields.md).
 
 ## Decision
 
 Verified: apply the collector's modelling-only rule to polled rows and response bodies using explicit channel keep/drop policies; retain and count unknown fields ([implementation](../../internal/poller/policy.go)).
 Verified: keep venue-provided ratios and shares, not their numerators, denominators or counts; omit taker-volume channels (trades are recorded), collector duplicates and fields without official definitions.
-Verified: intentional exceptions are Binance `brackets` fields without official definitions (the only tier source), KuCoin `nextFundingRateDateTime` (its only next-funding-time source), and MEXC `countryConfigContractMaxLeverage`; evidence and limitations: [open questions](../open-questions.md#poller-field-policy-questions).
+Inferred, not individually confirmed by the owner: intentional exceptions are Binance `brackets` fields without official definitions (the only tier source), KuCoin `nextFundingRateDateTime` (its only next-funding-time source), and MEXC `countryConfigContractMaxLeverage`; evidence and limitations: [open questions](../open-questions.md#poller-field-policy-questions).
 
 ## Why
 
