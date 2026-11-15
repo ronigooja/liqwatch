@@ -74,7 +74,7 @@ Verified in the linked code: each table describes configured subscriptions, not 
 
 | Item | Verified in [code](../internal/venue/kucoin/kucoin.go) |
 |---|---|
-| Channels | Classic execution and instrument; UTA `utamark` (mark price and open interest) |
+| Channels | Classic execution → `trade`; classic instrument `mark.index.price` → `mark`, `funding.rate` → `funding`; UTA → `utamark` (mark price and open interest); subscriptions unchanged |
 | Drop classes | trade → trade; mark and utamark → mark |
 | Shards | Classic: 25 symbols; UTA: 50 symbols; token acquired for classic connections |
 | Cadence and deviations | Measured: [capture](venue-apis.md#live-adapter-captures); classic tokens (24 h) are renewed through `Shard.Refresh` before each reconnect or planned replacement (`MaxAge` 12 h), verified live and by test; Chinese-named symbol limitation: [open issues](open-questions.md#recording-open-issues) |
@@ -103,4 +103,4 @@ Verified in [collector](../internal/collector/throttle.go): `[collect.throttle]`
 | Bitget | `ticker`: 1 s; `funding`: 60 s |
 | Gate | `tickers`: 1 s |
 | MEXC | `mark`, `index`, `ticker`: 1 s; `funding`: 60 s |
-| KuCoin | `mark`, `utamark`: 1 s |
+| KuCoin | `mark`, `utamark`: 1 s; `funding`: 60 s; distinct channel/symbol buckets prevent classic funding from replacing mark/index records |

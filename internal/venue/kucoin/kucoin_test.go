@@ -131,7 +131,7 @@ func TestFixtures(t *testing.T) {
 			t.Fatalf("control %s", f)
 		}
 	}
-	if counts["mark"] == 0 || counts["trade"] == 0 {
+	if counts["mark"] == 0 || counts["trade"] == 0 || counts["funding"] == 0 {
 		t.Fatal(counts)
 	}
 	for _, p := range []string{`{"type":"message","topic":"/new:X","data":{}}`, `{"T":"new","d":{}}`, `not json`} {

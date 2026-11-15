@@ -117,8 +117,11 @@ func (a *Adapter) referenceSplit(sh venue.Shard, msg []byte) []rawlog.Record {
 					ch = "trade"
 				}
 			case "/contract/instrument":
-				if f.Subject == "mark.index.price" || f.Subject == "funding.rate" {
+				switch f.Subject {
+				case "mark.index.price":
 					ch = "mark"
+				case "funding.rate":
+					ch = "funding"
 				}
 			}
 			if ch != "" {

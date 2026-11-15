@@ -338,8 +338,13 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 					if parts[0] == "/contractMarket/execution" && f.subject == "match" {
 						channel = "trade"
 					}
-					if parts[0] == "/contract/instrument" && (f.subject == "mark.index.price" || f.subject == "funding.rate") {
-						channel = "mark"
+					if parts[0] == "/contract/instrument" {
+						switch f.subject {
+						case "mark.index.price":
+							channel = "mark"
+						case "funding.rate":
+							channel = "funding"
+						}
 					}
 				}
 			}
@@ -349,7 +354,7 @@ func (a *Adapter) Split(sh venue.Shard, msg []byte) []rawlog.Record {
 				if channel == "trade" {
 					keep, drop = tradeKeep, tradeDrop
 					outerKeep = nil
-				} else if channel == "mark" {
+				} else if channel == "mark" || channel == "funding" {
 					keep, drop = markKeep, markDrop
 					outerKeep = nil
 				}
@@ -416,8 +421,11 @@ func (a *Adapter) legacySplit(sh venue.Shard, msg []byte) []rawlog.Record {
 					ch = "trade"
 				}
 			case "/contract/instrument":
-				if f.Subject == "mark.index.price" || f.Subject == "funding.rate" {
+				switch f.Subject {
+				case "mark.index.price":
 					ch = "mark"
+				case "funding.rate":
+					ch = "funding"
 				}
 			}
 			if ch != "" {

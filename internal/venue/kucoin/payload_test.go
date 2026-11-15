@@ -64,9 +64,6 @@ func TestPayloadFields(t *testing.T) {
 				t.Fatalf("records: %v", records)
 			}
 			channel := tc.name
-			if channel == "funding" {
-				channel = "mark"
-			}
 			if records[0].Channel != channel || records[1].Channel != channel {
 				t.Fatalf("channels: %v", records)
 			}
