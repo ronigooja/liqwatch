@@ -7,3 +7,7 @@ response3: taker-volume-contract, same parameters
 response4: long-short-account-ratio, ccy=BTC, period=5m
 response5: position-tiers, instType=SWAP, tdMode=cross, instFamily=BTC-USDT
 response6: instruments, instType=SWAP
+
+*-record.txt: first complete poller record captured 2026-11-15 from
+root@64.118.133.169:/root/ps/data/raw/okx/_all/20261115/<channel>.p.jsonl.
+*-filtered.txt: expected filtered payload for each captured record.
