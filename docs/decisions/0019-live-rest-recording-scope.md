@@ -11,7 +11,7 @@ Verified: owner decision. Date: 2026-11-15. Governs live REST recording and refi
 - Verified: restart and UTC midnight do not reset the floor. Ongoing recovery may query yesterday within the recorded interval; a moving today-only cutoff must not truncate continuity.
 - Verified: an empty newly opened range is not upstream absence and must not trigger the no-data cooldown. Preserve explicit unsupported-series handling and existing legacy cursor recovery.
 - Verified: `initial_lookback` is deprecated compatibility input and cannot widen fresh recording scope.
-- Verified: spread requests over time as separate work; not built, deferred. This decision changes neither configured periods nor rate limits and does not claim coverage is complete.
+- Verified: the request-spreading deferral is superseded by [0020](0020-smooth-rest-scheduling.md). The recording floor and other clauses remain unchanged; neither decision claims coverage is complete.
 
 ## Why
 
