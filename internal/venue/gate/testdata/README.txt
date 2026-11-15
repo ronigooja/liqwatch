@@ -10,3 +10,7 @@ pongs are control frames, not data. Liquidations observed in the capture do
 not independently prove completeness.
 Source: https://www.gate.com/docs/developers/futures/ws/en/
 REST source: https://www.gate.com/docs/developers/apiv4/en/futures/
+
+recorded-20261115.jsonl: first three BTC_USDT contract_stats and first two
+ICP_USDT contract_info records, read-only from /root/env-sample/data/raw/gate/
+<SYMBOL>/20261115/{contract_stats,contract_info}.jsonl on 2026-11-15 UTC.
