@@ -1,11 +1,11 @@
 package poller
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -64,11 +64,7 @@ func TestFixtureRecordGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var decoded []fixtureGoldenRecord
-	if err = json.Unmarshal(want, &decoded); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(got, decoded) {
+	if !bytes.Equal(append(encoded, '\n'), want) {
 		t.Fatal("fixture records differ from pre-policy golden")
 	}
 }

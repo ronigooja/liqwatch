@@ -53,7 +53,7 @@ func TestPolicyDedupUsesOriginalRows(t *testing.T) {
 				clock := &fakeClock{time.UnixMilli(tc.ts + 600000)}
 				sink := &memorySink{}
 				n := 0
-				c := Channel{Venue: venue, Name: channel, Fetch: func(context.Context, string) ([]Record, error) {
+				c := Channel{Venue: venue, Name: channel, Period: time.Hour, Fetch: func(context.Context, string) ([]Record, error) {
 					n++
 					raw := tc.raw
 					if n == 2 {
