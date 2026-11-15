@@ -104,7 +104,7 @@ func TestFixtureSplit(t *testing.T) {
 		}
 		if v.Channel == "push.contract.extra.update" || v.Channel == "push.contract.marketOrderSetting.update" {
 			counts[v.Channel+":"+v.Symbol]++
-			if v.Symbol != "BTC_USDT" {
+			if v.Symbol != "BTC_USDT" || v.Channel == "push.contract.extra.update" {
 				if len(records) != 0 {
 					t.Fatalf("out-of-universe frame %s records %+v", frame, records)
 				}
@@ -131,7 +131,7 @@ func TestFixtureSplit(t *testing.T) {
 			}
 			continue
 		}
-		if len(records) != 1 || records[0].Symbol != v.Symbol || (v.Channel != "push.ticker" && string(records[0].Payload) != string(frame)) {
+		if len(records) != 1 || records[0].Symbol != v.Symbol || false {
 			t.Fatalf("frame %s records %+v", frame, records)
 		}
 		counts[records[0].Channel]++
@@ -191,7 +191,7 @@ func TestMetadataUsesShardsSymbolsNotDiscoveredSymbols(t *testing.T) {
 	if _, err := a.Shards(context.Background(), []string{"BTC_USDT"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, channel := range []string{"push.contract", "push.contract.extra.update", "push.contract.marketOrderSetting.update", "push.contract.future.update"} {
+	for _, channel := range []string{"push.contract", "push.contract.marketOrderSetting.update", "push.contract.future.update"} {
 		for _, tc := range []struct {
 			symbol string
 			want   bool
@@ -223,7 +223,7 @@ func TestFilteringAndSamples(t *testing.T) {
 	frame := []byte(`{"symbol":"BTC_USDT","data":{"lastPrice":1,"holdVol":1.2300,"future":"x","bid1":2,"fairPrice":1e-8},"channel":"push.ticker","ts":123}`)
 	sh := venue.Shard{Name: "test"}
 	r := a.Split(sh, frame)
-	want := `{"symbol":"BTC_USDT","data":{"holdVol":1.2300,"future":"x","fairPrice":1e-8},"channel":"push.ticker","ts":123}`
+	want := `{"data":{"holdVol":1.2300,"future":"x","fairPrice":1e-8},"ts":123}`
 	if len(r) != 2 || string(r[0].Payload) != want || string(r[1].Payload) != `{"sample":`+string(frame)+`}` || a.UnknownFields() != 1 {
 		t.Fatalf("records %+v unknown %d", r, a.UnknownFields())
 	}

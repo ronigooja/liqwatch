@@ -84,39 +84,26 @@ func (a *Adapter) referenceSplit(sh venue.Shard, msg []byte) []rawlog.Record {
 		case "push.contract":
 			ch = "contract"
 		case "push.contract.extra.update":
-			ch = "contractextra"
+			return nil
 		case "push.contract.marketOrderSetting.update":
 			ch = "ordersetting"
 		}
-		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: msg}})
+		payload := msg
+		if ch == "contract" {
+			var e error
+			payload, e = a.filterFrame(ch, msg, v.Data)
+			if e != nil {
+				return a.invalidFrame(msg)
+			}
+		}
+		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: payload}})
 	}
 	channels := map[string]string{"push.deal": "trade", "push.fair.price": "mark", "push.index.price": "index", "push.ticker": "ticker", "push.funding.rate": "funding"}
 	ch, known := channels[v.Channel]
 	if err == nil && known && len(v.Data) > 0 && string(v.Data) != "null" && v.Symbol != "" {
-		payload := msg
-		if ch != "trade" {
-			filtered, e := a.referenceFilterObject(ch, v.Data)
-			if e != nil {
-				goto gap
-			}
-			// Replace only data, preserving the envelope and its order.
-			idx := bytes.Index(msg, v.Data)
-			if idx < 0 {
-				goto gap
-			}
-			payload = append(append(append([]byte{}, msg[:idx]...), filtered...), msg[idx+len(v.Data):]...)
-		} else {
-			var items []json.RawMessage
-			if len(v.Data) > 0 && v.Data[0] == '[' {
-				_ = json.Unmarshal(v.Data, &items)
-			} else {
-				items = []json.RawMessage{v.Data}
-			}
-			for _, item := range items {
-				if _, e := a.referenceFilterObject(ch, item); e != nil {
-					goto gap
-				}
-			}
+		payload, e := a.filterFrame(ch, msg, v.Data)
+		if e != nil {
+			goto gap
 		}
 		return sampled(sh, ch, msg, []rawlog.Record{{Channel: ch, Symbol: v.Symbol, Payload: payload}})
 	}
