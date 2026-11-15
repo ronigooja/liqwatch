@@ -12,8 +12,10 @@ import (
 )
 
 // Policy classifies members of a JSON object or positional array. Unclassified
-// members are retained and counted. Nested paths are rooted at the payload;
-// append [] to an array field to classify its object/array elements.
+// members are retained and counted. Nested paths are rooted at the payload:
+// append "." and the field name for children (omit the dot at the root),
+// and append [] for array members. [] denotes root array object members;
+// for example, [].tiers[] denotes members of their tiers arrays.
 // TimestampPath locates the object or array containing the history cursor;
 // empty means the payload itself. TimestampKey or TimestampIndex identifies
 // the member. A nonempty keep list at that level must include it: otherwise
@@ -86,6 +88,9 @@ func RegisterPolicy(venue, channel string, p Policy) error {
 	if err := validate(p); err != nil {
 		return err
 	}
+	if _, ok := p.Nested["[]"]; ok && (len(p.KeepIndexes) > 0 || len(p.DropIndexes) > 0) {
+		return fmt.Errorf("policy: root array members conflict with positional indexes")
+	}
 	if p.TimestampKey != "" && p.TimestampIndex != nil {
 		return fmt.Errorf("policy: timestamp cannot be both key and index")
 	}
@@ -98,7 +103,7 @@ func RegisterPolicy(venue, channel string, p Policy) error {
 		if p.TimestampPath != "" {
 			for _, part := range strings.Split(p.TimestampPath, ".") {
 				key := strings.TrimSuffix(part, "[]")
-				if key == "" || hasString(level.Drop, key) {
+				if (key == "" && !(path == "" && part == "[]")) || (key != "" && hasString(level.Drop, key)) {
 					return fmt.Errorf("policy: timestamp ancestor %q dropped or invalid", key)
 				}
 				if path != "" {
@@ -243,6 +248,11 @@ func filterPolicy(raw []byte, p Policy, nested map[string]Policy, path string, u
 		}
 		out.WriteByte('}')
 	case '[':
+		if path == "" {
+			if np, ok := nested["[]"]; ok {
+				return filterRootArrayMembers(raw, np, nested, unknown)
+			}
+		}
 		out.WriteByte('[')
 		first := true
 		i := 0
@@ -274,6 +284,37 @@ func filterPolicy(raw []byte, p Policy, nested map[string]Policy, path string, u
 	}
 	return out.Bytes(), nil
 }
+
+func filterRootArrayMembers(raw []byte, p Policy, nested map[string]Policy, unknown *uint64) ([]byte, error) {
+	d := json.NewDecoder(bytes.NewReader(raw))
+	if _, err := d.Token(); err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	out.WriteByte('[')
+	first := true
+	for d.More() {
+		var v json.RawMessage
+		if err := d.Decode(&v); err != nil {
+			return nil, err
+		}
+		if len(v) > 0 && v[0] == '{' {
+			var err error
+			v, err = filterPolicy(v, p, nested, "[]", unknown)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if !first {
+			out.WriteByte(',')
+		}
+		first = false
+		out.Write(v)
+	}
+	out.WriteByte(']')
+	return out.Bytes(), nil
+}
+
 func filterArrayMembers(raw []byte, p Policy, nested map[string]Policy, path string, unknown *uint64) ([]byte, error) {
 	d := json.NewDecoder(bytes.NewReader(raw))
 	t, err := d.Token()
