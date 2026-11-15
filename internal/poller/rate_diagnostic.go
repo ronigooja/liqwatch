@@ -15,21 +15,27 @@ const rateBodyLimit = 4096
 
 // RateDiagnostic is emitted only for HTTP 429/418. Error serializes it so the
 // scheduler's existing gap error sink persists the same sanitized diagnostics.
+// Paths must be static, non-sensitive endpoint paths: redaction removes known
+// query/userinfo/sensitive-header values and sensitive keywords, but cannot
+// identify arbitrary opaque credentials supplied only inside a path.
 type RateDiagnostic struct {
-	Method           string        `json:"method"`
-	Path             string        `json:"path"`
-	RequestStarted   time.Time     `json:"request_started"`
-	ResponseReceived time.Time     `json:"response_received"`
-	Status           int           `json:"status"`
-	Body             string        `json:"body"`
-	BodyTruncated    bool          `json:"body_truncated"`
-	BodyReadError    bool          `json:"body_read_error"`
-	RetryAfterRaw    string        `json:"retry_after_raw"`
-	RetryAfterKind   string        `json:"retry_after_kind"`
-	ParsedDelay      time.Duration `json:"parsed_delay_ns"`
-	Cooldown         time.Duration `json:"cooldown_ns"`
-	CooldownFrom     time.Time     `json:"cooldown_from"`
-	CooldownUntil    time.Time     `json:"cooldown_until"`
+	Method            string        `json:"method"`
+	Path              string        `json:"path"`
+	RequestStarted    time.Time     `json:"request_started"`
+	ResponseReceived  time.Time     `json:"response_received"`
+	Status            int           `json:"status"`
+	Body              string        `json:"body"`
+	BodyTruncated     bool          `json:"body_truncated"`
+	BodyReadError     bool          `json:"body_read_error"`
+	BodyOmittedReason string        `json:"body_omitted_reason,omitempty"`
+	RetryAfterRaw     string        `json:"retry_after_raw"`
+	RetryAfterKind    string        `json:"retry_after_kind"`
+	ParsedDelay       time.Duration `json:"parsed_delay_ns"`
+	// Response-derived references only; scheduler backoff and sink latency can
+	// move the actual scheduled retry later. These are not scheduler deadlines.
+	ResponseRetryDelay       time.Duration `json:"response_retry_delay_ns"`
+	RetryAfterReferenceFrom  time.Time     `json:"retry_after_reference_from"`
+	RetryAfterReferenceUntil time.Time     `json:"retry_after_reference_until"`
 }
 
 func (d *RateDiagnostic) Error() string {
@@ -119,11 +125,21 @@ func sanitizeDiagnosticJSON(v any, clean func(string) string) any {
 func rateLimitError(req *http.Request, resp *http.Response, started, received time.Time, clock Clock) error {
 	clean := diagnosticSanitizer(req)
 	d := &RateDiagnostic{Method: clean(req.Method), Path: clean(req.URL.Path), RequestStarted: started, ResponseReceived: received, Status: resp.StatusCode}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, rateBodyLimit+1))
+	var raw []byte
+	var err error
+	if req.Body != nil && req.Body != http.NoBody {
+		// Do not inspect, consume or replay request bodies (including GetBody).
+		// An unrecognized response field may echo any opaque request-body value.
+		d.BodyOmittedReason = "request_body_present"
+	} else {
+		raw, err = io.ReadAll(io.LimitReader(resp.Body, rateBodyLimit+1))
+	}
 	d.BodyReadError = err != nil
 	d.BodyTruncated = len(raw) > rateBodyLimit
 	d.Body = "[non-JSON, incomplete or oversized response omitted]"
-	if !d.BodyReadError && !d.BodyTruncated {
+	if d.BodyOmittedReason != "" {
+		d.Body = "[response omitted: request body present]"
+	} else if !d.BodyReadError && !d.BodyTruncated {
 		var v any
 		decoder := json.NewDecoder(strings.NewReader(string(raw)))
 		decoder.UseNumber()
@@ -141,17 +157,17 @@ func rateLimitError(req *http.Request, resp *http.Response, started, received ti
 	if len(value) <= rateBodyLimit {
 		d.RetryAfterRaw = clean(value)
 	}
-	d.CooldownFrom = clock.Now()
+	d.RetryAfterReferenceFrom = clock.Now()
 	d.ParsedDelay, d.RetryAfterKind = 60*time.Second, "default"
 	if n, err := strconv.ParseFloat(value, 64); err == nil {
 		d.ParsedDelay, d.RetryAfterKind = time.Duration(n*float64(time.Second)), "seconds"
 	} else if t, err := http.ParseTime(value); err == nil {
-		d.ParsedDelay, d.RetryAfterKind = t.Sub(d.CooldownFrom), "date"
+		d.ParsedDelay, d.RetryAfterKind = t.Sub(d.RetryAfterReferenceFrom), "date"
 	}
-	d.Cooldown = d.ParsedDelay
-	if d.Cooldown < time.Second {
-		d.Cooldown = time.Second
+	d.ResponseRetryDelay = d.ParsedDelay
+	if d.ResponseRetryDelay < time.Second {
+		d.ResponseRetryDelay = time.Second
 	}
-	d.CooldownUntil = d.CooldownFrom.Add(d.Cooldown)
-	return &RetryError{d, d.Cooldown}
+	d.RetryAfterReferenceUntil = d.RetryAfterReferenceFrom.Add(d.ResponseRetryDelay)
+	return &RetryError{d, d.ResponseRetryDelay}
 }
