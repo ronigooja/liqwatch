@@ -22,15 +22,15 @@ import (
 
 // keepFields identifies recordable data items and their interpretation metadata.
 var keepFields = map[string]map[string]bool{
-	"mark":        {"symbol": true, "markPrice": true, "indexPrice": true, "openInterest": true, "openInterestValue": true, "singleOpenInterest": true, "singleOpenInterestValue": true, "fundingIntervalHour": true, "fundingCap": true, "nextFundingTime": true, "fundingRate": true},
-	"trade":       {"T": true, "s": true, "S": true, "v": true, "p": true, "i": true, "BT": true, "RPI": true, "seq": true},
+	"mark":        {"markPrice": true, "indexPrice": true, "openInterest": true, "openInterestValue": true, "singleOpenInterest": true, "singleOpenInterestValue": true, "nextFundingTime": true, "fundingRate": true},
+	"trade":       {"T": true, "s": true, "S": true, "v": true, "p": true, "i": true, "seq": true},
 	"liquidation": {"T": true, "s": true, "S": true, "v": true, "p": true},
 }
 
 // dropFields identifies ticker statistics and trade tick-direction statistics outside recorded items.
 var dropFields = map[string]map[string]bool{
-	"mark":        {"tickDirection": true, "price24hPcnt": true, "lastPrice": true, "prevPrice24h": true, "highPrice24h": true, "lowPrice24h": true, "prevPrice1h": true, "turnover24h": true, "volume24h": true, "bid1Price": true, "bid1Size": true, "ask1Price": true, "ask1Size": true, "preOpenPrice": true, "preQty": true, "curPreListingPhase": true},
-	"trade":       {"L": true},
+	"mark":        {"symbol": true, "fundingIntervalHour": true, "fundingCap": true, "tickDirection": true, "price24hPcnt": true, "lastPrice": true, "prevPrice24h": true, "highPrice24h": true, "lowPrice24h": true, "prevPrice1h": true, "turnover24h": true, "volume24h": true, "bid1Price": true, "bid1Size": true, "ask1Price": true, "ask1Size": true, "preOpenPrice": true, "preQty": true, "curPreListingPhase": true},
+	"trade":       {"BT": true, "RPI": true, "L": true},
 	"liquidation": {},
 }
 var unknownFields atomic.Uint64
@@ -382,8 +382,11 @@ func (a *Adapter) split(sh venue.Shard, connID string, msg []byte) []rawlog.Reco
 				}
 				payload := make([]byte, 0, len(msg))
 				payload = append(payload, '{')
-				for i, field := range root.children {
-					if i > 0 {
+				for _, field := range root.children {
+					if field.key == "topic" || field.key == "type" {
+						continue
+					}
+					if len(payload) > 1 {
 						payload = append(payload, ',')
 					}
 					payload = appendKey(payload, field.key)

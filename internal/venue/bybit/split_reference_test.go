@@ -128,6 +128,9 @@ func (a *Adapter) legacySplit(sh venue.Shard, msg []byte) []rawlog.Record {
 							filtered = append(append([]byte{'['}, filtered...), ']')
 						}
 						payload, e := legacyOrderedObject(msg, func(k string, v json.RawMessage) (json.RawMessage, bool) {
+							if k == "topic" || k == "type" {
+								return nil, false
+							}
 							if k == "data" {
 								return filtered, true
 							}
