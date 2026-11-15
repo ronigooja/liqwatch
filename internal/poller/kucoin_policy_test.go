@@ -35,7 +35,7 @@ func TestKucoinPolicyRecords(t *testing.T) {
 				t.Fatal(err)
 			}
 			if len(out) != 1 {
-				t.Fatalf("unexpected wrapper fields: %v", out)
+				t.Fatalf("unexpected wrapper fields")
 			}
 			var rows []map[string]json.RawMessage
 			if err = json.Unmarshal(out["data"], &rows); err != nil {
