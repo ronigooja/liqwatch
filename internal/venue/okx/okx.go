@@ -26,7 +26,7 @@ var fieldRules = map[string]struct{ keep, drop map[string]bool }{
 	"funding-rate":        {fields("fundingRate fundingTime nextFundingTime ts"), fields("instId instType nextFundingRate settFundingRate settState formulaType method impactValue interestRate maxFundingRate minFundingRate premium prevFundingTime")},
 	"open-interest":       {fields("oi oiCcy oiUsd ts"), fields("instId instType")},
 	"liquidation-orders":  {fields("details"), fields("instId instType uly instFamily")},
-	"liquidation-details": {fields("side posSide bkPx sz ts"), fields("ccy bkLoss instType")},
+	"liquidation-details": {fields("side posSide bkPx sz ts"), fields("ccy bkLoss")},
 }
 
 func filterDetails(value []byte) []byte {

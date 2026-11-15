@@ -13,3 +13,5 @@ arg is omitted, and sym is resolved before filtering. Index data keeps its
 index instId while sym identifies the corresponding swap. Liquidation details
 are filtered individually. Unknown item and detail fields are retained and
 counted; periodic {"sample":<complete original frame>} records are unchanged.
+The recorded liquidation details contain ccy and bkLoss; instType occurs on
+its enclosing data item, not in details (all four liquidation fixture frames).
