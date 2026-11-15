@@ -1,6 +1,8 @@
 # REST poller
 
-Verified in [code](../internal/poller/): the Go poller records REST data separately from the collector. Scope: [0019](decisions/0019-live-rest-recording-scope.md); cadence: [0015](decisions/0015-recording-scope-and-granularity.md); fields: [0017](decisions/0017-poller-field-policies.md). Deployment: [infrastructure](infrastructure.md).
+Verified in [code](../internal/poller/): the Go poller records REST data separately from the collector. Scope: [0019](decisions/0019-live-rest-recording-scope.md); scheduling: [0020](decisions/0020-smooth-rest-scheduling.md).
+
+Verified: cadence follows [0015](decisions/0015-recording-scope-and-granularity.md); fields follow [0017](decisions/0017-poller-field-policies.md). Deployment: [infrastructure](infrastructure.md).
 
 ## Operation
 
@@ -26,7 +28,33 @@ Verified in the same implementation: fresh empty histories keep normal schedulin
 
 Verified in [venue.go](../internal/poller/venue.go) and [binance.go](../internal/poller/binance.go), implementation `332631b`: deprecated `initial_lookback` does not widen fresh scope. Its `live_floor_test.go` covers restart, midnight, all paging modes and legacy migration.
 
-Verified: request spreading is deferred and not built ([0019](decisions/0019-live-rest-recording-scope.md)); periods and limits are unchanged. Coverage uncertainty: [open questions](open-questions.md#poller-field-policy-questions). Daily packing is [storage](decisions/0014-daily-pack-storage.md), not fetch cadence.
+Verified: request spreading is implemented under [0020](decisions/0020-smooth-rest-scheduling.md); see [scheduling](#scheduling-and-pacing). Coverage uncertainty: [open questions](open-questions.md#poller-field-policy-questions).
+
+Verified: daily packing is [storage](decisions/0014-daily-pack-storage.md), not fetch cadence.
+
+## Scheduling and pacing
+
+Verified in [scheduler.go](../internal/poller/scheduler.go): canonical job keys receive equally spaced, collision-free ranks within each venue/cadence group. Unchanged configuration/universe yields stable phases across restart; membership changes recompute ranks.
+
+Verified in the same code: daily phase windows start at 00:05 UTC. First snapshots are immediately eligible under pacing; histories may defer to their first phase without changing the [recording floor](#live-recording-boundary).
+
+Verified in the same code: after success the next phase is at most one period later. This bounds eligibility only, not successful HTTP completion; missed cycles coalesce rather than trigger catch-up bursts.
+
+Verified in the same code: eligible jobs are ordered by deadline. Retries use their own backoff deadline, not the missed regular slot; endpoint cooldowns and post-response `Retry-After` handling remain unchanged.
+
+Verified in the same code: each request start reserves `one minute × channel weight / venue weight_per_minute` before the next venue request; nonpositive weights use one. Endpoint RPS still applies, and pagination uses the same request gate.
+
+Verified in the same code: startup and idle time accumulate no burst credit. Pacing state is in memory, so restart allows one immediate request before its cost is charged; it is not a persisted rolling-window quota.
+
+Verified in `RunOnce` in the same code: `-once` retains full phase membership and suppresses repeat attempts. It drains jobs eligible at sweep start under pacing, not every future history phase; additional phases may become eligible while due work drains.
+
+Verified in `reportCapacity` in the same code: `schedule_over_capacity` is a `gap` event when minimum configured venue weight/minute or endpoint requests/second exceeds its limit, assuming only one request per job. Cadence is not changed automatically.
+
+Inferred: no warning does not establish sufficient capacity; serial slow HTTP, pagination, retries and upstream retention/finalization may delay or lose coverage. No successful-fetch maximum interval or loss-free guarantee follows from phase spacing.
+
+Verified in [smoothing_test.go](../internal/poller/smoothing_test.go): source-level unit cases cover phase/restart/floor behavior, snapshots, weighted pagination pacing, retry ordering, missed cycles, daily boundaries and capacity events.
+
+Verified in the same tests: fixtures use fake clocks and responses, not live retention measurements.
 
 ## Field policies
 
