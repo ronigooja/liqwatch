@@ -1,6 +1,6 @@
 # Open Questions and Unverified Facts
 
-Move an item to "Verified" with source and date once checked.
+Move an item to "Verified" with source and date once checked; field handling is governed by [0017](decisions/0017-poller-field-policies.md).
 
 ## Inputs needed from the owner
 
@@ -99,8 +99,10 @@ Move an item to "Verified" with source and date once checked.
 
 | Question | Evidence and scope |
 |---|---|
-| Unknown: why did Bitget return HTTP 429? | Measured: 3 occurrences on attempt 1 across `takerBuySell`, `positionLongShort`, `longShort`, in the [sample](recording-results.md#poller-field-review); cause not established. |
-| Unknown: will Bitget rate limits constrain production? | Verified: official limit is 1 request/s/IP per endpoint ([Bitget trading insights](https://www.bitget.com/docs/catalog/classic-common-apidata/classic-common-apidata)); poller default is 1 request/s per channel ([code](../internal/poller/bitget.go)). Computed: 453 symbols imply about 1,831 requests/hour, or 0.509/s average; bursts are not represented. |
+| Unknown: why did Bitget return HTTP 429 in the production-scheduler trial? | Measured: exact first-attempt endpoint/symbol failures are in [trial results](recording-results.md#rest-production-scheduler-trial), separate from the earlier field-review sample. Unknown: cause; retained evidence lacks response headers/body and exact request spacing. |
+| Unknown: will Bitget rate limits constrain production? | Verified 2026-11-15: official [trading-insight endpoints](https://www.bitget.com/docs/catalog/classic-common-apidata/classic-common-apidata) specify 1 request/s/IP each. Verified: [poller](../internal/poller/bitget.go) defaults to 1 request/s per channel; [HTTP wrapper](../internal/poller/venue.go) already handles `Retry-After`. |
+| Unknown: why is OKX currency `CT` unavailable to account ratio? | Measured: [trial](recording-results.md#rest-production-scheduler-trial) recorded `51012: Token does not exist` for `CT-USDT-SWAP`. Verified: [fix scope](poller.md#operation) is a channel/symbol cooldown, not instrument or mapping deletion. |
+| Unknown: why are selected MEXC symbols missing from contract detail? | Measured: missing set in [trial results](recording-results.md#rest-production-scheduler-trial). Unknown: cause; absence from one bulk response does not establish delisting or five failed requests. Verified: [implementation](../internal/poller/mexc.go) keeps the endpoint and mapping unchanged. |
 | Unknown: which Gate ratio descriptions are correct? | Verified: official [REST](https://www.gate.com/docs/developers/apiv4/en/futures/) and [WebSocket](https://www.gate.com/docs/developers/futures/) descriptions of `lsr_taker` and `lsr_account` are reversed relative to each other (field audit sub-agent reports, 2026-11-15). |
 | Unknown: what does OKX contract long/short ratio measure? | Verified: [official wording](https://www.okx.com/docs-v5/en/#trading-statistics-rest-api-get-long-short-ratio-contract) is inconsistent (field audit sub-agent reports, 2026-11-15). |
 | Unknown: what do KuCoin maintenance constants mean? | Verified: `k`, `m`, `f`, `mmrLimit`, `mmrLevConstant` are undefined in the [official contract field tables](https://www.kucoin.com/docs-new/rest/futures-trading/market-data/get-all-symbols) and dropped ([policy](../internal/poller/kucoin_policy.go)); [cross-margin formula example](https://www.kucoin.com/support/35084093025049) does not map them to JSON fields. |
@@ -109,3 +111,15 @@ Move an item to "Verified" with source and date once checked.
 | Unknown: what is the contract multiplier for Binance and Bybit USDT contracts? | Verified: the field audit found no official multiplier field for Binance [exchangeInfo](https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Exchange-Information) or Bybit [instruments](https://bybit-exchange.github.io/docs/v5/market/instrument), 2026-11-15; do not assume one contract equals one base unit. |
 | Unknown: which Binance `forceOrder_all` fields can be removed? | Verified: the [collector](../internal/venue/binance/split.go) leaves it unfiltered; no recorded sample was available (field audit sub-agent reports, 2026-11-15). |
 | Unknown: can omitted fields be recovered? | Inferred: recording is irreversible for omitted fields; historical backfill is not built ([poller](poller.md#operation)). |
+
+## MEXC contract-detail audit
+
+| Fact or question | Source and bounded scope | Date |
+|---|---|---|
+| Verified audit: `tempMaxLeverage`, `tempMaxLeverageReason`, `tempFeeRateEffectiveEndTime` are not defined in the three references below; their semantics remain unknown. | Official references: legacy contract detail [M1]; current contract information/detail-country documentation [M2], [M3]. Audit by implementing agent `ses_e21323287ffeDGIOzOQBPwCH1t`; not a claim that no definition exists elsewhere. | 2026-11-15 |
+| Verified: these three fields are explicitly dropped under the existing audited-undefined rule, not assigned inferred meanings. | [0017](decisions/0017-poller-field-policies.md); [policy](../internal/poller/mexc_policy.go), implementation commit `69df3a5`. Other unknown fields remain retained and counted. | 2026-11-15 |
+| Verified: audited sample provenance is `XAUT_USDT`: `tempMaxLeverage=1000`, `tempMaxLeverageReason="EXTRA_SCHEDULE"`; `CC_USDT`: `tempFeeRateEffectiveEndTime=1796032860000`. | Implementing-agent audit above, retained [REST trial](recording-results.md#rest-production-scheduler-trial) `data/raw/mexc/`; regression fixture `internal/poller/testdata/mexc/audited-undefined.jsonl` in `69df3a5`. Values are samples, not definitions. | 2026-11-15 |
+
+[M1]: https://mexcdevelop.github.io/apidocs/contract_v1_en/#get-the-contract-information
+[M2]: https://www.mexc.com/api-docs/futures/market-endpoints/get-contract-info
+[M3]: https://www.mexc.com/zh-hans/api-docs/futures/market-endpoints/get-contract-info
