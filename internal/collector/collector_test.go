@@ -1,9 +1,11 @@
 package collector
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -602,5 +604,135 @@ func TestStallDuringAndAfterSubscribe(t *testing.T) {
 				t.Fatalf("stalls = %d", c.Stalls.Load())
 			}
 		})
+	}
+}
+
+func TestSubscribeWriteErrorPropagates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.CloseNow()
+		for {
+			if _, _, err := ws.Read(r.Context()); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+	injected := errors.New("injected subscription write failure")
+	var writes atomic.Int32
+	c := New(&captureSink{}, &slowAdapter{count: 200}, []Shard{{Name: "write-error", URL: srv.URL, SubscribeSpacing: 10 * time.Millisecond}})
+	c.subscribeWrite = func(ctx context.Context, ws *websocket.Conn, msg []byte) error {
+		if writes.Add(1)%3 == 0 {
+			return injected
+		}
+		return ws.Write(ctx, websocket.MessageText, msg)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	k := c.start(ctx, c.shards[0], srv.URL, 1)
+	select {
+	case <-k.done:
+		if !errors.Is(k.err(), injected) || k.err().Error() == "stopped" {
+			t.Fatalf("connection error = %v", k.err())
+		}
+	case <-time.After(time.Second):
+		cancel()
+		<-k.done
+		t.Fatal("write error did not terminate read")
+	}
+	cancel()
+	var logs bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&logs)
+	defer log.SetOutput(old)
+	disconnected := make(chan struct{}, 1)
+	c.OnDisconnect = func(Shard) uint64 { disconnected <- struct{}{}; return 0 }
+	ctx, cancel = context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { c.Run(ctx); close(done) }()
+	select {
+	case <-disconnected:
+	case <-time.After(2 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("write error did not trigger reconnect")
+	}
+	cancel()
+	<-done
+	if c.Reconnects.Load() != 1 || !strings.Contains(logs.String(), injected.Error()) || strings.Contains(logs.String(), "ended after 0s: stopped") {
+		t.Fatalf("reconnects=%d logs=%q", c.Reconnects.Load(), logs.String())
+	}
+	sink := c.sink.(*captureSink)
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	if len(sink.records) != 1 || !strings.Contains(string(sink.records[0].Payload), injected.Error()) {
+		t.Fatalf("gap records = %+v", sink.records)
+	}
+}
+
+func TestNoGoroutineLeakAfterCancelDuringSubscribe(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.CloseNow()
+		for {
+			if _, _, err := ws.Read(r.Context()); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+	entered, canceled, release, exited := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
+	c := New(nopSink{}, &slowAdapter{count: 20}, nil)
+	c.subscribeWrite = func(ctx context.Context, _ *websocket.Conn, _ []byte) error {
+		close(entered)
+		<-ctx.Done()
+		close(canceled)
+		<-release
+		close(exited)
+		return ctx.Err()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	k := c.start(ctx, Shard{Name: "join"}, srv.URL, 1)
+	defer func() {
+		cancel()
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+		<-k.done
+		<-exited
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("writer did not start")
+	}
+	cancel()
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("writer did not receive cancellation")
+	}
+	select {
+	case <-k.done:
+		t.Fatal("connection returned before writer exited")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-k.done:
+	case <-time.After(time.Second):
+		t.Fatal("connection did not join writer")
+	}
+	select {
+	case <-exited:
+	default:
+		t.Fatal("writer still running")
 	}
 }
