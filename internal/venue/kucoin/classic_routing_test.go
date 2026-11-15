@@ -58,3 +58,25 @@ func TestThrottleDefaults(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
+
+func TestChannelDropClasses(t *testing.T) {
+	classify := (&Adapter{}).Classes()
+	for _, tc := range []struct {
+		channel, class string
+		droppable      bool
+	}{
+		{"trade", "trade", true},
+		{"mark", "mark", true},
+		{"funding", "mark", true},
+		{"utamark", "mark", true},
+		{"gap", "", false},
+		{"unknown", "", false},
+	} {
+		t.Run(tc.channel, func(t *testing.T) {
+			class, ok := classify(tc.channel)
+			if class != tc.class || ok != tc.droppable {
+				t.Fatalf("Classes(%q) = (%q, %v), want (%q, %v)", tc.channel, class, ok, tc.class, tc.droppable)
+			}
+		})
+	}
+}

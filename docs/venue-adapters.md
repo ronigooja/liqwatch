@@ -75,7 +75,7 @@ Verified in the linked code: each table describes configured subscriptions, not 
 | Item | Verified in [code](../internal/venue/kucoin/kucoin.go) |
 |---|---|
 | Channels | Classic execution → `trade`; classic instrument `mark.index.price` → `mark`, `funding.rate` → `funding`; UTA → `utamark` (mark price and open interest); subscriptions unchanged |
-| Drop classes | trade → trade; mark and utamark → mark |
+| Drop classes | trade → trade; mark, funding and utamark → mark |
 | Shards | Classic: 25 symbols; UTA: 50 symbols; token acquired for classic connections |
 | Cadence and deviations | Measured: [capture](venue-apis.md#live-adapter-captures); classic tokens (24 h) are renewed through `Shard.Refresh` before each reconnect or planned replacement (`MaxAge` 12 h), verified live and by test; Chinese-named symbol limitation: [open issues](open-questions.md#recording-open-issues) |
 

@@ -451,7 +451,7 @@ func (*Adapter) Classes() func(string) (string, bool) {
 		switch ch {
 		case "trade":
 			return "trade", true
-		case "mark", "utamark":
+		case "mark", "funding", "utamark":
 			return "mark", true
 		}
 		return "", false
