@@ -13,6 +13,29 @@ Measured adapter profiling and capture results; recording scope: [0015](decision
 |---|---|---|---|---|
 | What poller sample supported field review? | Measured: sampled REST poller data across venues; initial lookback 26 h. | 40,770,860 bytes, 12 symbols per venue; one sample, spread unreported. | 2026-11-15 | `root@64.118.133.169:/root/ps/data`, not in repo; exact command and commit not reported. |
 
+## REST production-scheduler trial
+
+Verified source: `root@64.118.133.169:/root/liqwatch-rest5-20261115T102846Z/` (trial root below); commit `f2110dea0e94230ed66173d36ddd01e468ecf140`.
+Verified reproduction: `evidence/liqwatch-rest5-methodology.txt` records build/launch commands; `evidence/run.json` records exact `liqwatch-poller -config <root>/config/config.toml -venue <venue>` commands, including Binance's full mapped `-syms` selection.
+Verified evidence: `evidence/report.md`, `channels.csv`, `analysis.json`, `files.json`, `manifest.json`, `hashes.txt`; retained `config/`, `state/`, `logs/`, `data/raw/` and `evidence/source-reproduction.tar.gz`.
+Verified SHA-256: config `81f8ceed64a62de931f9ee30829d5125614804697c6d2d9ee8e7f42ac12cf808`; venue map `eedf704c793768fd04827e514ac3875f35e27c54b326fd453d42ce4e972fb8df`.
+
+| Question | Method | Numbers, sample size and spread | Date | Reproducible source |
+|---|---|---|---|---|
+| What did startup record? | Measured: seven REST-only production schedulers, fresh state, 10:29:39.568–10:34:39.613 UTC; initial lookback and overlap both 2 h; default rates/periods/weights, no manual retry or rerun. | 113,376 rows; 47,957,146 logical JSONL bytes; 5,975 files; one run, between-run spread unavailable. Six venues ran 299.954–299.999 s; Bitget 19.232 s. | 2026-11-15 | Trial root: `evidence/report.md`, `run.json`, `channels.csv`, retained config; commit above. |
+| What was Binance's startup output? | Measured: mapped selection; rows/bytes and unique successful/expected jobs from final state, not HTTP totals. | 520 symbols; 19,994 rows; 6,540,652 bytes; 1,428/3,642 jobs; initial sweep incomplete; one run. | 2026-11-15 | Trial `channels.csv`, `state/`, `files.json`; row-size min/median/max retained per channel. |
+| What was Bybit's startup output? | Measured: same method. | 470 symbols; 10,383 rows; 6,573,789 bytes; 472/472 jobs; initial sweep complete; one run. | 2026-11-15 | Same trial evidence and commit. |
+| What was OKX's startup output? | Measured: same method. | 266 symbols; 21,875 rows; 8,545,060 bytes; 1,221/1,332 jobs; initial sweep incomplete; one run. | 2026-11-15 | Same trial evidence and commit. |
+| What was Bitget's startup output? | Measured: same method; safety-stop after second 429. | 453 symbols; 77 rows; 163,696 bytes; 75/2,266 jobs; initial sweep incomplete; one run. | 2026-11-15 | Same trial evidence and commit; `run.json` stop reason. |
+| What was Gate's startup output? | Measured: same method. | 500 symbols; 60,052 rows; 25,045,886 bytes; 502/502 jobs; initial sweep complete; one run. | 2026-11-15 | Same trial evidence and commit. |
+| What was MEXC's startup output? | Measured: one map-filtered bulk detail call. | 513 selected; 508 rows; 206,610 bytes; 1/1 job complete; missing `CROSS_USDT`, `CTK_USDT`, `DASH_USDT`, `RIF_USDT`, `XMR_USDT`; one run. | 2026-11-15 | Trial `data/raw/mexc/`, `symbols.json`, `channels.csv`; commit above. |
+| What was KuCoin's startup output? | Measured: same final-state method. | 486 symbols; 487 rows; 881,453 bytes; 487/487 jobs; initial sweep complete; one run. | 2026-11-15 | Same trial evidence and commit. |
+| Which Bitget rate responses were retained? | Measured: gap records, first attempts on distinct jobs; no retry before safety-stop. | Two HTTP 429s: `/api/v2/mix/market/long-short`, `1000000MOGUSDT`; `/api/v2/mix/market/taker-buy-sell`, `AEROUSDT`. HTTP 418/403: zero; one run. | 2026-11-15 | Trial `data/raw/bitget/gap/20261115/gap.p.jsonl`, `run.json`; limits and unknown cause: [facts](open-questions.md#poller-field-policy-questions). |
+| Which other failures occurred? | Measured: gap records; events are not distinct jobs. | Binance constituents: nine invalid-symbol 400 events on one job; OKX currency account ratio: seven `51012` events on `CT-USDT-SWAP`; one stop-canceled OKX taker job, not a source failure. One run. | 2026-11-15 | Trial `data/raw/{binance,okx}/gap/20261115/gap.p.jsonl`; subsequent [fix scope](poller.md#operation). |
+| How many MEXC unknown fields were observed? | Measured: cumulative production counter on idle callbacks, not a distinct-fields-per-log count. | Count 3 repeated on 300 callbacks; not 900 unknown fields. One run; field names were not logged; subsequent [bounded field audit](open-questions.md#mexc-contract-detail-audit). | 2026-11-15 | Trial `logs/`, `evidence/report.md`; commit above. |
+| Were output and recurring behavior validated? | Measured: JSONL parsing and state inspection; no hourly/daily boundary, recurring cycle or restart. | All 113,376 lines parsed and newline-terminated; zero history duplicate/revision rows observed. Null result: recurring-cycle and restart/overlap dedup were not exercised; one run. | 2026-11-15 | Trial `analysis.json`, `files.json`, `run.json`; commit above. |
+| Can this startup be extrapolated to daily storage? | Inferred: initial histories and snapshots dominate; three venue sweeps incomplete and no recurring samples. | No daily extrapolation supported; one startup run only. Per-channel row-size spread and schedules retained, not a full-day measurement. | 2026-11-15 | Trial `channels.csv`, `report.md`; commit above. |
+
 ## Seven-venue load and recording
 
 | Question | Method | Numbers, sample size and spread | Date | Reproducible source |
