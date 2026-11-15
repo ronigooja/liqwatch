@@ -95,4 +95,3 @@ func TestOrdinaryFieldContract(t *testing.T) {
 		})
 	}
 }
-
