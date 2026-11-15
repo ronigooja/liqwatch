@@ -75,7 +75,7 @@ func TestPolicyDedupUsesOriginalRows(t *testing.T) {
 			}
 			before, bd, br, bc := run("unfiltered")
 			after, ad, ar, ac := run("filtered")
-			if len(before) != 2 || len(after) != 2 || bd != ad || br != ar || bc != ac || bc != tc.ts {
+			if len(before) != 2 || len(after) != 2 || bd != ad || br != 1 || br != ar || bc != ac || bc != tc.ts {
 				t.Fatalf("before %d/%d/%d/%d after %d/%d/%d/%d", len(before), bd, br, bc, len(after), ad, ar, ac)
 			}
 			for i := range before {
