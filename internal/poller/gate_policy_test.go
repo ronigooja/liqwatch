@@ -118,6 +118,12 @@ func TestGatePolicyGolden(t *testing.T) {
 			got = append(got, '\n')
 		}
 	}
+	if os.Getenv("GENERATE_GATE_GOLDEN") == "1" {
+		if err := os.WriteFile("testdata/gate/golden-filtered.txt", got, 0600); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	want, err := os.ReadFile("testdata/gate/golden-filtered.txt")
 	if err != nil {
 		t.Fatal(err)
