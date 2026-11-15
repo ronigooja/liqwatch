@@ -10,27 +10,26 @@ Verified: owner decision, 2026-11-15; refines the field filter in [0015](0015-re
 
 ## Why
 
-- Measured: in one seven-venue Singapore run on 2026-11-15, 5 minutes, 1,665,360 lines, 10,656 files and 601.7 MB, envelope `ch`, `sym`, `venue` were 13.58% of recorded bytes. Removing them saved 0.56–2.10% after zstd -3, three representative files per venue; sample: `root@64.118.141.231:/root/env-sample`; command not recorded.
-- Verified: field classification used the venue-by-venue official API review (field review sub-agent reports, 2026-11-15); sample location above. Envelope changes are deferred, not decided here.
+- Measured: in one seven-venue Singapore run on 2026-11-15, 5 minutes, 1,665,360 lines, 10,656 files and 601.7 MB, envelope `ch`, `sym`, `venue` were 13.58% of recorded bytes. Removing them saved 0.56–2.10% after zstd -3, three representative files per venue; command not recorded.
+- Verified: field classification used the venue-by-venue official API review (field review sub-agent reports, 2026-11-15). The sample was at `root@64.118.141.231:/root/env-sample`, not in the repo; the host is no longer reachable (owner report). Envelope changes are deferred.
 
 ## Consequences
 
-Verified: the following removals are decided, not built until the code branches merge; field review sub-agent reports, 2026-11-15.
+Verified: field filters are built; the linked code tables are authoritative for the complete keep/drop lists. Unknown fields are retained and counted. The rows highlight removals and exceptions, not exhaustive lists except for Gate's listed policies. Binance forceOrder and MEXC ordersetting/contractmeta remain unfiltered; see linked code.
 
 | Venue | Channel | Removed fields |
 |---|---|---|
-| Binance | aggTrade | `stream`, `e`, `s`, `nq`, `st` |
-| Binance | markPrice | `stream`, `e`, `s`, `st`, `ap`, `P` |
-| Bybit | mark | `topic`, `data.symbol`, `type`, `fundingIntervalHour`, `fundingCap` |
-| Bybit | trade; liquidation | Both: `topic`, `type`; trade also: `BT`, `RPI` |
-| OKX | all | `arg.channel`, `arg.instId`, `instType`, `data[].instId` (keep `data[].instId` on index, where it is the index ID) |
-| OKX | funding | `nextFundingRate`, `settFundingRate`, `settState`, `formulaType`, `method`, `impactValue`, `interestRate`, `maxFundingRate`, `minFundingRate`, `premium`, `prevFundingTime` |
-| OKX | trade; liquidation | Trade: `source`; liquidation: `arg.instType`, `uly`, `instFamily`, `details[].ccy`, `details[].bkLoss` |
-| Bitget | all; trade | All: `arg.instType`, `arg.topic`, `arg.symbol`, `data.symbol`/`data[].symbol`; trade also: `L`, `isRPI` |
-| Gate | all WebSocket; trades | All: `result.contract`, `channel`, `event` except on contract_info; trades also: `create_time` |
-| Gate | tickers; contract_info | Tickers: `funding_rate_indicative`, `event_type`, `funding_interval`, `funding_offset`, `total_size`; contract_info: `order_price_round`, `mark_price_round` |
-| MEXC | all; trade | All: outer `symbol`, `channel`, `data.symbol`; trade also: `M` |
-| MEXC | contract; contractextra | Contract: static metadata (names, scales, order limits, fees, tags, state, fee and index-construction fields); `contractextra` is no longer recorded. |
-| KuCoin | trade; mark; utamark | Trade: `topic`, `type`, `subject`, `data.symbol`; mark: `topic`, `type`, `subject`; utamark: `T`, `d.s` |
+| [Binance](../../internal/venue/binance/split.go) | aggTrade; markPrice_all | `stream`; aggTrade: `e`, `s`, `nq`, `st`; mark: `e`, `s`, `st`, `ap`, `P`. Both keep the `{"data":{...}}` wrapper; `f`, `l` are kept. |
+| [Bybit](../../internal/venue/bybit/bybit.go) | mark; trade; liquidation | All lose `topic`, `type`; mark loses `data.symbol`, funding interval/cap and ticker statistics; trade loses `BT`, `RPI`, `L`. Keep `cs` and `singleOpenInterest*`. |
+| [OKX](../../internal/venue/okx/okx.go) | all; index | The empty `arg` is omitted; ordinary records are `{"data":[{...}]}`. Item `instId` and `instType` are dropped except index `instId`, which is kept. Index statistics are dropped. |
+| OKX | funding; trade | Funding drops the estimate, settlement, formula, limit and premium fields in the linked table; trade drops `source`. |
+| OKX | liquidation | Item: `instId`, `instType`, `uly`, `instFamily`; details: `ccy`, `bkLoss`. |
+| [Bitget](../../internal/venue/bitget/bitget.go) | all; trade | Drop `arg.instType`, `arg.topic`, `arg.symbol`, item `symbol`; omit `arg` when empty. Trade drops `L`, `isRPI`; ticker and funding drop additional statistics and funding inputs in the linked table. |
+| [Gate](../../internal/venue/gate/gate.go) | envelope; trades; liquidations; contract_stats | Envelope: `channel`, `conn_id`, `trace_id`, and `event` except contract_info. All items: `contract`; trades also: `create_time`. Keep trade `is_internal`. |
+| Gate | tickers; contract_info | Both drop `last`, `change_percentage`, `volume_24h`, `volume_24h_base`, `volume_24h_quote`, `volume_24h_settle`, `quanto_base_rate`, `low_24h`, `high_24h`, `highest_bid`, `highest_size`, `lowest_ask`, `lowest_size`, `bid`, `ask`, `bid_size`, `ask_size`. |
+| Gate | tickers; contract_info | Tickers additionally drop `funding_rate_indicative`, `funding_interval`, `funding_offset`, `total_size`, `event_type`, `price_type`, `change_from`, `change_price`; contract_info drops `order_price_round`, `mark_price_round`. Keep `funding_next_apply`. |
+| [MEXC](../../internal/venue/mexc/mexc.go) | trade; mark; index; funding; ticker | Drop outer `symbol`, `channel` and item `symbol`; trade drops `M` and keeps `O`, `cts`. Ticker drops quote and statistics fields in the linked table. |
+| MEXC | contract; contractextra | Contract drops static metadata in the linked table; keep `riskLimitCustom`. `tempMaxLeverageLimited` and `regularMaxLeverage` are retained and counted as unknown; their meaning is undefined in official docs ([fixture notes](../../internal/venue/mexc/testdata/README.txt)). `contractextra` is not recorded. |
+| [KuCoin](../../internal/venue/kucoin/kucoin.go) | trade; mark; utamark | Trade drops `topic`, `type`, `subject`, `data.symbol` and order metadata; mark drops `topic`, `type`, `subject` and cadence; utamark drops `T`, `d.s` and quote/statistics fields in the linked table. |
 
-Verified: keep questioned fields Bybit `cs`, `singleOpenInterest*`; Binance `f`, `l`; MEXC `cts`; Gate `funding_next_apply`. Binance and MEXC trade paths use explicit keep/drop tables (not built). Open questions: [recording issues](../open-questions.md#recording-open-issues).
+Verified: Binance and MEXC trade paths use explicit keep/drop tables. Open questions: [recording issues](../open-questions.md#recording-open-issues).

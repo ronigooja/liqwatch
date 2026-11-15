@@ -81,15 +81,15 @@ Verified in the linked code: each table describes configured subscriptions, not 
 
 ## Recorded content
 
-Verified in the linked adapter code: unknown fields are retained and counted. Eligible frames produce a complete `{"sample":...}` frame at most once per channel and shard per hour. Subscribe errors become `gap` records with `event=subscribe_error` and the frame; acknowledgements are counted.
+Verified in the linked adapter code: unknown fields are retained and counted. Adapters that sample eligible frames produce a complete `{"sample":...}` frame at most once per channel and shard per hour; [Binance](../internal/venue/binance/testdata/README.txt) does not currently emit samples. Subscribe errors become `gap` records with `event=subscribe_error` and the frame; acknowledgements are counted.
 
-Verified: the per-venue field filter and explicit Binance and MEXC trade tables are specified in [0016](decisions/0016-drop-unneeded-payload-fields.md#consequences); not built until the code branches merge. The main session updates this status after merge.
+Verified: the per-venue field filter is built, including explicit Binance and MEXC trade tables; [0016](decisions/0016-drop-unneeded-payload-fields.md#consequences) links to each adapter's authoritative tables and describes exceptions.
 
 Verified in [Bybit](../internal/venue/bybit/bybit.go): ticker state is per connection and symbol and released on close, fixing the former overlap contamination window. A partial record is suppressed while another open connection of the shard has complete state for that symbol; otherwise it is marked `partial` until a snapshot.
 
 Verified in [Bitget](../internal/venue/bitget/bitget.go): consecutive identical filtered ticker payloads are deduplicated, with forced emission after 60 seconds.
 
-Verified in [MEXC](../internal/venue/mexc/mexc.go): mapped symbols only receive `contract`, `contractextra`, `ordersetting`, and `contractmeta` metadata. Verified in [Gate](../internal/venue/gate/gate.go): `Shard.Header` sets `X-Gate-Size-Decimal: 1`. Verified in [OKX](../internal/venue/okx/okx.go): WebSocket uses port 443.
+Verified in [MEXC](../internal/venue/mexc/mexc.go): mapped symbols only receive `contract`, `ordersetting`, and `contractmeta` metadata; `contractextra` is not recorded. Verified in [Gate](../internal/venue/gate/gate.go): `Shard.Header` sets `X-Gate-Size-Decimal: 1`. Verified in [OKX](../internal/venue/okx/okx.go): WebSocket uses port 443.
 
 ## Throttling
 
