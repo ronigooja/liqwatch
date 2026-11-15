@@ -35,6 +35,10 @@ var policies = struct {
 	sync.RWMutex
 	m map[policyKey]Policy
 }{m: make(map[policyKey]Policy)}
+
+// policiesDisabled is only changed by non-parallel tests.
+var policiesDisabled bool
+
 var unknownFields sync.Map // policyKey -> *atomic.Uint64
 
 // RegisterPolicy installs a policy. Register at initialization, before polling;
@@ -153,6 +157,9 @@ func UnknownFields(venue, channel string) uint64 {
 // ApplyPolicy filters one JSON payload. Without a registered policy it returns
 // the input unchanged. record is false for a dropped channel.
 func ApplyPolicy(venue, channel string, raw []byte) (payload []byte, record bool, err error) {
+	if policiesDisabled {
+		return raw, true, nil
+	}
 	key := policyKey{venue, channel}
 	policies.RLock()
 	p, ok := policies.m[key]

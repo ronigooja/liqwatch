@@ -22,7 +22,27 @@ type fixtureGoldenRecord struct {
 // TestFixtureRecordGolden uses the generic snapshot producer on every captured
 // response. The golden was generated with commit 71267c2 (before policies).
 func TestFixtureRecordGolden(t *testing.T) {
-	paths, err := filepath.Glob("testdata/*/*.json")
+	withoutPolicies(t)
+	encoded := fixtureGolden(t, "*")
+	golden := "testdata/records-golden.jsonl.txt"
+	if os.Getenv("GENERATE_FIXTURE_GOLDEN") == "1" {
+		if err := os.WriteFile(golden, encoded, 0600); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(encoded, want) {
+		t.Fatal("fixture records differ from pre-policy golden")
+	}
+}
+
+func fixtureGolden(t *testing.T, venue string) []byte {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join("testdata", venue, "*.json"))
 	if err != nil || len(paths) == 0 {
 		t.Fatal(err)
 	}
@@ -53,18 +73,5 @@ func TestFixtureRecordGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	golden := "testdata/records-golden.jsonl.txt"
-	if os.Getenv("GENERATE_FIXTURE_GOLDEN") == "1" {
-		if err = os.WriteFile(golden, append(encoded, '\n'), 0600); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-	want, err := os.ReadFile(golden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(append(encoded, '\n'), want) {
-		t.Fatal("fixture records differ from pre-policy golden")
-	}
+	return append(encoded, '\n')
 }

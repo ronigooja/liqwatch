@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -266,23 +265,13 @@ func (s *Scheduler) dedup(r *Record) bool {
 					var v struct {
 						Payload json.RawMessage `json:"p"`
 						Meta    struct {
-							TS      int64  `json:"last_row_timestamp"`
-							RawHash string `json:"unfiltered_payload_sha256"`
+							TS int64 `json:"last_row_timestamp"`
 						} `json:"meta"`
 					}
 					if json.Unmarshal(sc.Bytes(), &v) != nil || v.Meta.TS <= 0 {
 						continue
 					}
-					if hash, err := hex.DecodeString(v.Meta.RawHash); err == nil && len(hash) == sha256.Size {
-						var sum [32]byte
-						copy(sum[:], hash)
-						if m[v.Meta.TS] == nil {
-							m[v.Meta.TS] = map[[32]byte]bool{}
-						}
-						m[v.Meta.TS][sum] = true
-					} else {
-						addHash(m, v.Meta.TS, v.Payload)
-					}
+					addHash(m, v.Meta.TS, v.Payload)
 				}
 				f.Close()
 			}
@@ -425,10 +414,6 @@ func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
 				return 0, nil
 			}
 			for _, r := range records {
-				if s.dedup(&r) {
-					continue
-				}
-				original := r.Payload
 				payload, record, err := ApplyPolicy(r.Venue, r.Channel, r.Payload)
 				if err != nil {
 					return 0, fmt.Errorf("filter %s/%s: %w", r.Venue, r.Channel, err)
@@ -436,15 +421,11 @@ func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
 				if !record {
 					continue
 				}
-				if _, history := r.Meta["last_row_timestamp"].(int64); history && !bytes.Equal(original, payload) {
-					var compact bytes.Buffer
-					if err := json.Compact(&compact, original); err != nil {
-						return 0, err
-					}
-					hash := sha256.Sum256(compact.Bytes())
-					r.Meta["unfiltered_payload_sha256"] = hex.EncodeToString(hash[:])
-				}
 				r.Payload = payload
+				// A policy change can cause one extra revision per row on the first fetch.
+				if s.dedup(&r) {
+					continue
+				}
 				s.Sink.Write(r)
 			}
 			if f := s.failures[key]; f != nil {
