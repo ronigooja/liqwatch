@@ -17,6 +17,17 @@ import (
 
 const step5 = 5 * time.Minute
 
+// historicalScheduler keeps pre-live-floor fixtures scoped to legacy history
+// mechanics. Fresh production startup is tested separately in live_floor_test.go.
+func historicalScheduler(ch []Channel, sink Sink, clock Clock, path string, weight float64) (*Scheduler, error) {
+	s, err := NewScheduler(ch, sink, clock, path, weight)
+	if err == nil {
+		s.state.RecordingStartMS = 0
+		err = s.save()
+	}
+	return s, err
+}
+
 // fakeExchange serves a 5m series on /series. newest=true returns the newest `limit` rows of the requested
 // range (Bybit/OKX/Gate style); newest=false returns the oldest rows first (Binance fundingRate style).
 // Rows exist in [from, to] ms except timestamps in holes. value changes the payload of a timestamp.
@@ -235,7 +246,7 @@ func TestGenericPagingModes(t *testing.T) {
 			f := newFakeExchange(nowMS-80*time.Hour.Milliseconds(), nowMS, tc.newest, tc.limit)
 			defer f.server.Close()
 			clock := &fakeClock{now}
-			s, _ := NewScheduler(nil, &memorySink{}, clock, "", 240)
+			s, _ := historicalScheduler(nil, &memorySink{}, clock, "", 240)
 			recs, err := genericHistory(f, clock, s, tc.mode).Run(context.Background())
 			if err != nil {
 				t.Fatal(err)
@@ -332,7 +343,7 @@ func fakeJob(f *fakeExchange, clock Clock, mode PageMode, sink Sink, state strin
 	ch := Channel{Venue: "fake", Name: "oi", PerSymbol: true, Period: step5, Weight: 1, Skip: func(sym string) bool { return sched.NoDataSkip("fake", "oi", sym) }, Fetch: func(ctx context.Context, sym string) ([]Record, error) {
 		return h.Run(ctx)
 	}}
-	s, _ := NewScheduler([]Channel{ch}, sink, clock, state, 240)
+	s, _ := historicalScheduler([]Channel{ch}, sink, clock, state, 240)
 	sched = s
 	s.Universe = func() []string { return []string{"BTCUSDT"} }
 	h = genericHistory(f, clock, s, mode)

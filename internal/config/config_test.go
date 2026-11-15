@@ -21,7 +21,7 @@ func TestExamplePollerLookback(t *testing.T) {
 	if err := toml.Unmarshal(b, &c); err != nil {
 		t.Fatal(err)
 	}
-	if c.Poller.InitialLookback != "2h" {
+	if c.Poller.InitialLookback != "" {
 		t.Fatalf("initial lookback = %q", c.Poller.InitialLookback)
 	}
 }

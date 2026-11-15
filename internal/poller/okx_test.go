@@ -131,7 +131,7 @@ func TestOKXCurrencyRetentionError(t *testing.T) {
 					ch = v
 				}
 			}
-			s, _ := NewScheduler([]Channel{ch}, sink, clock, "", 240)
+			s, _ := historicalScheduler([]Channel{ch}, sink, clock, "", 240)
 			e.Bind(s)
 			if hasCursor {
 				s.state.Jobs["okx/longShortAccountRatio/BTC-USDT-SWAP"] = jobState{RowTimestamp: clock.Now().Add(-72 * time.Hour).UnixMilli()}
@@ -173,7 +173,7 @@ func TestOKXNoDataAndSourceGap(t *testing.T) {
 	e := &Env{Venue: "okx", Doer: uaDoer{server.Client()}, Clock: clock, BaseURL: server.URL, Lookback: time.Hour, Universe: func() []string { return []string{"EMPTY-USDT-SWAP", "BTC-USDT-SWAP"} }}
 	ch := okxFactory(e)[0]
 	sink := &memorySink{}
-	s, _ := NewScheduler([]Channel{ch}, sink, clock, "", 240)
+	s, _ := historicalScheduler([]Channel{ch}, sink, clock, "", 240)
 	e.Bind(s)
 	empty, err := ch.Fetch(context.Background(), "EMPTY-USDT-SWAP")
 	if err != nil || len(empty) != 1 || !strings.Contains(string(empty[0].Payload), `"no_data"`) || !ch.Skip("EMPTY-USDT-SWAP") {
@@ -209,7 +209,7 @@ func TestOKXOverlapDedup(t *testing.T) {
 	e := &Env{Venue: "okx", Doer: uaDoer{server.Client()}, Clock: clock, BaseURL: server.URL, Lookback: time.Hour, Universe: func() []string { return []string{"BTC-USDT-SWAP"} }}
 	ch := okxFactory(e)[0]
 	sink := &memorySink{}
-	s, _ := NewScheduler([]Channel{ch}, sink, clock, "", 240)
+	s, _ := historicalScheduler([]Channel{ch}, sink, clock, "", 240)
 	e.Bind(s)
 	for i := 0; i < 2; i++ {
 		records, err := ch.Fetch(context.Background(), "BTC-USDT-SWAP")

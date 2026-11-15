@@ -27,7 +27,7 @@ func TestBinanceUniverseBracketsIncremental(t *testing.T) {
 			}
 		default:
 			start = r.URL.Query().Get("startTime")
-			fmt.Fprint(w, `[{"timestamp":12345}]`)
+			fmt.Fprint(w, `[{"timestamp":1767225600000}]`)
 		}
 	}))
 	defer server.Close()
@@ -52,6 +52,7 @@ func TestBinanceUniverseBracketsIncremental(t *testing.T) {
 		t.Fatal("schema accepted")
 	}
 	scheduler.state.Jobs["binance/openInterestHist/BTCUSDT"] = jobState{RowTimestamp: 12345}
+	clock.t = clock.t.Add(10 * time.Minute)
 	rows, err = b.request(context.Background(), "openInterestHist", "BTCUSDT")
 	if err != nil || start == "" {
 		t.Fatalf("start=%s err=%v", start, err)

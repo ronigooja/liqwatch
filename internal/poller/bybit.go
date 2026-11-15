@@ -52,7 +52,7 @@ func bybitChannels(e *Env) []Channel {
 			}
 			if *v.Code != 0 {
 				if *v.Code == 10001 && strings.Contains(strings.ToLower(v.Message), "symbol not support") {
-					return nil, nil
+					return nil, ErrHistoryUnavailable
 				}
 				return nil, fmt.Errorf("bybit account-ratio: %d: %s", *v.Code, v.Message)
 			}

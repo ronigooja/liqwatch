@@ -219,7 +219,7 @@ func TestHistoryChannelEndToEnd(t *testing.T) {
 	ch := e.HistoryChannel("oi", HistorySpec{Step: step5, Grace: 2 * step5, Mode: PageBackward, PageSize: 50, Fetch: func(ctx context.Context, sym string, start, end int64) ([]Row, error) {
 		return f.fetch(ctx, start, end)
 	}})
-	s, _ := NewScheduler([]Channel{ch}, sink, clock, "", 240)
+	s, _ := historicalScheduler([]Channel{ch}, sink, clock, "", 240)
 	e.Universe = func() []string { return []string{"BTCUSDT"} }
 	e.Bind(s)
 	if _, err := s.Step(context.Background()); err != nil {

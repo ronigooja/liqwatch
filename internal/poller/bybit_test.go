@@ -149,7 +149,7 @@ func TestBybitDailyOverlapAndShortPage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s, err := NewScheduler(channels[:1], sink, clock, "", env.WeightPerMinute)
+			s, err := historicalScheduler(channels[:1], sink, clock, "", env.WeightPerMinute)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -226,7 +226,7 @@ func TestBybitNoDataRetryDaily(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s, err := NewScheduler(channels[:1], sink, clock, "", env.WeightPerMinute)
+			s, err := historicalScheduler(channels[:1], sink, clock, "", env.WeightPerMinute)
 			if err != nil {
 				t.Fatal(err)
 			}

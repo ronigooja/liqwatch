@@ -62,13 +62,15 @@ type PermanentError struct {
 func (e *PermanentError) Error() string { return e.Err.Error() }
 
 type jobState struct {
-	LastSuccess  int64 `json:"last_success"`
-	RowTimestamp int64 `json:"row_timestamp,omitempty"`
-	NoDataAt     int64 `json:"no_data_at,omitempty"`
+	LegacyHistory bool  `json:"legacy_history,omitempty"`
+	LastSuccess   int64 `json:"last_success"`
+	RowTimestamp  int64 `json:"row_timestamp,omitempty"`
+	NoDataAt      int64 `json:"no_data_at,omitempty"`
 }
 type state struct {
-	Jobs    map[string]jobState `json:"jobs"`
-	Symbols []string            `json:"symbols,omitempty"`
+	RecordingStartMS int64               `json:"recording_start_ms,omitempty"`
+	Jobs             map[string]jobState `json:"jobs"`
+	Symbols          []string            `json:"symbols,omitempty"`
 }
 type bucket struct {
 	tokens  float64
@@ -120,7 +122,30 @@ func NewScheduler(channels []Channel, sink Sink, clock Clock, path string, weigh
 	if s.state.Jobs == nil {
 		s.state.Jobs = map[string]jobState{}
 	}
+	if s.state.RecordingStartMS == 0 {
+		// An absent floor identifies legacy state. Preserve its cursor-bearing jobs;
+		// cursorless and newly discovered jobs begin recording at migration time.
+		for key, st := range s.state.Jobs {
+			if st.RowTimestamp > 0 {
+				st.LegacyHistory = true
+				s.state.Jobs[key] = st
+			}
+		}
+		s.state.RecordingStartMS = clock.Now().UnixMilli()
+		if err := s.save(); err != nil {
+			return nil, fmt.Errorf("save recording start: %w", err)
+		}
+	}
 	return s, nil
+}
+
+// RecordingFloor returns the inclusive live history boundary. Legacy cursor-bearing
+// jobs have no new boundary, so migration cannot discard their recovery scope.
+func (s *Scheduler) RecordingFloor(venue, channel, symbol string) int64 {
+	if s.state.Jobs[venue+"/"+channel+"/"+symbol].LegacyHistory {
+		return 0
+	}
+	return s.state.RecordingStartMS
 }
 
 // StatePath returns the state file of a venue inside the raw directory. Each venue process has its own file

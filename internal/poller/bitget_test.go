@@ -32,7 +32,7 @@ func TestBitgetChannels(t *testing.T) {
 		fmt.Fprint(w, `{"code":"00000","data":[{"ts":"1700000100000"},{"ts":"1700000400000"}]}`)
 	}))
 	defer server.Close()
-	e := &Env{Venue: "bitget", BaseURL: server.URL, Doer: uaDoer{server.Client()}, Clock: RealClock{}, RPS: 1, Periods: map[string]time.Duration{}, ChannelRPS: map[string]float64{}, Weights: map[string]float64{}}
+	e := &Env{Venue: "bitget", BaseURL: server.URL, Doer: uaDoer{server.Client()}, Clock: RealClock{}, Lookback: 40000 * time.Hour, RPS: 1, Periods: map[string]time.Duration{}, ChannelRPS: map[string]float64{}, Weights: map[string]float64{}}
 	channels := bitgetChannels(e)
 	if len(channels) != 6 {
 		t.Fatalf("got %d channels", len(channels))
@@ -70,10 +70,10 @@ func TestBitgetHourlyWindowAndOutage(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{"code": "00000", "data": rows})
 	}))
 	defer server.Close()
-	e := &Env{Venue: "bitget", BaseURL: server.URL, Doer: uaDoer{server.Client()}, Clock: clock, RPS: 1}
+	e := &Env{Venue: "bitget", BaseURL: server.URL, Doer: uaDoer{server.Client()}, Clock: clock, Lookback: 150 * time.Minute, RPS: 1}
 	c := bitgetChannels(e)[0]
 	sink := &memorySink{}
-	s, _ := NewScheduler([]Channel{c}, sink, clock, "", 240)
+	s, _ := historicalScheduler([]Channel{c}, sink, clock, "", 240)
 	e.Universe = func() []string { return []string{"BTCUSDT"} }
 	e.Bind(s)
 	if err := s.RunOnce(context.Background()); err != nil {
@@ -139,7 +139,7 @@ func TestBitgetNoDataAndUniverse(t *testing.T) {
 		t.Fatalf("universe=%v", got)
 	}
 	sink := &memorySink{}
-	s, _ := NewScheduler(channels[:1], sink, clock, "", 240)
+	s, _ := historicalScheduler(channels[:1], sink, clock, "", 240)
 	e.Bind(s)
 	if err := s.RunOnce(context.Background()); err != nil {
 		t.Fatal(err)

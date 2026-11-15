@@ -134,6 +134,16 @@ func positiveDuration(values ...string) time.Duration {
 	return 0
 }
 
+func initialLookback(values ...string) time.Duration {
+	for _, v := range values {
+		if v != "" {
+			d, _ := time.ParseDuration(v)
+			return max(d, 0)
+		}
+	}
+	return 0
+}
+
 // NewVenue builds the Env and channels of a registered venue. Unknown venues are an error that lists the
 // registered ones. Call Env.Bind with the scheduler built from the returned channels.
 func NewVenue(name string, cfg PollConfig, d Deps) (*Env, []Channel, error) {
@@ -153,7 +163,7 @@ func NewVenue(name string, cfg PollConfig, d Deps) (*Env, []Channel, error) {
 	e := &Env{Venue: name, Doer: uaDoer{doer}, Clock: clock, Sink: d.Sink, Selected: d.Selected, Config: cfg,
 		RPS: vc.RPS, WeightPerMinute: vc.WeightPerMinute, BaseURL: vc.BaseURL,
 		Overlap:  positiveDuration(vc.Overlap, cfg.Overlap),
-		Lookback: positiveDuration(vc.InitialLookback, cfg.InitialLookback),
+		Lookback: initialLookback(vc.InitialLookback, cfg.InitialLookback),
 		Periods:  map[string]time.Duration{}, ChannelRPS: map[string]float64{}, Weights: map[string]float64{}}
 	if e.RPS <= 0 {
 		e.RPS = 1
@@ -163,9 +173,6 @@ func NewVenue(name string, cfg PollConfig, d Deps) (*Env, []Channel, error) {
 	}
 	if e.Overlap <= 0 {
 		e.Overlap = 2 * time.Hour
-	}
-	if e.Lookback <= 0 {
-		e.Lookback = 2 * time.Hour
 	}
 	// The top-level channel maps predate venues and belong to binance.
 	if name == "binance" {

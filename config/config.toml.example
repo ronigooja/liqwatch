@@ -37,7 +37,7 @@ forceOrder_all = 0
 [poller]
 # map_path = "/etc/liqwatch/venue-map.toml" # defaults to collect.map_path
 overlap = "2h"
-initial_lookback = "2h" # Clamped to 29 days.
+# initial_lookback = "0s" # Deprecated compatibility setting; live recording always starts at its persisted first-start time.
 
 [poller.periods]
 # openInterestHist = "24h"
@@ -50,7 +50,7 @@ rps = 2                  # requests per second per endpoint
 weight_per_minute = 240  # request budget per minute
 # base_url = "https://api.bybit.com"  # override the venue default, e.g. for tests
 # overlap = "2h"
-# initial_lookback = "2h"
+# initial_lookback = "0s" # Deprecated; does not widen live recording scope.
 
 [poller.venues.bybit.periods]
 # openInterest = "24h"

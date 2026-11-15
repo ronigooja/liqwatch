@@ -37,7 +37,7 @@ func TestHistoryWindowWalkAndDedup(t *testing.T) {
 	b := &Binance{Clock: clock, Doer: server.Client(), Config: PollConfig{BaseURL: server.URL, InitialLookback: "72h"}}
 	channels := BinanceChannels(b)
 	sink := &memorySink{}
-	s, _ := NewScheduler(channels, sink, clock, "", 240)
+	s, _ := historicalScheduler(channels, sink, clock, "", 240)
 	b.Scheduler = s
 	rows, err := b.request(context.Background(), "openInterestHist", "BTCUSDT")
 	if err != nil || len(rows) != 863 {
@@ -87,7 +87,7 @@ func TestInitialLookbackConfig(t *testing.T) {
 		name, lookback string
 		state          string
 		want           time.Duration
-	}{{"missing", "", "missing", 2 * time.Hour}, {"corrupt", "", "bad", 2 * time.Hour}, {"override", "72h", "missing", 72 * time.Hour}, {"clamped", "1000h", "missing", 29 * 24 * time.Hour}} {
+	}{{"missing", "", "missing", 0}, {"zero", "0s", "missing", 0}, {"corrupt", "", "bad", 0}, {"override", "72h", "missing", 0}, {"clamped", "1000h", "missing", 0}} {
 		t.Run(tc.name, func(t *testing.T) {
 			var first int64
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -190,7 +190,7 @@ func TestHistoryOutagesAndState(t *testing.T) {
 			requests = 0
 			sink := &memorySink{}
 			b := &Binance{Clock: clock, Doer: server.Client(), Config: PollConfig{BaseURL: server.URL}}
-			s, _ := NewScheduler(BinanceChannels(b), sink, clock, "", 240)
+			s, _ := historicalScheduler(BinanceChannels(b), sink, clock, "", 240)
 			b.Scheduler = s
 			cursor := now.Add(-time.Duration(days) * 24 * time.Hour).UnixMilli()
 			s.state.Jobs["binance/openInterestHist/BTCUSDT"] = jobState{RowTimestamp: cursor}
@@ -267,7 +267,7 @@ func TestFundingPagination(t *testing.T) {
 	}))
 	defer server.Close()
 	b := &Binance{Clock: clock, Doer: server.Client(), Config: PollConfig{BaseURL: server.URL}}
-	s, _ := NewScheduler(BinanceChannels(b), &memorySink{}, clock, "", 240)
+	s, _ := historicalScheduler(BinanceChannels(b), &memorySink{}, clock, "", 240)
 	b.Scheduler = s
 	s.state.Jobs["binance/fundingRate/BTCUSDT"] = jobState{RowTimestamp: base}
 	rows, err := b.request(context.Background(), "fundingRate", "BTCUSDT")
@@ -296,7 +296,7 @@ func TestRestartForcesDueOverlap(t *testing.T) {
 				channels = append(channels, c)
 			}
 		}
-		s, err := NewScheduler(channels, sink, clock, statePath, 240)
+		s, err := historicalScheduler(channels, sink, clock, statePath, 240)
 		if err != nil {
 			t.Fatal(err)
 		}

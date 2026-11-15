@@ -38,8 +38,8 @@
 //
 // What History does for a history channel and symbol:
 //
-//   - Start = persisted cursor (newest row timestamp seen) minus overlap, or now minus initial lookback
-//     (default 2h) without a cursor. Retention clamps the start; a cursor older than retention writes a
+//   - Live start = persisted first recording time, or cursor minus overlap clamped to that floor.
+//     Legacy cursor-bearing jobs retain their pre-migration overlap scope. Retention clamps the start; a cursor older than retention writes a
 //     retention_gap record {"event":"retention_gap","start_ms","end_ms"}.
 //   - Paging, chosen by Mode:
 //     PageWindows walks forward in windows of Window*Step ms: Fetch(start, start+Window*Step-1), then the
@@ -92,6 +92,10 @@ const (
 
 const noDataRetry = 24 * time.Hour
 
+// ErrHistoryUnavailable distinguishes an explicitly unsupported upstream series
+// from an empty live range whose first row has not been published yet.
+var ErrHistoryUnavailable = errors.New("history unavailable")
+
 // Row is one exchange row: its timestamp in milliseconds and the raw JSON.
 type Row struct {
 	TS   int64
@@ -107,7 +111,7 @@ type History struct {
 	// retention gaps. nil means no cursor, no waiting and no state.
 	Sched     *Scheduler
 	Overlap   time.Duration // default 2h
-	Lookback  time.Duration // initial lookback, default 2h, clamped to MaxLookback (else Retention) when set
+	Lookback  time.Duration // compatibility/testing only; live jobs use the persisted recording floor
 	Retention time.Duration // 0: unlimited; older starts are clamped and a retention_gap is written
 	// MaxLookback clamps Lookback without implying a retention gap (0: use Retention).
 	MaxLookback time.Duration
@@ -146,9 +150,6 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 	if overlap <= 0 {
 		overlap = 2 * time.Hour
 	}
-	if lookback <= 0 {
-		lookback = 2 * time.Hour
-	}
 	maxLookback := h.MaxLookback
 	if maxLookback <= 0 {
 		maxLookback = h.Retention
@@ -158,9 +159,16 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 	}
 	start := now.Add(-lookback).UnixMilli()
 	var cursor, noData int64
+	var floor int64
 	if h.Sched != nil {
+		floor = h.Sched.RecordingFloor(h.Venue, h.Channel, h.Symbol)
 		cursor = h.Sched.RowTimestamp(h.Venue, h.Channel, h.Symbol)
 		noData = h.Sched.NoDataAt(h.Venue, h.Channel, h.Symbol)
+	}
+	if floor == 0 && h.Sched != nil && lookback == 0 {
+		// Only legacy-state jobs retain the historical default; new live jobs
+		// always have a persisted floor and never take this compatibility path.
+		start = now.Add(-2 * time.Hour).UnixMilli()
 	}
 	useNoData := h.Sched != nil && h.Symbol != "" && !h.SkipNoData
 	if useNoData && h.Sched.NoDataSkip(h.Venue, h.Channel, h.Symbol) {
@@ -168,6 +176,13 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 	}
 	if cursor > 0 {
 		start = cursor - overlap.Milliseconds()
+	}
+	if floor > 0 {
+		if cursor == 0 {
+			start = floor
+		} else {
+			start = max(start, floor)
+		}
 	}
 	if h.Retention > 0 {
 		oldest := now.Add(-h.Retention).UnixMilli()
@@ -179,8 +194,10 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 		}
 	}
 	var items []historyItem
+	scopeStart := start
 	seen := map[int64]map[[32]byte]bool{}
 	first := true
+	unavailable := false
 	request := func(from, to int64) ([]Row, error) {
 		if !first && h.Sched != nil {
 			if err := h.Sched.waitRequest(ctx, h.Venue, h.Channel); err != nil {
@@ -189,11 +206,18 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 		}
 		first = false
 		rows, err := h.Fetch(ctx, from, to)
+		if errors.Is(err, ErrHistoryUnavailable) {
+			unavailable = true
+			return nil, nil
+		}
 		if err != nil {
 			return nil, err
 		}
 		recv := clock.Now()
 		for _, r := range rows {
+			if r.TS > 0 && (r.TS < scopeStart || r.TS > nowMS) {
+				continue
+			}
 			if r.TS <= 0 {
 				return nil, fmt.Errorf("missing row timestamp")
 			}
@@ -321,7 +345,9 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 			out = append(out, h.gap(now, map[string]any{"event": "source_gap", "kind": "source_gap", "channel": h.Channel, "symbol": h.Symbol, "start_ms": prev + step, "end_ms": next}))
 		}
 	}
-	if useNoData && cursor == 0 && !hadRows {
+	// An empty live range is not evidence of upstream absence: the first eligible
+	// bucket may not exist or be finalized yet. Keep normal scheduling in that case.
+	if useNoData && (floor == 0 || unavailable) && cursor == 0 && !hadRows {
 		if noData == 0 {
 			rec := h.gap(now, map[string]any{"event": "no_data", "channel": h.Channel, "symbol": h.Symbol})
 			rec.RecvMono = time.Since(monoOrigin).Nanoseconds()

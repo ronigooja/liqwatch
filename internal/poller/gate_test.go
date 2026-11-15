@@ -123,7 +123,7 @@ func TestGateNoDataAndOverlap(t *testing.T) {
 	e := &Env{Venue: "gate", BaseURL: srv.URL, Doer: uaDoer{srv.Client()}, Clock: clock, Lookback: 2 * time.Minute, Overlap: time.Hour, Periods: map[string]time.Duration{}, ChannelRPS: map[string]float64{}, Weights: map[string]float64{}}
 	c := gateChannels(e)[0]
 	c.Period = time.Minute
-	s, err := NewScheduler([]Channel{c}, sink, clock, "", 240)
+	s, err := historicalScheduler([]Channel{c}, sink, clock, "", 240)
 	if err != nil {
 		t.Fatal(err)
 	}

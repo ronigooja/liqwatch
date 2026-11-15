@@ -29,7 +29,7 @@ type PollConfig struct {
 	RPS             map[string]float64     `toml:"rps"`
 	Periods         map[string]string      `toml:"periods"`
 	Overlap         string                 `toml:"overlap"`
-	InitialLookback string                 `toml:"initial_lookback"`
+	InitialLookback string                 `toml:"initial_lookback"` // deprecated: does not widen live recording scope
 	BaseURL         string                 `toml:"base_url"`
 	BracketsURL     string                 `toml:"brackets_url"`
 	MapPath         string                 `toml:"map_path"` // venue map for the symbol universe; default /etc/liqwatch/venue-map.toml
@@ -127,7 +127,7 @@ func duration(s string, fallback time.Duration) time.Duration {
 }
 func (b *Binance) history(ctx context.Context, name, sym string) ([]Record, error) {
 	h := &History{Venue: "binance", Channel: name, Symbol: sym, Clock: b.Clock, Sched: b.Scheduler,
-		Overlap: duration(b.Config.Overlap, 2*time.Hour), Lookback: duration(b.Config.InitialLookback, 2*time.Hour), MaxLookback: 29 * 24 * time.Hour,
+		Overlap: duration(b.Config.Overlap, 2*time.Hour), Lookback: duration(b.Config.InitialLookback, 0), MaxLookback: 29 * 24 * time.Hour,
 		Fetch: func(ctx context.Context, start, end int64) ([]Row, error) {
 			recs, err := b.requestPage(ctx, name, sym, start, end)
 			if err != nil {
