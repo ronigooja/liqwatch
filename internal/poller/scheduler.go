@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -347,10 +348,10 @@ func (s *Scheduler) reportCapacity(jobs []scheduledJob, now time.Time) {
 	for _, j := range jobs {
 		endpoint := j.c.Venue + "/" + j.c.Name
 		msg := ""
-		if load := venueLoad[j.c.Venue]; load > s.WeightPerMinute {
+		if load := venueLoad[j.c.Venue]; exceedsCapacity(load, s.WeightPerMinute) {
 			msg = fmt.Sprintf("minimum venue weight/min %.6g exceeds configured %.6g", load, s.WeightPerMinute)
 		}
-		if load := endpointLoad[endpoint]; j.c.RPS > 0 && load > j.c.RPS {
+		if load := endpointLoad[endpoint]; j.c.RPS > 0 && exceedsCapacity(load, j.c.RPS) {
 			msg += fmt.Sprintf(" minimum endpoint requests/sec %.6g exceeds configured %.6g", load, j.c.RPS)
 		}
 		if msg != "" && s.capacityReported[endpoint] != msg {
@@ -359,6 +360,12 @@ func (s *Scheduler) reportCapacity(jobs []scheduledJob, now time.Time) {
 		}
 		s.capacityReported[endpoint] = msg
 	}
+}
+
+// Capacity sums may accumulate floating-point rounding at exact capacity. Ignore
+// relative noise only; meaningful overload must still produce a diagnostic.
+func exceedsCapacity(load, limit float64) bool {
+	return load-limit > 1e-12*math.Max(math.Abs(load), math.Abs(limit))
 }
 
 // dedup reconstructs recent output before accepting a history row.
@@ -459,6 +466,12 @@ func (s *Scheduler) gap(c Channel, sym, event, msg string, f *failure) {
 
 // Step runs at most one due request and returns a suggested delay until another step.
 func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
+	return s.step(ctx, time.Time{})
+}
+
+// A nonzero cutoff restricts execution, not phase membership. RunOnce uses its
+// sweep start so budget waits cannot admit a later phase or not-yet-due retry.
+func (s *Scheduler) step(ctx context.Context, cutoff time.Time) (time.Duration, error) {
 	now := s.Clock.Now()
 	wait := time.Second
 	symbols := s.Symbols()
@@ -469,6 +482,9 @@ func (s *Scheduler) Step(ctx context.Context) (time.Duration, error) {
 	s.reportCapacity(jobs, now)
 	for _, j := range jobs {
 		c, sym, key := j.c, j.sym, j.key
+		if !cutoff.IsZero() && j.deadline.After(cutoff) {
+			continue
+		}
 		if s.stopped[key] || (c.Skip != nil && c.Skip(sym)) {
 			continue
 		}
@@ -618,7 +634,7 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 				added = append(added, key)
 			}
 		}
-		d, err := s.Step(ctx)
+		d, err := s.step(ctx, start)
 		s.Channels = original
 		s.Universe = oldUniverse
 		for _, key := range added {
