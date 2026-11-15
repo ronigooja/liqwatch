@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	gatevenue "github.com/ronigooja/liqwatch/internal/venue/gate"
 )
 
 // These expectations are deliberately independent of the registered tables.
@@ -15,6 +19,21 @@ var gateExpected = map[string]string{
 	"contractStats":  "time lsr_taker lsr_account top_lsr_account top_lsr_size open_interest open_interest_usd mark_price long_liq_size short_liq_size long_liq_usd short_liq_usd",
 	"riskLimitTiers": "tier risk_limit initial_rate maintenance_rate leverage_max deduction",
 	"contracts":      "name type quanto_multiplier enable_decimal funding_rate funding_next_apply funding_interval leverage_min leverage_max mark_price index_price position_size config_change_time",
+}
+
+func TestGatePolicyUniverseUsesFetchedResponse(t *testing.T) {
+	raw := `[{"name":"A_USDT","status":"trading","in_delisting":false},{"name":"B_USDT","status":"trading","in_delisting":true},{"name":"C_USDT","status":"delisted","in_delisting":false}]`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(raw)) }))
+	defer server.Close()
+	a := &gatevenue.Adapter{ContractsURL: server.URL}
+	syms, err := a.Symbols(context.Background())
+	if err != nil || len(syms) != 1 || syms[0] != "A_USDT" {
+		t.Fatalf("symbols %v: %v", syms, err)
+	}
+	filtered, _, err := ApplyPolicy("gate", "contracts", []byte(raw))
+	if err != nil || bytes.Contains(filtered, []byte(`"status"`)) || bytes.Contains(filtered, []byte(`"in_delisting"`)) {
+		t.Fatalf("filtered %s: %v", filtered, err)
+	}
 }
 
 func gateSample(t *testing.T, ch string) []byte {
