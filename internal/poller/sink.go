@@ -84,14 +84,11 @@ func (s *FileSink) Write(r Record) {
 	}
 	envelope := struct {
 		Version int             `json:"v"`
-		Venue   string          `json:"venue"`
-		Channel string          `json:"ch"`
-		Symbol  string          `json:"sym"`
 		Wall    int64           `json:"rw"`
 		Mono    int64           `json:"rm"`
 		Meta    map[string]any  `json:"meta"`
 		Payload json.RawMessage `json:"p"`
-	}{1, r.Venue, r.Channel, r.Symbol, r.RecvWall, r.RecvMono, r.Meta, r.Payload}
+	}{2, r.RecvWall, r.RecvMono, r.Meta, r.Payload}
 	b, err := json.Marshal(envelope)
 	if err != nil {
 		if s.err == nil {

@@ -30,7 +30,7 @@ Checked on recorded data, 2026-11-06:
 | `snapshot` | `depth` | symbol | `{req_start_ns, req_end_ns, status, body:{lastUpdateId, bids, asks, E, T}}` |
 | `forceOrder_all` | `liq` | empty | `{stream, data:{E, o:{s, S, o, f, q, p, ap, X, l, z, T}}}` |
 | `bookTicker` | `quote` | symbol | `{stream, data:{u, s, b, B, a, A, T, E}}` |
-| `gap` | `gap` | empty | `{event:"conn_closed", cause:"reconnect", err, shard, streams}`; `conn` is the connection that ended, `rw` is when its end was noticed |
+| `gap` | `gap` | empty | `{event:"conn_closed", cause:"reconnect", err, shard, streams}`; `rw` is when its end was noticed; envelope identity follows [storage design](storage-design.md#writing) |
 
 The `gap` file group exists only for hours in which something happened, so most hours have no `gap` file. They are archived like the others and deleted locally after verification.
 
@@ -51,7 +51,9 @@ Merging the raw log of one day into one stream:
 2. **Order.** Within one process, order by `(rm, wseq)`. Across processes `rm` is not comparable; use `rw` ([0009](decisions/0009-zero-gap-handoff.md)). Replay time is `rw`.
 3. **Duplicates.** Drop by the per-symbol keys in [0009](decisions/0009-zero-gap-handoff.md) (aggTrade `a`, bookTicker `u`, depth `(U,u)`, markPrice `E`+`s`, forceOrder `E`+`o.s`). Keep the earliest `rw` of each key. aggTrade ids are remembered for the whole run, as intervals per symbol, because a backfill row can arrive far later than its live twin; the other streams forget a key after a 300 s window. (Found on 2026-11-05 data: with a 300 s window, 17,380 backfilled trades in hour 02 stayed in the output next to their live twins.)
 4. **Backfill.** Rows inside an `aggTrade_backfill` page become `aggTrade` events keyed by `a`, with replay time equal to the page's `req_end_ns` (when the data was actually known), flagged `backfilled`. If the live stream already delivered the same `a`, the live one wins.
-5. **Gaps.** A `conn_closed` record carries no start or end time of the hole. Derive it per stream in `streams`: start = `rw` of the last message of that stream before the record, end = `rw` of the first message of that stream from a different `conn`. Unplanned only; a planned replacement overlaps and produces no `conn_closed`. `drop` records mark the stated channel as incomplete for the window `since_ns` to `rw`. Labels must exclude or flag steps inside such intervals. A trade-shard hole is closed by backfill (rule 4); `bookTicker`, `markPrice` and `forceOrder` holes stay.
+5. **Gaps.** Verified in replay: `conn_closed` starts at the previous observed stream message and ends at its next observed message; legacy records additionally distinguish connections. Inferred: compact records cannot distinguish overlap; see [0018](decisions/0018-path-based-raw-envelope.md).
+
+   Verified: `drop` marks the channel incomplete from `since_ns` to `rw`; labels exclude or flag these intervals. A trade-shard hole is closed by backfill (rule 4); other holes remain.
 6. **Book.** `book_at` rebuilds from the latest `snapshot` plus `depth` diffs, per [p0-core-design.md](p0-core-design.md) Component 5. Depth exists for the depth symbols only.
 7. **Truncated tail.** A recovered `.part` file can end in a torn frame; the reader stops at the last complete line and reports it.
 

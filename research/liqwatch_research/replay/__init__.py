@@ -2,10 +2,13 @@ import bisect
 import heapq
 import io
 import json
+from contextlib import nullcontext
 from collections import Counter, deque
 from dataclasses import dataclass, field
 
 import zstandard
+
+from ..raw import with_identity
 
 
 @dataclass(slots=True)
@@ -36,14 +39,16 @@ def read_records(paths, stats=None):
     stats = stats if stats is not None else Stats()
     for path in paths:
         with open(path, 'rb') as source:
-            with zstandard.ZstdDecompressor().stream_reader(source, read_across_frames=True) as reader:
+            compressed = source.peek(4)[:4] == b'\x28\xb5\x2f\xfd'
+            with (zstandard.ZstdDecompressor().stream_reader(source, read_across_frames=True)
+                  if compressed else nullcontext(source)) as reader:
                 buffered = io.BufferedReader(reader)
                 try:
                     for line in buffered:
                         if not line.endswith(b'\n'):
                             stats.torn_lines += 1
                             break
-                        yield json.loads(line)
+                        yield with_identity(json.loads(line), path)
                 except zstandard.ZstdError as exc:
                     # Corruption is not necessarily a torn tail; do not hide it.
                     if 'did not decompress full frame' not in str(exc):
@@ -102,7 +107,7 @@ def _event(record, data, rw, backfilled=False):
     if ch in ('aggTrade', 'aggTrade_backfill'):
         return Event(rw, 'aggTrade', sym, dict(T=data['T'], a=data['a'], price=float(data['p']), qty=float(data['q']), buyer_is_maker=data['m'], backfilled=backfilled)), ('aggTrade', sym, data['a'])
     if ch == 'markPrice_all':
-        sym = data['s']
+        sym = data.get('s', sym)
         return Event(rw, 'markPrice', sym, dict(E=data['E'], mark=float(data['p']), index=float(data['i']), funding_rate=float(data['r']), next_funding_T=data['T'])), ('markPrice', sym, data['E'])
     if ch == 'bookTicker':
         return Event(rw, ch, sym, dict(T=data['T'], u=data['u'], bid=float(data['b']), bid_qty=float(data['B']), ask=float(data['a']), ask_qty=float(data['A']))), (ch, sym, data['u'])
@@ -111,7 +116,7 @@ def _event(record, data, rw, backfilled=False):
     if ch == 'snapshot':
         return Event(rw, ch, sym, dict(lastUpdateId=data['lastUpdateId'], bids=_levels(data['bids']), asks=_levels(data['asks']))), None
     if ch == 'forceOrder_all':
-        o = data['o']; sym = o['s']
+        o = data['o']; sym = o.get('s', sym)
         return Event(rw, 'forceOrder', sym, dict(E=data['E'], side=o['S'], price=float(o['p']), avg_price=float(o['ap']), qty=float(o['q']), filled_qty=float(o['z']), status=o['X'])), ('forceOrder', sym, data['E'])
     raise ValueError(f'unknown channel: {ch}')
 
@@ -151,7 +156,7 @@ class Replay:
                     for stream in payload['streams']:
                         start = last_stream.get(stream)
                         if start is not None:
-                            pending.setdefault(stream, []).append((start, r['conn']))
+                            pending.setdefault(stream, []).append((start, r.get('conn')))
                 continue
             if ch in ('brackets', 'exchangeInfo', 'constituents', 'openInterest', 'brackets_error'):
                 yield Event(rw, ch, r['sym'], dict(payload=payload, meta=r.get('meta', {})))
@@ -162,7 +167,7 @@ class Replay:
                 waiting = pending.get(stream, [])
                 remaining = []
                 for start, conn in waiting:
-                    if conn != r['conn']:
+                    if conn is None or r.get('conn') is None or conn != r['conn']:
                         sym = stream.split('@', 1)[0].upper() if not stream.startswith('!') else ''
                         yield Event(rw, 'gap', sym, dict(stream=stream, start_rw=start, end_rw=rw))
                     else:
@@ -183,7 +188,7 @@ class Replay:
                 rows, event_rw = [payload['body']], rw
             else:
                 data = payload['data']
-                rows, event_rw = (data if ch == 'markPrice_all' else [data]), rw
+                rows, event_rw = (data if ch == 'markPrice_all' and isinstance(data, list) else [data]), rw
             for data in rows:
                 event, key = _event(r, data, event_rw, ch == 'aggTrade_backfill')
                 if key is not None:

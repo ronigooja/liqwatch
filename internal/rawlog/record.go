@@ -11,8 +11,9 @@ const (
 	GroupGap   = "gap"
 )
 
-// Record is one envelope line, including venue and the original payload.
-// Payload is embedded exactly as received. The writer assigns wseq.
+// Record carries routing identity and receive metadata to the writer.
+// Venue, Channel and Symbol are stored in the path, not the envelope; Conn is diagnostic only.
+// Payload is embedded as supplied by the producer. The writer assigns wseq.
 type Record struct {
 	Venue   string
 	Conn    string

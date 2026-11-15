@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -84,13 +85,45 @@ func TestRoutingAndGap(t *testing.T) {
 	for _, s := range []string{"BTC-USDT-SWAP", "BTC_USDT"} {
 		for _, ch := range []string{"trade", "mark"} {
 			m := readAll(t, filepath.Join(dir, "okx", s, at.Format("20060102"), ch+".jsonl"))
-			if len(m) != 1 || m[0]["venue"] != "okx" || m[0]["sym"] != s {
+			if len(m) != 1 {
 				t.Fatal(m)
 			}
 		}
 	}
 	if len(readAll(t, filepath.Join(dir, "binance/gap", at.Format("20060102"), "gap.jsonl"))) != 1 {
 		t.Fatal("gap")
+	}
+}
+
+func TestCompactEnvelope(t *testing.T) {
+	dir := t.TempDir()
+	w, err := NewWriter(Options{Dir: dir, Instance: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := run(w)
+	for _, r := range []Record{
+		{Venue: "okx", Symbol: "BTC-USDT-SWAP", Channel: "trade", Conn: "diagnostic", CSeq: 7, RecvWal: 1767225600000000000, RecvMon: 12, Payload: []byte(`{"ts":42,"price":"1.2300"}`)},
+		{Venue: "kucoin", Channel: "contracts", CSeq: 8, RecvWal: 1767225600000000000, RecvMon: 13, Payload: []byte(`{"data":[{"symbol":"XBTUSDTM"},{"symbol":"ETHUSDTM"}]}`)},
+		{Venue: "okx", Channel: "gap", CSeq: 9, RecvWal: 1767225600000000000, RecvMon: 14, Payload: []byte(`{"event":"conn_closed","streams":["trades:BTC-USDT-SWAP"]}`)},
+	} {
+		w.Write(GroupTrade, r)
+	}
+	stop()
+	cases := []struct{ path, want string }{
+		{"okx/BTC-USDT-SWAP/20260101/trade.a.jsonl", `{"v":2,"wseq":1,"cseq":7,"rw":1767225600000000000,"rm":12,"p":{"ts":42,"price":"1.2300"}}`},
+		{"kucoin/_all/20260101/contracts.a.jsonl", `{"v":2,"wseq":2,"cseq":8,"rw":1767225600000000000,"rm":13,"p":{"data":[{"symbol":"XBTUSDTM"},{"symbol":"ETHUSDTM"}]}}`},
+		{"okx/gap/20260101/gap.a.jsonl", `{"v":2,"wseq":3,"cseq":9,"rw":1767225600000000000,"rm":14,"p":{"event":"conn_closed","streams":["trades:BTC-USDT-SWAP"]}}`},
+	}
+	for _, tc := range cases {
+		var want map[string]any
+		if err := json.Unmarshal([]byte(tc.want), &want); err != nil {
+			t.Fatal(err)
+		}
+		got := readAll(t, filepath.Join(dir, tc.path))
+		if !reflect.DeepEqual(got, []map[string]any{want}) {
+			t.Fatalf("%s: got %v want %v", tc.path, got, want)
+		}
 	}
 }
 func TestLRUAppend(t *testing.T) {

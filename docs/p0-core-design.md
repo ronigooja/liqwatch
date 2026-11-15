@@ -25,7 +25,7 @@ The validator reads the written log, not the live queue, so it can lag or crash 
 - Verified in code: connections are sharded by venue adapter and symbol group; see [adapter interface](../internal/venue/adapter.go). Exchange limits: [open questions](open-questions.md).
 - On read, before any parsing, take `recv_wall_ns` and `recv_mono_ns` and hand the raw bytes to the writer queue. Parsing for routing is limited to extracting the stream name.
 - Answer server ping frames promptly; do not rely on the exchange for liveness: a connection with no message for a per-channel timeout is treated as stalled and replaced.
-- Replacement connection: open the new connection and subscribe first, run both in parallel for a short overlap, then close the old one. Duplicates are kept in the log (tagged by connection id) and removed by the replay reader.
+- Replacement connection: open the new connection and subscribe first, run both in parallel for a short overlap, then close the old one. Duplicates are kept in the log and removed by exchange event identity in replay.
 - Reconnect or stall emits a `gap` marker record for every affected stream.
 - Planned restarts use an overlapping handoff between two slots ([0009](decisions/0009-zero-gap-handoff.md)).
 - Futures docs do not describe a shutdown event; treat any close as a reconnect.
@@ -41,11 +41,7 @@ The validator reads the written log, not the live queue, so it can lag or crash 
 
 Verified in code: the current writer uses [storage-design.md](storage-design.md), not the historical hourly layout below.
 
-Record envelope (one record per message, one record per line):
-
-```
-{"v":1,"wseq":<writer seq>,"conn":"<conn id>","cseq":<per-conn seq>,"rw":<recv wall ns>,"rm":<recv mono ns>,"ch":"<channel>","sym":"<SYMBOL>","p":<raw payload exactly as received>}
-```
+Verified: one JSONL record per filtered payload; the envelope and path contract are defined only in [storage design](storage-design.md#writing), governed by [0018](decisions/0018-path-based-raw-envelope.md).
 
 - The payload is embedded without re-serialization, so the original bytes are preserved. Source of truth for order: `(rm, wseq)`.
 - Exchange event time is not copied into the envelope; it stays in the payload and is read at parse time.
