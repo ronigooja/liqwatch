@@ -7,3 +7,11 @@ Counts: trades 77613, mark 17844, index 8655, OI 366, funding 66,
 liquidations 69, pongs 29 per connection; each connection also sent a notice.
 No error frame occurred. Index instId is the underlying index, not the swap ID.
 REST www.okx.com returned 200; aws.okx.com did not resolve on the build host.
+
+Ordinary records for every WebSocket channel have payload {"data":[{...}]};
+arg is omitted, and sym is resolved before filtering. Index data keeps its
+index instId while sym identifies the corresponding swap. Liquidation details
+are filtered individually. Unknown item and detail fields are retained and
+counted; periodic {"sample":<complete original frame>} records are unchanged.
+The recorded liquidation details contain ccy and bkLoss; instType occurs on
+its enclosing data item, not in details (all four liquidation fixture frames).

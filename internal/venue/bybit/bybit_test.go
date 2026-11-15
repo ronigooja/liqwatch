@@ -314,7 +314,7 @@ func TestFilteringAndSampling(t *testing.T) {
 	frame := `{"topic":"tickers.BTCUSDT","type":"delta","data":{"symbol":"BTCUSDT","bid1Price":"3","markPrice":"1.2300","newField":"\\u0031"},"cs":123,"ts":456}`
 	before := a.UnknownFieldsSeen()
 	r := a.Split(sh, []byte(frame))
-	want := `{"topic":"tickers.BTCUSDT","type":"delta","data":{"symbol":"BTCUSDT","markPrice":"1.2300","newField":"\\u0031"},"cs":123,"ts":456,"state":"partial"}`
+	want := `{"data":{"markPrice":"1.2300","newField":"\\u0031"},"cs":123,"ts":456,"state":"partial"}`
 	if len(r) != 2 || string(r[0].Payload) != want || string(r[1].Payload) != `{"sample":`+frame+`}` || a.UnknownFieldsSeen() != before+1 {
 		t.Fatalf("records: %+v unknown: %d", r, a.UnknownFieldsSeen()-before)
 	}
@@ -332,7 +332,7 @@ func TestFilteringAndSampling(t *testing.T) {
 	}
 	batch := `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"s":"BTCUSDT","p":"1.00","L":"PlusTick"},{"s":"BTCUSDT","p":"2.00","L":"MinusTick"}]}`
 	r = a.Split(sh, []byte(batch))
-	if len(r) != 3 || r[0].Symbol != "BTCUSDT" || string(r[0].Payload) != `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"p":"1.00"}]}` || string(r[1].Payload) != `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"p":"2.00"}]}` {
+	if len(r) != 3 || r[0].Symbol != "BTCUSDT" || string(r[0].Payload) != `{"ts":1,"data":[{"p":"1.00"}]}` || string(r[1].Payload) != `{"ts":1,"data":[{"p":"2.00"}]}` {
 		t.Fatal(r)
 	}
 	conflict := `{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1,"data":[{"s":"ETHUSDT","p":"1"}]}`

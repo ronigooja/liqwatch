@@ -51,6 +51,9 @@ func legacyFilterItem(channel string, entry []byte) ([]byte, error) {
 		name, _ := json.Marshal(key)
 		b.Write(name)
 		b.WriteByte(':')
+		if channel == "liquidation-orders" && key == "details" {
+			value = filterDetails(value)
+		}
 		b.Write(value)
 	}
 	b.WriteByte('}')
@@ -135,8 +138,7 @@ func legacySplit(a *Adapter, sh venue.Shard, msg []byte) []rawlog.Record {
 			out = append(out, gap(msg)...)
 			continue
 		}
-		payload := append([]byte(`{"arg":`), e.RawArg...)
-		payload = append(payload, `,"data":[`...)
+		payload := []byte(`{"data":[`)
 		payload = append(payload, filtered...)
 		payload = append(payload, ']', '}')
 		out = append(out, rawlog.Record{Channel: ch, Symbol: sym, Payload: payload})

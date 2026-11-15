@@ -50,7 +50,11 @@ func filterScannedItem(channel string, item scannedItem) []byte {
 			out = append(out, field.rawKey...)
 		}
 		out = append(out, ':')
-		out = append(out, field.value...)
+		value := field.value
+		if channel == "liquidation-orders" && field.key == "details" {
+			value = filterDetails(value)
+		}
+		out = append(out, value...)
 	}
 	return append(out, '}')
 }

@@ -79,7 +79,7 @@ func (a *Adapter) splitReference(sh venue.Shard, msg []byte) []rawlog.Record {
 		if array {
 			filtered = append(append([]byte{'['}, filtered...), ']')
 		}
-		payload, err := a.filterObject(msg, envelopePolicy, filtered)
+		payload, err := a.filterObject(msg, envelopeFor(ch), filtered)
 		if err != nil {
 			return gap(msg)
 		}

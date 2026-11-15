@@ -169,7 +169,7 @@ func TestFilteringAndSampling(t *testing.T) {
 	frame := `{"T":"mark-price","d":{"s":"X","mp":1.2300,"ip":"2.00","oi":"3","bp":"4","ts":1,"newField":"\\u0061"}}`
 	before := a.UnknownFields()
 	r := a.Split(sh, []byte(frame))
-	want := `{"T":"mark-price","d":{"s":"X","mp":1.2300,"ip":"2.00","oi":"3","ts":1,"newField":"\\u0061"}}`
+	want := `{"d":{"mp":1.2300,"ip":"2.00","oi":"3","ts":1,"newField":"\\u0061"}}`
 	if len(r) != 2 || string(r[0].Payload) != want || string(r[1].Payload) != `{"sample":`+frame+`}` || a.UnknownFields() != before+1 {
 		t.Fatalf("records %v unknown %d", r, a.UnknownFields()-before)
 	}
@@ -183,7 +183,7 @@ func TestFilteringAndSampling(t *testing.T) {
 	}
 	trade := `{"topic":"/contractMarket/execution:X","type":"message","subject":"match","sn":5,"data":{"symbol":"X","sequence":5,"side":"buy","size":1,"price":"1.00","takerOrderId":"a","makerOrderId":"b","tradeId":"5","ts":123}}`
 	r = a.Split(sh, []byte(trade))
-	if string(r[0].Payload) != `{"topic":"/contractMarket/execution:X","type":"message","subject":"match","data":{"symbol":"X","side":"buy","size":1,"price":"1.00","tradeId":"5","ts":123}}` {
+	if string(r[0].Payload) != `{"data":{"side":"buy","size":1,"price":"1.00","tradeId":"5","ts":123}}` {
 		t.Fatal(string(r[0].Payload))
 	}
 }

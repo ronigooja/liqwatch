@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ronigooja/liqwatch/internal/rawlog"
@@ -22,7 +23,11 @@ type Adapter struct {
 	MaxStreamsPerWS   int
 	WeightPerMinLimit int
 	universe          map[string]struct{}
+	unknown           atomic.Uint64
 }
+
+// UnknownFields returns the number of unrecognized data fields retained.
+func (a *Adapter) UnknownFields() uint64 { return a.unknown.Load() }
 
 func init() { venue.Register("binance", func() venue.Adapter { return &Adapter{} }) }
 
@@ -64,10 +69,31 @@ func (*Adapter) Heartbeat(venue.Shard) (time.Duration, func() (int, []byte)) { r
 func (a *Adapter) Split(_ venue.Shard, msg []byte) []rawlog.Record {
 	ch, sym := classify(msg)
 	if ch == "markPrice_all" || ch == "forceOrder_all" {
-		return SplitAllMarket(msg, a.universe)
+		return a.splitAllMarket(msg, a.universe)
 	}
 	if ch == "unknown" || sym == "" {
 		return unrecognized(msg)
+	}
+	if ch == "aggTrade" {
+		var frame map[string]json.RawMessage
+		if json.Unmarshal(msg, &frame) != nil {
+			return unrecognized(msg)
+		}
+		payload, err := a.filteredPayload(ch, frame["data"])
+		if err != nil {
+			return unrecognized(msg)
+		}
+		delete(frame, "stream")
+		var filtered map[string]json.RawMessage
+		if json.Unmarshal(payload, &filtered) != nil {
+			return unrecognized(msg)
+		}
+		frame["data"] = filtered["data"]
+		payload, err = json.Marshal(frame)
+		if err != nil {
+			return unrecognized(msg)
+		}
+		return []rawlog.Record{{Channel: ch, Symbol: sym, Payload: payload}}
 	}
 	return []rawlog.Record{{Channel: ch, Symbol: sym, Payload: msg}}
 }

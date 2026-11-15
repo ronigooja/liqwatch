@@ -12,3 +12,6 @@ Official instrument documentation lists mark/index and funding, not OI:
 https://www.kucoin.com/docs-new/3470087w0
 UTA V2 mark-price separately returned mp, ip, oi, ts on a keyless connection:
 https://www.kucoin.com/docs-new/3470358w0
+utamark.jsonl contains three unmodified p payloads from the 2026-11-15
+recording at root@64.118.141.231:/root/env-sample/data/raw/kucoin/
+{SOLUSDTM,ETHUSDTM,XBTUSDTM}/20261115/utamark.jsonl.
