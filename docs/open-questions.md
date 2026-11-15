@@ -99,6 +99,7 @@ Move an item to "Verified" with source and date once checked; field handling is 
 
 | Question | Evidence and scope |
 |---|---|
+| Unknown: do current history periods preserve every eligible row before upstream expiry? | Verified: [0019](decisions/0019-live-rest-recording-scope.md) leaves periods unchanged and request spreading not built. Inferred: completeness requires endpoint-specific retention and finalization evidence; an observed page size is not universal retention. |
 | Unknown: why did Bitget return HTTP 429 in the production-scheduler trial? | Measured: exact first-attempt endpoint/symbol failures are in [trial results](recording-results.md#rest-production-scheduler-trial), separate from the earlier field-review sample. Unknown: cause; retained evidence lacks response headers/body and exact request spacing. |
 | Unknown: will Bitget rate limits constrain production? | Verified 2026-11-15: official [trading-insight endpoints](https://www.bitget.com/docs/catalog/classic-common-apidata/classic-common-apidata) specify 1 request/s/IP each. Verified: [poller](../internal/poller/bitget.go) defaults to 1 request/s per channel; [HTTP wrapper](../internal/poller/venue.go) already handles `Retry-After`. |
 | Unknown: why is OKX currency `CT` unavailable to account ratio? | Measured: [trial](recording-results.md#rest-production-scheduler-trial) recorded `51012: Token does not exist` for `CT-USDT-SWAP`. Verified: [fix scope](poller.md#operation) is a channel/symbol cooldown, not instrument or mapping deletion. |

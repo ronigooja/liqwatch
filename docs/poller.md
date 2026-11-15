@@ -1,12 +1,12 @@
 # REST poller
 
-Verified in [code](../internal/poller/): the Go poller records REST data separately from the collector; governed by [0014](decisions/0014-daily-pack-storage.md), [0015](decisions/0015-recording-scope-and-granularity.md) and [0017](decisions/0017-poller-field-policies.md). Deployment: [infrastructure](infrastructure.md).
+Verified in [code](../internal/poller/): the Go poller records REST data separately from the collector. Scope: [0019](decisions/0019-live-rest-recording-scope.md); cadence: [0015](decisions/0015-recording-scope-and-granularity.md); fields: [0017](decisions/0017-poller-field-policies.md). Deployment: [infrastructure](infrastructure.md).
 
 ## Operation
 
 Verified in [main](../cmd/liqwatch-poller/main.go): `liqwatch-poller -config /etc/liqwatch/config.toml` accepts `-venue`, `-once`, and `-syms`. Verified in [venue.go](../internal/poller/venue.go): `Env` and `RegisterVenue` provide per-venue configuration under `[poller.venues.<name>]`, central User-Agent, and the mapped universe. State files are per venue.
 
-Verified in [history.go](../internal/poller/history.go): cursor and overlap support backward, forward, and window paging, coverage-based paging, deduplication and revision marking; `source_gap`, `retention_gap`, and daily `no_data` records describe missing data. An unfinished newest bucket is deferred until `ts + Step + Grace <= now`.
+Verified in [history.go](../internal/poller/history.go): cursor and overlap support backward, forward and window paging, coverage-based paging, deduplication and revision marking; `source_gap` and `retention_gap` describe missing data. Unfinished buckets wait until `ts + Step + Grace <= now`.
 
 Verified in [scheduler.go](../internal/poller/scheduler.go), implementation commit `2fbe5cb`: retry backoff and endpoint `RetryError.After` cooldown start after the failed fetch returns, not before its request/wait time.
 
@@ -14,7 +14,19 @@ Verified in [binance.go](../internal/poller/binance.go), implementation commit `
 
 Verified in [okx.go](../internal/poller/okx.go), commit `04ca1ec`: currency account-ratio code `51012` emits `unsupported` and uses the existing persisted 24 h no-data cooldown for that channel/symbol only. Other channels and the mapping remain enabled; [trial evidence](recording-results.md#rest-production-scheduler-trial).
 
-Verified in [poller implementations](../internal/poller/): default initial lookback is 2 h, without historical backfill. Periods are daily except Bitget history hourly; Gate `contractStats` uses 1-minute data. No venue polls open-interest history except Binance; funding history is polled only by Binance; insurance is not polled.
+Verified in [poller implementations](../internal/poller/): periods remain daily except Bitget history hourly; Gate `contractStats` uses 1-minute data. Only Binance polls open-interest and funding history; insurance is not polled.
+
+## Live recording boundary
+
+Verified in [scheduler.go](../internal/poller/scheduler.go) and [history.go](../internal/poller/history.go), implementation `332631b`: the [0019 scope](decisions/0019-live-rest-recording-scope.md#decision) applies to all history paging modes. The venue state is saved before any fetch; failure to save aborts scheduler creation.
+
+Verified in the same implementation: restarting reuses the saved boundary; no midnight reset or today-only truncation occurs. Older API rows are discarded locally, not stored; paging stops at the recording boundary rather than acquiring pre-start history.
+
+Verified in the same implementation: fresh empty histories keep normal scheduling without `no_data` or its 24 h cooldown. Explicit unsupported series retain their existing cooldown behavior; migrated cursor-bearing jobs retain `legacy_history` and existing state, overlap and no-data handling.
+
+Verified in [venue.go](../internal/poller/venue.go) and [binance.go](../internal/poller/binance.go), implementation `332631b`: deprecated `initial_lookback` does not widen fresh scope. Its `live_floor_test.go` covers restart, midnight, all paging modes and legacy migration.
+
+Verified: request spreading is deferred and not built ([0019](decisions/0019-live-rest-recording-scope.md)); periods and limits are unchanged. Coverage uncertainty: [open questions](open-questions.md#poller-field-policy-questions). Daily packing is [storage](decisions/0014-daily-pack-storage.md), not fetch cadence.
 
 ## Field policies
 
