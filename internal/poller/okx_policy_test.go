@@ -2,11 +2,17 @@ package poller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	okxvenue "github.com/ronigooja/liqwatch/internal/venue/okx"
 )
 
 func TestOKXPolicyClassification(t *testing.T) {
@@ -109,6 +115,45 @@ func TestOKXDropTaker(t *testing.T) {
 	got, record, err := ApplyPolicy("okx", "takerVolumeContract", []byte(`["1","2","3"]`))
 	if err != nil || record || got != nil {
 		t.Fatal("taker recorded")
+	}
+	clock := &fakeClock{time.UnixMilli(1000)}
+	sink := &memorySink{}
+	c := Channel{Venue: "okx", Name: "takerVolumeContract", Fetch: func(context.Context, string) ([]Record, error) {
+		return []Record{{Venue: "okx", Channel: "takerVolumeContract", Payload: []byte(`["1","2","3"]`)}}, nil
+	}}
+	s, err := NewScheduler([]Channel{c}, sink, clock, "", 240)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Step(context.Background()); err != nil || len(sink.records) != 0 {
+		t.Fatalf("sink=%v err=%v", sink.records, err)
+	}
+}
+
+func TestOKXUniverseUsesFetchedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"code":"0","msg":"","data":[{"instId":"BTC-USDT-SWAP","instType":"SWAP","state":"live","ctType":"linear","settleCcy":"USDT","instFamily":"","uly":"BTC-USDT"}]}`)
+	}))
+	defer server.Close()
+	a := &okxvenue.Adapter{InstrumentsURL: server.URL, HTTPClient: server.Client()}
+	syms, err := a.Symbols(context.Background())
+	if err != nil || len(syms) != 1 || syms[0] != "BTC-USDT-SWAP" {
+		t.Fatalf("symbols=%v err=%v", syms, err)
+	}
+	shards, err := a.Shards(context.Background(), syms)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, sh := range shards {
+		for _, stream := range sh.Streams {
+			if strings.Contains(stream, `"channel":"index-tickers"`) && strings.Contains(stream, `"instId":"BTC-USDT"`) {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("index fallback not built from fetched uly")
 	}
 }
 
