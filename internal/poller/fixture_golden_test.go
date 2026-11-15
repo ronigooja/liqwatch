@@ -65,6 +65,25 @@ func fixtureGolden(t *testing.T, venue string) []byte {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if !policiesDisabled && (venue == "mexc" && channel == "contractDetail" || venue == "bybit" && channel == "accountRatio") {
+			var envelope struct {
+				Data   []json.RawMessage `json:"data"`
+				Result struct {
+					List []json.RawMessage `json:"list"`
+				} `json:"result"`
+			}
+			if err := json.Unmarshal(raw, &envelope); err != nil {
+				t.Fatal(err)
+			}
+			rows := envelope.Data
+			if venue == "bybit" {
+				rows = envelope.Result.List
+			}
+			if len(rows) == 0 {
+				t.Fatalf("no rows in %s", path)
+			}
+			raw = rows[0]
+		}
 		fetch := SnapshotFetch(venue, channel, clock, SnapshotSpec{Mode: SnapshotPerSymbol, Fetch: func(context.Context, string) ([]byte, error) { return raw, nil }})
 		sink := &memorySink{}
 		channelSpec := Channel{Venue: venue, Name: channel, Fetch: func(ctx context.Context, _ string) ([]Record, error) { return fetch(ctx, "FIXTURE") }}
