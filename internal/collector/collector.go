@@ -31,6 +31,8 @@ type Collector struct {
 	shards   []Shard
 	adapter  venue.Adapter
 	throttle *throttler
+	// subscribeWrite overrides subscription writes for deterministic connection tests.
+	subscribeWrite func(context.Context, *websocket.Conn, []byte) error
 
 	// OnReconnect is called after a shard reopens following an unplanned disconnect, once the
 	// new connection is open. Planned 23 h replacements overlap and do not call it.
@@ -261,7 +263,13 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 				case <-t.C:
 				}
 			}
-			if err := ws.Write(ctx, websocket.MessageText, msg); err != nil {
+			write := c.subscribeWrite
+			if write == nil {
+				write = func(ctx context.Context, ws *websocket.Conn, msg []byte) error {
+					return ws.Write(ctx, websocket.MessageText, msg)
+				}
+			}
+			if err := write(ctx, ws, msg); err != nil {
 				writeErr <- err
 				cancel()
 				return
