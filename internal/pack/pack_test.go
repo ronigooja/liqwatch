@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +28,10 @@ func TestPack(t *testing.T) {
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				t.Fatal(err)
 			}
-			want := map[string]string{"trade.a.jsonl": "first\n", "mark.b.jsonl": "second\n"}
+			want := map[string]string{
+				"trade.a.jsonl":   "{\"v\":2,\"wseq\":1,\"cseq\":7,\"rw\":42,\"rm\":3,\"p\":{\"t\":40,\"cts\":41,\"sample\":{\"channel\":\"trade\",\"symbol\":\"s\"}}}\n",
+				"funding.p.jsonl": "{\"v\":2,\"rw\":42,\"rm\":3,\"meta\":{\"last_row_timestamp\":40,\"snapshot\":false},\"p\":{\"timepoint\":40,\"fundingRate\":\"0.0001\"}}\n",
+			}
 			for n, v := range want {
 				p := filepath.Join(dir, n)
 				if err := os.WriteFile(p, []byte(v), 0644); err != nil {
@@ -42,6 +46,13 @@ func TestPack(t *testing.T) {
 			result, err := Pack(raw, "v", "s", day, opts)
 			if err != nil {
 				t.Fatal(err)
+			}
+			ext := ".tar.zst"
+			if unit == ZstdThenTar {
+				ext = ".tar"
+			}
+			if result.Path != filepath.Join("v", "s", day+ext) {
+				t.Fatalf("identity lost: %s", result.Path)
 			}
 			f, err := os.Open(filepath.Join(out, result.Path))
 			if err != nil {
@@ -86,6 +97,26 @@ func TestPack(t *testing.T) {
 					t.Fatal(e)
 				}
 				found[name] = string(b)
+				// Restore the archive's venue/symbol/date plus the member's channel/slot.
+				extracted := filepath.Join(root, "extracted", "v", "s", day, name)
+				if err := os.MkdirAll(filepath.Dir(extracted), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(extracted, b, 0644); err != nil {
+					t.Fatal(err)
+				}
+				rel, err := filepath.Rel(filepath.Join(root, "extracted"), extracted)
+				if err != nil {
+					t.Fatal(err)
+				}
+				parts := strings.Split(rel, string(filepath.Separator))
+				if !reflect.DeepEqual(parts, []string{"v", "s", day, name}) {
+					t.Fatal(parts)
+				}
+				channel := strings.Split(strings.TrimSuffix(parts[3], ".jsonl"), ".")[0]
+				if channel != "trade" && channel != "funding" {
+					t.Fatal(channel)
+				}
 			}
 			if len(found) != len(want) {
 				t.Fatal(found)

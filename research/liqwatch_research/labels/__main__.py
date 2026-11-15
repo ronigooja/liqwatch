@@ -1,22 +1,18 @@
 """Read raw sample directly for exploratory checks, not a replacement for replay."""
 import argparse
-import json
 
 import polars as pl
-import zstandard
 
 from . import HORIZONS, labels
+from ..replay import read_records
 
 
 def read_raw(path, symbols):
     rows = {sym: [] for sym in symbols}
-    with open(path, 'rb') as source, zstandard.ZstdDecompressor().stream_reader(source) as stream:
-        import io
-        for line in io.TextIOWrapper(stream, encoding='utf-8'):
-            record = json.loads(line)
-            if record['ch'] == 'aggTrade' and record['sym'] in rows:
-                data = record['p']['data']
-                rows[record['sym']].append((record['rw'], float(data['p']), float(data['q']), data['m'], data['a']))
+    for record in read_records([path]):
+        if record['ch'] == 'aggTrade' and record['sym'] in rows:
+            data = record['p']['data']
+            rows[record['sym']].append((record['rw'], float(data['p']), float(data['q']), data['m'], data['a']))
     result = {}
     for sym, values in rows.items():
         if not values:

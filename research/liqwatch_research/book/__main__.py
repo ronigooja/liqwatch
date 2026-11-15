@@ -1,9 +1,6 @@
 import argparse
-import json
-
-import zstandard
-
 from . import Validator
+from ..replay import read_records
 
 
 def main():
@@ -12,10 +9,8 @@ def main():
     parser.add_argument('--output', default='quality.parquet')
     args = parser.parse_args()
     validator = Validator()
-    for path in args.validate:
-        with zstandard.open(path, 'rt', encoding='utf-8') as source:
-            for line in source:
-                validator.feed(json.loads(line))
+    for record in read_records(args.validate):
+        validator.feed(record)
     summary = validator.finish()
     validator.write_parquet(args.output)
     for sym, s in sorted(summary.items()):

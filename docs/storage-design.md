@@ -26,10 +26,20 @@ Raw venue symbol names are kept in paths. Mapping (`1000PEPE` to `PEPE`, `XBT` t
 | Path | `raw/<venue>/<symbol>/<UTC date>/<channel>.<slot>.jsonl` |
 | Split | Every channel is split by symbol: trades, mark (with index and funding), liquidations, open interest, long/short ratios, leverage tiers, index constituents. A liquidation file exists only if that symbol had a liquidation that day |
 | All-market streams | Binance mark price (array) and liquidation streams are cut into one record per symbol, each keeping the original envelope shape. See [adapter filtering](venue-adapters.md#recorded-content) for other transformations |
-| Content | Filtered payload appended uncompressed; see [recorded content](venue-adapters.md#recorded-content). Envelope: existing fields (receive wall and monotonic time, channel, symbol, connection id, sequence) plus `venue`. Exchange timestamps stay in the payload; MEXC `t` and `cts` must be kept |
+| Content | Verified: filtered payload appended uncompressed; [recorded content](venue-adapters.md#recorded-content). Version 2 envelope below follows [0018](decisions/0018-path-based-raw-envelope.md) |
 | Rotation | UTC day boundary only. One file per symbol per channel per day; no size limit, no sequence number |
-| Processes | One collector process per venue (own reconnects, limits, token handshakes); slots a/b and handoff per [0009](decisions/0009-zero-gap-handoff.md). Polled data is written by the poller, with `venue` added |
+| Processes | One collector process per venue (own reconnects, limits, token handshakes); slots a/b and handoff per [0009](decisions/0009-zero-gap-handoff.md). Poller files use slot `p` |
 | Gaps | One gap file per venue per day: disconnects, queue drops, reconnects. Poll failures and history gaps are recorded by the [poller](poller.md) |
+
+Verified in [rawlog](../internal/rawlog/writer.go) and [poller](../internal/poller/sink.go): new envelopes use `v:2`, `rw` (wall ns), `rm` (process monotonic ns), and `p`. Collector adds `wseq` and `cseq`; poller retains `meta`.
+
+Verified: identity exists only in the path: venue directory, raw-symbol directory and channel filename (remove optional lowercase slot before `.jsonl`). `_all` means a bulk payload, not one symbol; `gap/gap` identifies venue-level gap records.
+
+Verified: affected symbols/channels in gaps and individual symbols in bulk responses remain in payloads. Exchange timestamps remain in `p`, including MEXC `t` and `cts`. `conn` is not stored. Existing version 1 files are unchanged.
+
+Verified: pack paths preserve venue/symbol/date and tar member names preserve channel/slot; extract into that layout before reading. Compact files renamed outside this layout cannot recover identity. Reader compatibility is specified in [0018](decisions/0018-path-based-raw-envelope.md).
+
+Verified in [research poller](../research/liqwatch_research/poll/__init__.py): its legacy mixed-channel hourly files lack path identity and retain version 1. This is not the production Go poller format; migrating that writer requires a separate layout change.
 
 The collector only appends text and opens no compressor. Measured in the trial: writing zstd per file with a frame closed every 5 s kept one core near full at 522 symbols plus splitting (Binance only).
 
