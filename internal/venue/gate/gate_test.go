@@ -228,7 +228,7 @@ func TestClassesAndObject(t *testing.T) {
 	}
 	msg := []byte(`{"channel":"futures.contract_info","event":"all","result":{"contract":"BTC_USDT","quanto_multiplier":"0.001"}}`)
 	r := a.Split(sh[0], msg)
-	if len(r) < 1 || r[0].Channel != "contract_info" || string(r[0].Payload) != string(msg) {
+	if len(r) < 1 || r[0].Channel != "contract_info" || string(r[0].Payload) != `{"event":"all","result":{"quanto_multiplier":"0.001"}}` {
 		t.Fatal(r)
 	}
 	msg = []byte(`{"channel":"futures.contract_stats","event":"update","result":[{"contract":"BTC_USDT","open_interest":123}]}`)
@@ -254,7 +254,7 @@ func TestFilterAndHourlySample(t *testing.T) {
 	sh, _ := a.Shards(context.Background(), []string{"BTC_USDT"})
 	msg := []byte(`{"time":123,"channel":"futures.tickers","event":"update","result":[{"contract":"BTC_USDT","last":"1","mark_price":"1.0000","mystery":1.2300},{"contract":"BTC_USDT","volume_24h":"5","index_price":"2.00"}]}`)
 	r := a.Split(sh[0], msg)
-	if len(r) != 3 || string(r[0].Payload) != `{"time":123,"channel":"futures.tickers","event":"update","result":[{"contract":"BTC_USDT","mark_price":"1.0000","mystery":1.2300}]}` || strings.Contains(string(r[1].Payload), "volume_24h") || string(r[2].Payload) != `{"sample":`+string(msg)+`}` || a.UnknownFields() != 1 {
+	if len(r) != 3 || string(r[0].Payload) != `{"time":123,"result":[{"mark_price":"1.0000","mystery":1.2300}]}` || strings.Contains(string(r[1].Payload), "volume_24h") || string(r[2].Payload) != `{"sample":`+string(msg)+`}` || a.UnknownFields() != 1 {
 		t.Fatalf("records=%+v unknown=%d", r, a.UnknownFields())
 	}
 	if len(a.Split(sh[0], msg)) != 2 {
@@ -271,12 +271,12 @@ func TestContractStatsClassification(t *testing.T) {
 	sh, _ := a.Shards(context.Background(), []string{"BTC_USDT"})
 	msg := []byte(`{"channel":"futures.contract_stats","event":"update","result":[{"contract":"BTC_USDT","time":1,"open_interest":"1","open_interest_usd":"2","lsr_account":"3","lsr_taker":"4","top_lsr_account":"5","top_lsr_size":"6","mark_price":"7","long_liq_amount":"8","long_liq_size":"9","long_liq_usd":"10","short_liq_amount":"11","short_liq_size":"12","short_liq_usd":"13"}]}`)
 	r := a.Split(sh[0], msg)
-	if len(r) == 0 || string(r[0].Payload) != string(msg) || a.UnknownFields() != 0 {
+	if len(r) == 0 || strings.Contains(string(r[0].Payload), `"contract"`) || a.UnknownFields() != 0 {
 		t.Fatalf("records=%+v unknown=%d", r, a.UnknownFields())
 	}
 	ticker := []byte(`{"channel":"futures.tickers","event":"update","result":[{"contract":"BTC_USDT","event_type":"update","last":"1"}]}`)
 	r = a.Split(sh[0], ticker)
-	if len(r) == 0 || strings.Contains(string(r[0].Payload), `"last"`) || !strings.Contains(string(r[0].Payload), `"event_type"`) || a.UnknownFields() != 0 {
+	if len(r) == 0 || strings.Contains(string(r[0].Payload), `"last"`) || strings.Contains(string(r[0].Payload), `"event_type"`) || a.UnknownFields() != 0 {
 		t.Fatalf("records=%+v unknown=%d", r, a.UnknownFields())
 	}
 }

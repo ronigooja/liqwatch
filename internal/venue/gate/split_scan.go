@@ -136,13 +136,14 @@ func (a *Adapter) scanSplit(sh venue.Shard, msg []byte) ([]rawlog.Record, bool) 
 		if array {
 			filtered = append(append([]byte{'['}, filtered...), ']')
 		}
+		envelope := envelopeFor(ch)
 		payload := []byte{'{'}
 		for _, field := range root.children {
 			k := field.key
-			if envelopePolicy.drop[k] {
+			if envelope.drop[k] {
 				continue
 			}
-			if !envelopePolicy.keep[k] {
+			if !envelope.keep[k] {
 				a.unknownFields.Add(1)
 			}
 			if len(payload) > 1 {

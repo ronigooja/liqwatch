@@ -35,18 +35,26 @@ func fields(names ...string) map[string]bool {
 
 var policies = map[string]fieldPolicy{
 	// Trades: execution and contract-unit metadata.
-	"trades": {fields("contract", "id", "size", "price", "create_time", "create_time_ms", "time", "time_ms", "t", "quanto_multiplier"), fields()},
+	"trades": {fields("id", "size", "price", "create_time_ms", "time", "time_ms", "t", "quanto_multiplier", "is_internal"), fields("contract", "create_time")},
 	// Liquidations: execution and contract-unit metadata.
-	"liquidations": {fields("contract", "size", "price", "time", "time_ms", "t", "create_time", "create_time_ms", "id", "quanto_multiplier"), fields()},
+	"liquidations": {fields("size", "price", "time", "time_ms", "t", "create_time", "create_time_ms", "id", "quanto_multiplier"), fields("contract")},
 	// Mark, index, funding, and open interest; ticker statistics are excluded.
-	"tickers": {fields("contract", "mark_price", "index_price", "funding_rate", "funding_rate_indicative", "funding_interval", "funding_offset", "funding_next_apply", "total_size", "time", "time_ms", "t", "quanto_multiplier", "event_type"), fields("last", "change_percentage", "volume_24h", "volume_24h_base", "volume_24h_quote", "volume_24h_settle", "quanto_base_rate", "low_24h", "high_24h", "price_type", "change_from", "change_price", "highest_bid", "highest_size", "lowest_ask", "lowest_size", "bid", "ask", "bid_size", "ask_size")},
+	"tickers": {fields("mark_price", "index_price", "funding_rate", "funding_next_apply", "time", "time_ms", "t", "quanto_multiplier"), fields("contract", "funding_rate_indicative", "funding_interval", "funding_offset", "total_size", "event_type", "last", "change_percentage", "volume_24h", "volume_24h_base", "volume_24h_quote", "volume_24h_settle", "quanto_base_rate", "low_24h", "high_24h", "price_type", "change_from", "change_price", "highest_bid", "highest_size", "lowest_ask", "lowest_size", "bid", "ask", "bid_size", "ask_size")},
 	// Open interest, ratios, mark price and liquidation statistics.
-	"contract_stats": {fields("contract", "time", "time_ms", "t", "open_interest", "open_interest_usd", "lsr_account", "lsr_taker", "top_lsr_account", "top_lsr_size", "mark_price", "long_liq_amount", "long_liq_size", "long_liq_usd", "short_liq_amount", "short_liq_size", "short_liq_usd"), fields()},
+	"contract_stats": {fields("time", "time_ms", "t", "open_interest", "open_interest_usd", "lsr_account", "lsr_taker", "top_lsr_account", "top_lsr_size", "mark_price", "long_liq_amount", "long_liq_size", "long_liq_usd", "short_liq_amount", "short_liq_size", "short_liq_usd"), fields("contract")},
 	// Contract units, leverage tiers, funding, mark, index, and open interest.
-	"contract_info": {fields("contract", "time", "time_ms", "t", "quanto_multiplier", "order_price_round", "mark_price_round", "risk_limit_tiers", "mark_price", "index_price", "funding_rate", "funding_next_apply", "total_size", "leverage_min", "leverage_max", "leverage_tiers"), fields("last", "change_percentage", "volume_24h", "volume_24h_base", "volume_24h_quote", "volume_24h_settle", "quanto_base_rate", "low_24h", "high_24h", "highest_bid", "highest_size", "lowest_ask", "lowest_size", "bid", "ask", "bid_size", "ask_size")},
+	"contract_info": {fields("time", "time_ms", "t", "quanto_multiplier", "risk_limit_tiers", "mark_price", "index_price", "funding_rate", "funding_next_apply", "total_size", "leverage_min", "leverage_max", "leverage_tiers"), fields("contract", "order_price_round", "mark_price_round", "last", "change_percentage", "volume_24h", "volume_24h_base", "volume_24h_quote", "volume_24h_settle", "quanto_base_rate", "low_24h", "high_24h", "highest_bid", "highest_size", "lowest_ask", "lowest_size", "bid", "ask", "bid_size", "ask_size")},
 }
 
-var envelopePolicy = fieldPolicy{fields("channel", "event", "time", "time_ms", "result"), fields("conn_id", "trace_id")}
+var envelopePolicy = fieldPolicy{fields("event", "time", "time_ms", "result"), fields("channel", "conn_id", "trace_id")}
+var updateEnvelopePolicy = fieldPolicy{fields("time", "time_ms", "result"), fields("channel", "event", "conn_id", "trace_id")}
+
+func envelopeFor(ch string) fieldPolicy {
+	if ch == "contract_info" {
+		return envelopePolicy
+	}
+	return updateEnvelopePolicy
+}
 
 var frameSampler = struct {
 	sync.Mutex
@@ -311,7 +319,7 @@ func (a *Adapter) splitFallback(sh venue.Shard, msg []byte) []rawlog.Record {
 		if array {
 			filtered = append(append([]byte{'['}, filtered...), ']')
 		}
-		payload, err := a.filterObject(msg, envelopePolicy, filtered)
+		payload, err := a.filterObject(msg, envelopeFor(ch), filtered)
 		if err != nil {
 			return gap(msg)
 		}
