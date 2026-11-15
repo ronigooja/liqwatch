@@ -22,6 +22,11 @@ func TestOKXPolicyClassification(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.channel, func(t *testing.T) {
+			before := UnknownFields("okx", tc.channel)
+			got, record, err := ApplyPolicy("okx", tc.channel, []byte(`{"data":[{"newField":1}]}`))
+			if err != nil || !record || string(got) != `{"data":[{"newField":1}]}` || UnknownFields("okx", tc.channel)-before != 1 {
+				t.Fatal("nested unknown not retained and counted")
+			}
 			for _, group := range []struct {
 				names string
 				keep  bool
@@ -173,6 +178,45 @@ func TestOKXPolicyTimestamps(t *testing.T) {
 		p, ok := policies.m[policyKey{"okx", ch}]
 		if !ok || p.TimestampKey != "" || p.TimestampIndex != nil || p.TimestampPath != "" {
 			t.Fatalf("unexpected timestamp registration: %s", ch)
+		}
+	}
+}
+
+// Each removed classification must change either the retained bytes or the
+// unknown-field count checked independently by TestOKXPolicyClassification.
+func TestOKXPolicyMutations(t *testing.T) {
+	for _, channel := range []string{"instruments", "positionTiers"} {
+		policies.RLock()
+		p := policies.m[policyKey{"okx", channel}]
+		policies.RUnlock()
+		nested := p.Nested["data[]"]
+		for _, group := range []struct {
+			fields []string
+			keep   bool
+		}{{nested.Keep, true}, {nested.Drop, false}} {
+			for i, name := range group.fields {
+				mutated := nested
+				fields := append([]string(nil), group.fields...)
+				fields = append(fields[:i], fields[i+1:]...)
+				if group.keep {
+					mutated.Keep = fields
+				} else {
+					mutated.Drop = fields
+				}
+				raw := []byte(fmt.Sprintf(`{"data":[{%q:1.2300}],"novel":true}`, name))
+				var unknown uint64
+				got, err := filterPolicy(raw, p, map[string]Policy{"data[]": mutated}, "", &unknown)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := `{"data":[{}],"novel":true}`
+				if group.keep {
+					want = fmt.Sprintf(`{"data":[{%q:1.2300}],"novel":true}`, name)
+				}
+				if string(got) == want && unknown == 1 {
+					t.Errorf("%s/%s mutation survived", channel, name)
+				}
+			}
 		}
 	}
 }
