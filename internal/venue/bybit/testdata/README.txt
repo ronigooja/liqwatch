@@ -1,5 +1,10 @@
 Bybit live fixtures, captured 2026-11-13 UTC from the Linux build host.
 
+Verified: recorded-20261115.jsonl contains AVAXUSDT payloads from
+/root/env-sample/data/raw/bybit/AVAXUSDT/20261115/ on 2026-11-15.
+The mark snapshot and delta are reconstructed ordinary recorded payloads, not
+original websocket frames. Trade and liquidation are complete sample frames.
+
 Measured: frames.jsonl retains up to three frames per topic/type/control from a
 9m59s connection to wss://stream.bybit.com/v5/public/linear, subscribed to
 publicTrade, tickers and allLiquidation for BTCUSDT, ETHUSDT, SOLUSDT,
