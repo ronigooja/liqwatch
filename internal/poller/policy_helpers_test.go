@@ -9,6 +9,66 @@ import (
 	"time"
 )
 
+// fixtureChannels names the actual policy channel, not the capture filename.
+// Fixtures of channels without a policy are explicitly excluded.
+var fixtureChannels = map[string]map[string]string{
+	"binance": {},
+	"bitget":  {"contracts.json": "contracts", "query-position-lever.json": "positionTiers", "taker-buy-sell.json": "takerBuySell", "position-long-short.json": "unregistered", "long-short.json": "unregistered", "account-long-short.json": "unregistered"},
+	"bybit":   {"risk-fixture.json": "riskLimit", "instruments-fixture.json": "instruments", "ratio-fixture.json": "accountRatio"},
+	"gate":    {"fixture-contract_stats.json": "contractStats", "fixture-risk_limit_tiers.json": "riskLimitTiers", "fixture-contracts.json": "contracts"},
+	"kucoin":  {"contracts.json": "contracts", "risk.json": "riskLimit"},
+	"mexc":    {"detail.json": "contractDetail"},
+	"okx":     {"response0.json": "unregistered", "response1.json": "unregistered", "response2.json": "unregistered", "response3.json": "takerVolumeContract", "response4.json": "unregistered", "response5.json": "positionTiers", "response6.json": "instruments"},
+}
+
+// Binance snapshots are exercised by TestBinancePolicyGolden's JSONL samples.
+var noFixtureOK = map[string]map[string]string{
+	"binance": {"constituents": "JSONL sample", "takerlongshortRatio": "JSONL sample", "openInterestHist": "JSONL sample", "topLongShortPositionRatio": "JSONL sample", "topLongShortAccountRatio": "JSONL sample", "globalLongShortAccountRatio": "JSONL sample", "fundingRate": "JSONL sample", "brackets": "JSONL sample", "exchangeInfo": "JSONL sample"},
+}
+
+func assertFixtureCoverage(t *testing.T, venue string) {
+	t.Helper()
+	if policiesDisabled {
+		t.Fatal("policies must be enabled")
+	}
+	covered := map[string]bool{}
+	for file, channel := range fixtureChannels[venue] {
+		if _, err := os.Stat(filepath.Join("testdata", venue, file)); err != nil {
+			t.Fatal(err)
+		}
+		if channel == "unregistered" {
+			continue
+		}
+		policies.RLock()
+		_, ok := policies.m[policyKey{venue, channel}]
+		policies.RUnlock()
+		if !ok {
+			t.Fatalf("fixture %s maps to missing policy %s/%s", file, venue, channel)
+		}
+		covered[channel] = true
+	}
+	policies.RLock()
+	var drops []string
+	for key, policy := range policies.m {
+		if key.venue != venue {
+			continue
+		}
+		if !covered[key.channel] && noFixtureOK[venue][key.channel] == "" {
+			t.Errorf("no fixture for registered policy %s/%s", venue, key.channel)
+		}
+		if policy.DropChannel {
+			drops = append(drops, key.channel)
+		}
+	}
+	policies.RUnlock()
+	for _, ch := range drops {
+		_, record, err := ApplyPolicy(venue, ch, []byte(`{}`))
+		if err != nil || record {
+			t.Errorf("drop policy %s/%s wrote a record: %v", venue, ch, err)
+		}
+	}
+}
+
 // withoutPolicies disables policies for a non-parallel test and its subtests.
 func withoutPolicies(t *testing.T) {
 	t.Helper()
@@ -21,15 +81,13 @@ func withoutPolicies(t *testing.T) {
 // filtered golden. GENERATE_VENUE_GOLDEN=<venue> creates or replaces it.
 func assertVenueGolden(t *testing.T, venue string) {
 	t.Helper()
+	assertFixtureCoverage(t, venue)
 	path := filepath.Join("testdata", venue, "golden-filtered.txt")
 	generate := os.Getenv("GENERATE_VENUE_GOLDEN") == venue
 	var want []byte
 	if !generate {
 		var err error
 		want, err = os.ReadFile(path)
-		if os.IsNotExist(err) {
-			t.Skipf("filtered golden absent: %s", path)
-		}
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,10 +201,5 @@ func TestPolicyHelpers(t *testing.T) {
 	})
 	if got, record, err := ApplyPolicy(venue, channel, []byte(`{"ts":42,"dropped":1}`)); err != nil || !record || string(got) != `{"ts":42}` || policiesDisabled {
 		t.Fatal("policies not restored")
-	}
-	// The missing golden must skip before attempting to load nonexistent fixtures.
-	ok := t.Run("missing golden", func(t *testing.T) { assertVenueGolden(t, "policy-no-such-venue") })
-	if !ok {
-		t.Fatal("missing golden must skip")
 	}
 }

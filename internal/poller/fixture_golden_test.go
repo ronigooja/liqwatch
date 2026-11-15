@@ -49,12 +49,41 @@ func fixtureGolden(t *testing.T, venue string) []byte {
 	var got []fixtureGoldenRecord
 	clock := &fakeClock{time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}
 	for _, path := range paths {
+		venue := filepath.Base(filepath.Dir(path))
+		channel := strings.TrimSuffix(filepath.Base(path), ".json")
+		if !policiesDisabled {
+			var ok bool
+			channel, ok = fixtureChannels[venue][filepath.Base(path)]
+			if !ok {
+				t.Fatalf("unmapped fixture: %s", path)
+			}
+			if channel == "unregistered" {
+				continue
+			}
+		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		venue := filepath.Base(filepath.Dir(path))
-		channel := strings.TrimSuffix(filepath.Base(path), ".json")
+		if !policiesDisabled && (venue == "mexc" && channel == "contractDetail" || venue == "bybit" && channel == "accountRatio") {
+			var envelope struct {
+				Data   []json.RawMessage `json:"data"`
+				Result struct {
+					List []json.RawMessage `json:"list"`
+				} `json:"result"`
+			}
+			if err := json.Unmarshal(raw, &envelope); err != nil {
+				t.Fatal(err)
+			}
+			rows := envelope.Data
+			if venue == "bybit" {
+				rows = envelope.Result.List
+			}
+			if len(rows) == 0 {
+				t.Fatalf("no rows in %s", path)
+			}
+			raw = rows[0]
+		}
 		fetch := SnapshotFetch(venue, channel, clock, SnapshotSpec{Mode: SnapshotPerSymbol, Fetch: func(context.Context, string) ([]byte, error) { return raw, nil }})
 		sink := &memorySink{}
 		channelSpec := Channel{Venue: venue, Name: channel, Fetch: func(ctx context.Context, _ string) ([]Record, error) { return fetch(ctx, "FIXTURE") }}
