@@ -118,3 +118,28 @@ func TestPolicySchedulerIntegration(t *testing.T) {
 		t.Fatalf("unknown=%d", got)
 	}
 }
+
+func TestPolicyTimestampPaths(t *testing.T) {
+	zero := 0
+	cases := []struct {
+		name  string
+		p     Policy
+		valid bool
+	}{
+		{"nested-drop", Policy{TimestampPath: "result.list[]", TimestampKey: "timestamp", Nested: map[string]Policy{"result": {Keep: []string{"list"}}, "result.list[]": {Drop: []string{"timestamp"}}}}, false},
+		{"nested-omit", Policy{TimestampPath: "data[]", TimestampKey: "ts", Nested: map[string]Policy{"data[]": {Keep: []string{"ratio"}}}}, false},
+		{"ancestor-drop", Policy{TimestampPath: "result.list[]", TimestampKey: "ts", Drop: []string{"result"}, Nested: map[string]Policy{"result": {}, "result.list[]": {Keep: []string{"ts"}}}}, false},
+		{"missing-path", Policy{TimestampPath: "data[]", TimestampKey: "ts"}, false},
+		{"nested-index-drop", Policy{TimestampPath: "data[]", TimestampIndex: &zero, Nested: map[string]Policy{"data[]": {DropIndexes: []int{0}}}}, false},
+		{"nested-index-omit", Policy{TimestampPath: "data[]", TimestampIndex: &zero, Nested: map[string]Policy{"data[]": {KeepIndexes: []int{1}}}}, false},
+		{"nested-valid", Policy{TimestampPath: "data[]", TimestampKey: "ts", Nested: map[string]Policy{"data[]": {Keep: []string{"ts"}}}}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := RegisterPolicy("policy-path-test", tc.name, tc.p)
+			if (err == nil) != tc.valid {
+				t.Fatalf("registration: %v", err)
+			}
+		})
+	}
+}
