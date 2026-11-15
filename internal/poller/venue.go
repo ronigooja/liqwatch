@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -273,27 +272,18 @@ func (e *Env) Request(ctx context.Context, method, path string, q url.Values, bo
 	if body != nil && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	started := e.Clock.Now()
 	resp, err := e.Doer.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == 429 || resp.StatusCode == 418 {
+		return nil, rateLimitError(req, resp, started, e.Clock.Now(), e.Clock)
+	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
 		return nil, err
-	}
-	if resp.StatusCode == 429 || resp.StatusCode == 418 {
-		delay := 60 * time.Second
-		value := resp.Header.Get("Retry-After")
-		if n, e2 := strconv.ParseFloat(value, 64); e2 == nil {
-			delay = time.Duration(n * float64(time.Second))
-		} else if t, e2 := http.ParseTime(value); e2 == nil {
-			delay = t.Sub(e.Clock.Now())
-		}
-		if delay < time.Second {
-			delay = time.Second
-		}
-		return nil, &RetryError{fmt.Errorf("HTTP %d", resp.StatusCode), delay}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("HTTP %d: %.200s", resp.StatusCode, raw)

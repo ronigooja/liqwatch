@@ -192,30 +192,22 @@ func (b *Binance) requestPage(ctx context.Context, name, sym string, start, end 
 	if series {
 		b.HistoryRequests.Add(1)
 	}
+	started := b.Clock.Now()
 	resp, err := b.Doer.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	received := b.Clock.Now()
 	if series && resp.Header.Get("x-mbx-used-weight-1m") == "" {
 		b.HistoryResponsesWithoutWeight.Add(1)
+	}
+	if resp.StatusCode == 429 || resp.StatusCode == 418 {
+		return nil, rateLimitError(req, resp, started, received, b.Clock)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
 		return nil, err
-	}
-	if resp.StatusCode == 429 || resp.StatusCode == 418 {
-		delay := 60 * time.Second
-		value := resp.Header.Get("Retry-After")
-		if n, e := strconv.ParseFloat(value, 64); e == nil {
-			delay = time.Duration(n * float64(time.Second))
-		} else if t, e := http.ParseTime(value); e == nil {
-			delay = t.Sub(b.Clock.Now())
-		}
-		if delay < time.Second {
-			delay = time.Second
-		}
-		return nil, &RetryError{fmt.Errorf("HTTP %d", resp.StatusCode), delay}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, raw)
