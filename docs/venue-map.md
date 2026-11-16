@@ -14,9 +14,13 @@ Verified in [match.go](../cmd/liqwatch-mapgen/match.go): normalize scale prefixe
 
 Verified in [main.go](../cmd/liqwatch-mapgen/main.go): regenerate using `liqwatch-mapgen -existing config/venue-map.toml -diff -out /tmp/venue-map.toml`; inspect output before replacing the checked-in file. Existing `reviewed`, `review`, and `rejected` decisions and missing proposals are retained. Live discovery and prices can change proposals; `-diff` prints changes and review entries.
 
+Verified: the scoped MEXC cleanup manually removes only associations supported by [official delisting evidence](open-questions.md#mexc-delisted-mapping-associations). Discovery absence alone does not delete durable decisions.
+
+Verified in [regression tests](../cmd/liqwatch-mapgen/fetch_test.go): after that cleanup, missing contract-detail rows cannot be proposed from stale tickers alone. No blacklist or tombstone is added; any future relisting requires separate verification.
+
 ## Checked-in counts
 
-Measured from [the map](../config/venue-map.toml), 2026-11-13; counts are rows, not verified token identity or live coverage.
+Measured from [the map](../config/venue-map.toml), 2026-11-16; counts are rows, not verified token identity or live coverage.
 
 | Venue | auto | reviewed | review | rejected |
 |---|---:|---:|---:|---:|
@@ -24,7 +28,7 @@ Measured from [the map](../config/venue-map.toml), 2026-11-13; counts are rows, 
 | Bybit | 461 | 9 | 3 | 1 |
 | Gate | 492 | 8 | 4 | 3 |
 | KuCoin | 477 | 9 | 4 | 0 |
-| MEXC | 501 | 12 | 5 | 1 |
+| MEXC | 496 | 12 | 5 | 1 |
 | OKX | 264 | 2 | 1 | 4 |
 
 ## Entries needing review
