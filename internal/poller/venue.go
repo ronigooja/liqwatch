@@ -372,5 +372,14 @@ func (e *Env) HistoryChannel(name string, s HistorySpec) Channel {
 
 // SnapshotChannel builds a daily snapshot channel (no dedup); see SnapshotMode.
 func (e *Env) SnapshotChannel(name string, s SnapshotSpec) Channel {
-	return e.Channel(name, ChannelSpec{PerSymbol: s.Mode == SnapshotPerSymbol, Daily: true, Fetch: SnapshotFetch(e.Venue, name, e.Clock, s)})
+	return e.Channel(name, ChannelSpec{PerSymbol: s.Mode == SnapshotPerSymbol, Daily: true,
+		Fetch: func(ctx context.Context, symbol string) ([]Record, error) {
+			// Resolve after factory construction: NewVenue installs map-based scope
+			// after the factory returns; nil means discovery/configuration is pending.
+			spec := s
+			if spec.Mode == SnapshotSplit {
+				spec.Universe = e.Universe
+			}
+			return SnapshotFetch(e.Venue, name, e.Clock, spec)(ctx, symbol)
+		}})
 }

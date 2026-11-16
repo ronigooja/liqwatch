@@ -20,6 +20,12 @@ Verified in [poller implementations](../internal/poller/): periods remain daily 
 
 ## Live recording boundary
 
+Verified in [snapshot.go](../internal/poller/snapshot.go) and [binance.go](../internal/poller/binance.go): split bulk snapshots emit only the effective per-symbol universe (including `-syms`); whole-response snapshots and diagnostic gaps are not filtered.
+
+Verified in [snapshot_scope_test.go](../internal/poller/snapshot_scope_test.go): Gate uses mapped usable symbols; Binance uses discovered active symbols intersected with `-syms`, without narrowing discovery state.
+
+Verified in the same tests: a configured empty universe emits no split records; an unset scope leaves standalone decoding unfiltered. Scope changes are resolved at fetch time.
+
 Verified in [scheduler.go](../internal/poller/scheduler.go) and [history.go](../internal/poller/history.go), implementation `332631b`: the [0019 scope](decisions/0019-live-rest-recording-scope.md#decision) applies to all history paging modes. The venue state is saved before any fetch; failure to save aborts scheduler creation.
 
 Verified in the same implementation: restarting reuses the saved boundary; no midnight reset or today-only truncation occurs. Older API rows are discarded locally, not stored; paging stops at the recording boundary rather than acquiring pre-start history.

@@ -34,6 +34,9 @@ type SnapshotSpec struct {
 	Fetch func(ctx context.Context, symbol string) ([]byte, error)
 	// Split cuts a response into per-symbol rows (SnapshotSplit only).
 	Split func(raw []byte) ([]SnapshotRow, error)
+	// Universe scopes split output at fetch time. Nil means no configured scope;
+	// a configured callback returning no symbols permits no per-symbol records.
+	Universe func() []string
 }
 
 // SnapshotFetch builds the Channel.Fetch callback of a snapshot channel.
@@ -62,9 +65,13 @@ func SnapshotFetch(venue, channel string, clock Clock, spec SnapshotSpec) func(c
 			return nil, err
 		}
 		out := make([]Record, 0, len(rows))
+		allowed := snapshotScope(spec.Universe)
 		for _, row := range rows {
 			if row.Symbol == "" || !json.Valid(row.Raw) {
 				return nil, fmt.Errorf("invalid snapshot row")
+			}
+			if allowed != nil && !allowed[row.Symbol] {
+				continue
 			}
 			r := rec
 			r.Meta = map[string]any{"snapshot": true}
@@ -73,4 +80,15 @@ func SnapshotFetch(venue, channel string, clock Clock, spec SnapshotSpec) func(c
 		}
 		return out, nil
 	}
+}
+
+func snapshotScope(universe func() []string) map[string]bool {
+	if universe == nil {
+		return nil
+	}
+	allowed := map[string]bool{}
+	for _, symbol := range universe() {
+		allowed[symbol] = true
+	}
+	return allowed
 }

@@ -252,9 +252,16 @@ func (b *Binance) requestPage(ctx context.Context, name, sym string, start, end 
 		sum := sha256.Sum256(raw)
 		meta["response_sha256"] = fmt.Sprintf("%x", sum)
 		out := make([]Record, 0, len(entries))
+		var allowed map[string]bool
+		if b.Scheduler != nil {
+			allowed = snapshotScope(b.Symbols)
+		}
 		for _, entry := range entries {
 			var x struct{ Symbol string }
 			json.Unmarshal(entry, &x)
+			if allowed != nil && !allowed[x.Symbol] {
+				continue
+			}
 			r := rec
 			r.Symbol = x.Symbol
 			r.Payload = entry

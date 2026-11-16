@@ -63,6 +63,14 @@ func TestGateHistoryAndSnapshots(t *testing.T) {
 	defer srv.Close()
 	e := &Env{Venue: "gate", BaseURL: srv.URL, Doer: uaDoer{srv.Client()}, Clock: gateClock{now}, Lookback: 3000 * time.Minute, Overlap: time.Hour, Periods: map[string]time.Duration{}, ChannelRPS: map[string]float64{}, Weights: map[string]float64{}, Config: PollConfig{}}
 	channels := gateChannels(e)
+	// Explicit scope for the pagination fixture: all response symbols are selected.
+	e.Universe = func() []string {
+		symbols := []string{"龙虾_USDT"}
+		for i := 0; i < 100; i++ {
+			symbols = append(symbols, fmt.Sprintf("C%d", i))
+		}
+		return symbols
+	}
 	recs, err := channels[0].Fetch(context.Background(), "龙虾_USDT")
 	if err != nil {
 		t.Fatal(err)

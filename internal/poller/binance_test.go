@@ -44,7 +44,7 @@ func TestBinanceUniverseBracketsIncremental(t *testing.T) {
 		t.Fatal(b.Symbols())
 	}
 	rows, err := b.request(context.Background(), "brackets", "")
-	if err != nil || len(rows) != 2 || rows[1].Symbol != "ETHUSDT" {
+	if err != nil || len(rows) != 1 || rows[0].Symbol != "BTCUSDT" {
 		t.Fatalf("rows=%v err=%v", rows, err)
 	}
 	invalid = true
