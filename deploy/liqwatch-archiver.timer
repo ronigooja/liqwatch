@@ -1,5 +1,6 @@
 [Unit]
 Description=Run liqwatch archiver every 15 minutes
+# Do not enable before the archive safety gate in docs/storage-design.md.
 
 [Timer]
 OnCalendar=*:0/15

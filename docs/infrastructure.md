@@ -1,17 +1,30 @@
 # Infrastructure
 
-Hosts and storage. Credentials are never written in this repo. Provider choice is the owner's; region decision: [decision 0005](decisions/0005-japan-region.md).
+Hosts and storage. Credentials are never written in this repo. Provider choice is the owner's; governing records: [0005](decisions/0005-japan-region.md), [0021](decisions/0021-gate-recorder-archiving.md).
 
 ## Hosts
 
 | Role | Address | Spec | Notes |
 |---|---|---|---|
-| Recorder (P0) | 136.0.11.159, Japan, hostname EV02OK | 2 vCPU, ~3.9 GB RAM, 30 GB disk (~25 GB free), Debian 12, 2 GB swap | [Down; outage and open recovery questions](p0-rollout.md#recorder-outage). Reinstalled clean by the owner on 2026-11-01 and confirmed as the recorder. Still to do: timezone is Asia/Shanghai, uses systemd-timesyncd (no chrony), open-file limit 1024, no Go. Docker, python3, curl, zstd present |
+| Recorder (prepared, not deployed) | Osaka, hostname VT01OK | Verified: Debian 12, 1 vCPU, ~1 GB RAM, ~2.4 GB swap | Verified: main-session report, 2026-11-16. Disk, connectivity and deployment state below. |
+| Historical recorder (P0) | 136.0.11.159, Japan, hostname EV02OK | 2 vCPU, ~3.9 GB RAM, 30 GB disk (~25 GB free), Debian 12, 2 GB swap | [Down; outage and open recovery questions](p0-rollout.md#recorder-outage). Reinstalled clean by the owner on 2026-11-01 and confirmed as the recorder. Still to do: timezone is Asia/Shanghai, uses systemd-timesyncd (no chrony), open-file limit 1024, no Go. Docker, python3, curl, zstd present |
 | Linux build, test and live recording measurement | 64.118.141.231, Singapore | 1 core, 1.8 GB RAM | Verified: test machine; live measurements run with nothing else running (owner report, 2026-11-15); current collector and poller code is built and merged, not deployed. |
 | Linux build and test | 38.47.101.8, Hong Kong | Debian 12, 1 core, 1.9 GB RAM | Verified: shared with permanent services `xboard-node` and `3proxy`; rsync installed 2026-11-15 (owner report). Never use for CPU measurements. |
 | REST poller | 154.19.187.117 | Shared host | `liqwatchpoll.service` stopped, disabled and deleted by the owner on 2026-11-12; other services untouched. Its 55 data files are kept only on the Mac outside the repo. Verified in code: current poller is Go ([poller](poller.md)); its deployment is not established. |
 | Storage gateway | 45.45.217.235 | 2 vCPU, ~3.9 GB RAM, 19 GB disk (~6 GB free), Debian 12 | Runs OpenList (127.0.0.1:5244, behind nginx), Docker services (including a MySQL port), and other processes; shared host |
-| Processing and training | Vultr, on demand. `liq-proc` (LA, 4 vCPU, 16 GB) was used 2026-11-09 to 2026-11-12 for Parquet conversion and the liquidation-model runs, and deleted on 2026-11-12 (owner). Nothing is running there. Results and the liquidation Parquet (about 15 MB) are kept on the Mac in `$HOME/Agents/liqwatch-results/liqproc/` (not in the repo); trades, mark and depth Parquet and the raw files were not kept and can be rebuilt from the archive (raw hourly files for 2026-11-04..10, now on the unreachable recorder and WebDAV). The block storage `liq-data` (100 GB) was deleted the same day (owner); Vultr holds no instance and no storage | Full conversion to Parquet, labels, LightGBM. Until a new instance is opened the Mac runs small samples |
+| Processing and training | Vultr, on demand; previous `liq-proc` and its `liq-data` volume deleted 2026-11-12 (owner). Results and liquidation Parquet retained on Mac in `$HOME/Agents/liqwatch-results/liqproc/`; other Parquet can be rebuilt from archive | Verified: no processing host running (owner report, 2026-11-12); recorder resources are listed separately | Full conversion to Parquet, labels, LightGBM; Mac runs small samples |
+
+## VT01OK preparation status
+
+| Item | Current status | Source/date |
+|---|---|---|
+| Block storage | Verified: 100 GB HDD attached, label `liqwatch-recorder-hdd-100g`, region `itm`, ID `e15da6e9-d5bf-4a2b-9585-40e2a1f13c45`; listed price $2.5/month | Main-session `vultr-cli` report, 2026-11-16 |
+| Mount | Verified: ext4 mounted at `/data/liqwatch` by UUID with `nofail` | Main-session host checks, 2026-11-16 |
+| WebDAV reachability | Measured: one 1 MiB write/readback/delete test passed; no spread available, not a sustained-throughput test | Main-session probe from VT01OK to the [archive root](#storage-account-and-re-test-2026-11-02), 2026-11-16 |
+| Services | Verified: not deployed; archiver deletion not enabled | Main-session report, 2026-11-16; [install plan](storage-design.md#recorder-install-layout-and-enable-order) |
+| Sustained seven-venue load | Verified: no measurements on this host; CPU, memory, full-day disk and pack upload capacity remain UNMEASURED | Main-session report, 2026-11-16; [open gates](open-questions.md#archive-deployment-gates) |
+
+## Historical recorder network probe
 
 Network from the recorder to Binance (3 curl probes on 2026-11-02, not a benchmark): `fapi.binance.com` TCP connect 20–49 ms, TLS done 40–74 ms; `fstream.binance.com` TCP connect 11–13 ms, TLS done 33–37 ms. Proper latency measurement is part of the P0 trial ([data-recording.md](data-recording.md)).
 

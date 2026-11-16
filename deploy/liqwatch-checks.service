@@ -1,7 +1,10 @@
 [Unit]
 Description=Run liqwatch health checks
+RequiresMountsFor=/data/liqwatch
+ConditionPathIsMountPoint=/data/liqwatch
 
 [Service]
 Type=oneshot
 User=liqwatch
+MemoryMax=64M
 ExecStart=/opt/liqwatch/current/liqwatch-checks -config /etc/liqwatch/config.toml

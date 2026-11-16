@@ -1,9 +1,12 @@
 [Unit]
 Description=Liqwatch daily packer
+RequiresMountsFor=/data/liqwatch
+ConditionPathIsMountPoint=/data/liqwatch
 
 [Service]
 Type=oneshot
 User=liqwatch
+MemoryMax=512M
 ExecStart=/opt/liqwatch/current/liqwatch-packer -config /etc/liqwatch/config.toml
 Nice=15
 IOSchedulingClass=idle

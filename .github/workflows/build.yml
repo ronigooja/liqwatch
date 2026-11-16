@@ -17,11 +17,11 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Test
-        run: go test ./internal/...
+        run: go test -count=1 ./...
       - name: Build
         run: |
           mkdir -p out
-          for c in liqwatch-collector liqwatch-archiver liqwatch-checks trialrec; do
+          for c in liqwatch-collector liqwatch-poller liqwatch-packer liqwatch-archiver liqwatch-checks liqwatch-mapgen; do
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o out/$c ./cmd/$c
           done
           cp deploy/* config/*.example out/

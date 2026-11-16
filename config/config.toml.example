@@ -1,11 +1,11 @@
-data_dir = "/var/lib/liqwatch"
+data_dir = "/data/liqwatch"
 
 [collect]
 venue = "binance"
 map_path = "/etc/liqwatch/venue-map.toml"
 metrics_addr = "127.0.0.1:9101"
 pprof_addr = "" # Disabled when empty; use a trusted address, e.g. 127.0.0.1:6060.
-extra_metrics_addrs = ["127.0.0.1:9102"]
+extra_metrics_addrs = ["127.0.0.1:9102", "127.0.0.1:9103", "127.0.0.1:9104", "127.0.0.1:9105", "127.0.0.1:9106", "127.0.0.1:9107"]
 open_spacing_ms = 500
 max_streams_per_ws = 100
 queue_size = 10000

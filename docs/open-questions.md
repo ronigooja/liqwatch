@@ -95,6 +95,17 @@ Move an item to "Verified" with source and date once checked; field handling is 
 | Unknown: will Bitget's connection-per-IP limit constrain deployment? | Verified: [official quick start](https://www.bitget.com/docs/uta/quick-start), as linked in [fixture](../internal/venue/bitget/testdata/README.txt), 2026-11-13. |
 | Unknown: what staging disk and CPU are needed over a full day? | Inferred: short-run estimates are extrapolations, not full-day measurements; [storage design](storage-design.md#local-disk-size). |
 
+## Archive deployment gates
+
+Verified code review date: 2026-11-16. Deployment policy: [0021](decisions/0021-gate-recorder-archiving.md).
+
+| Unresolved question | Evidence and scope |
+|---|---|
+| Unknown: is immediate deletion acceptable with sampled verification? | Verified: [archiver](../cmd/liqwatch-archiver/main.go) calls deletion immediately after verification; defaults use full hashes for the first 7 days since first verification, then 10% deterministic pack sampling; other packs get size checks. |
+| Unknown: how will late writes be protected? | Verified: [packer](../internal/pack/pack.go) checks quiet time and size/mtime during reads, without a durable closure lock. Archiver removes the entire raw-day directory. Inferred: a later append or new member can be lost after packing. |
+| Unknown: can realistic largest packs upload and verify reliably? | Verified: [WebDAV client](../internal/webdav/client.go) uses one PUT per pack per attempt, retries whole files and has a 5-minute HTTP timeout; size limit only warns in archiver. Historical unfinished 500 MB PUT: [probe](infrastructure.md#storage-probe-2026-11-01-admin-account-historical). |
+| Unknown: how will the remote manifest be backed up and restored? | Verified: [archiver](../cmd/liqwatch-archiver/main.go) uploads packs and per-pack metadata only; a remote SQLite manifest copy specified by [storage design](storage-design.md#upload) is not built. |
+
 ## Poller field policy questions
 
 | Question | Evidence and scope |

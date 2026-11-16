@@ -1,5 +1,7 @@
 [Unit]
 Description=Liqwatch collector
+RequiresMountsFor=/data/liqwatch
+ConditionPathIsMountPoint=/data/liqwatch
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300
@@ -11,8 +13,7 @@ ExecStart=/opt/liqwatch/current/liqwatch-collector -config /etc/liqwatch/config.
 Restart=always
 RestartSec=5s
 LimitNOFILE=65536
-MemoryMax=2500M
-CPUQuota=150%
+MemoryMax=192M
 
 [Install]
 WantedBy=multi-user.target

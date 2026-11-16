@@ -1,6 +1,6 @@
 # Storage Design (multi-venue recording)
 
-Design of how recorded market data is written, packed, uploaded and kept. Verified in code: raw writer, packer and archiver are built; deployment is separate ([rollout](p0-rollout.md)). Governing records: [0009](decisions/0009-zero-gap-handoff.md), [0011](decisions/0011-no-alert-narrower-recording.md), [0013](decisions/0013-no-dex-recording.md), [0014](decisions/0014-daily-pack-storage.md). Venue facts: [venue-apis.md](venue-apis.md).
+Design of recording, packing, upload and retention. Verified: writer, packer and archiver are built; [deployment status](infrastructure.md#vt01ok-preparation-status). Records: [0009](decisions/0009-zero-gap-handoff.md), [0014](decisions/0014-daily-pack-storage.md), [0021](decisions/0021-gate-recorder-archiving.md). Venue scope: [adapters](venue-adapters.md).
 
 ## Scope
 
@@ -55,7 +55,7 @@ When all channel files of a symbol for the day are closed, they are packed into 
 | Remote | `<date>.tar.zst` plus `<date>.meta.json` (size, whole-pack sha256, member list with each member's sha256) |
 | Verify | Compare remote size after upload (the storage once accepted a PUT and kept a zero-byte file). First 7 days: download and re-hash; afterwards a sampled fraction |
 | Local delete | Raw files and the pack are deleted only after the pack is verified; unverified packs are never deleted |
-| Manifest | SQLite, one row per pack, member checksums stored separately; copied to remote daily |
+| Manifest | Verified: SQLite, one row per pack, member checksums stored separately. Designed remote daily copy: not built; [gate](open-questions.md#archive-deployment-gates) |
 | Basis for no chunking | Inferred: the largest Binance coin was about 70 MB compressed per day for trades, extrapolated from 10 minutes. Measured upload: 100 MB in about 22 s, nginx limit raised to 1 GB; a 500 MB single PUT did not finish ([infrastructure.md](infrastructure.md)). Packs of other venues are unmeasured; re-evaluate if packs exceed a few hundred MB |
 
 ## Retention
@@ -105,7 +105,7 @@ Mark-price A included contracts outside the 522 (TRADIFI and others) and B did n
 | Upload of about 3,200 packs per day | Per-day time and failure rate unmeasured on WebDAV; [infrastructure.md](infrastructure.md) states WebDAV suits few large files |
 | Many open append files per process | Descriptor and IO load unmeasured |
 | Peak and busy days | Unmeasured; short-run samples are linked in [recording results](recording-results.md#seven-venue-load-and-recording) |
-| Recorder host | Japan host not chosen; the 2026-11-02 recorder is down ([p0-rollout.md](p0-rollout.md)) |
+| Recorder host | Verified: [VT01OK prepared, not deployed](infrastructure.md#vt01ok-preparation-status); sustained capacity remains unmeasured |
 | OneDrive quota | Unchecked; the archive is a single copy |
 
 ## Code status
@@ -115,3 +115,45 @@ Mark-price A included contracts outside the 522 (TRADIFI and others) and B did n
 | `internal/rawlog`, `internal/pack`, `cmd/liqwatch-archiver` | Verified in code: daily raw files, packs and unchunked upload |
 | Collectors | Verified in code: venue adapters registered; deployment is separate |
 | Poller | Verified in code: All seven venue pollers and gap records are built; see [poller](poller.md) |
+
+## Recorder install layout and enable order
+
+Verified: repository preparation only; no live service installation. Policy: [0021](decisions/0021-gate-recorder-archiving.md). Host state: [infrastructure](infrastructure.md#vt01ok-preparation-status).
+
+| Path | Prepared deployment contract (verified in units/config example unless marked designed) |
+|---|---|
+| `/opt/liqwatch/current/` | Release binaries: collector, poller, packer, archiver, checks; release artifact also includes mapgen for reviewed map maintenance. Verified: no `cmd/trialrec` remains. |
+| `/etc/liqwatch/config.toml` | Copy [example](../config/config.toml.example); `data_dir = "/data/liqwatch"`; set archive URL to the [verified root](infrastructure.md#storage-account-and-re-test-2026-11-02). |
+| `/etc/liqwatch/venue-map.toml` | Designed: install the reviewed [venue map](venue-map.md); readable by `liqwatch`. |
+| `/etc/liqwatch/secrets.env` | Designed: root-owned mode `0600`; keys `LIQWATCH_WEBDAV_USER` and `LIQWATCH_WEBDAV_PASS`, values supplied out of band; systemd reads this only for archiver. Never copy credentials into the repository or release artifact. |
+| `/etc/liqwatch/collector-<venue>.env` | Required by venue collector; one `LIQWATCH_METRICS_ADDR=127.0.0.1:<port>` line per venue using the port table below. |
+| `/data/liqwatch/` | Designed: mounted data volume, `liqwatch` write access; raw, packs, state and manifest stay beneath this root. Keep config data_dir aligned with the units' fixed mount guard. |
+| `/etc/systemd/system/` | Designed: install [deploy units](../deploy/) and run `systemctl daemon-reload`; create the unprivileged `liqwatch` user first. No service installation is performed by the release workflow. |
+
+| Venue instance | Collector metrics port (verified deployment assignment) |
+|---|---:|
+| binance | 9101 |
+| bybit | 9102 |
+| okx | 9103 |
+| bitget | 9104 |
+| gate | 9105 |
+| mexc | 9106 |
+| kucoin | 9107 |
+
+Verified: use `liqwatch-recorder@<venue>.service` with `-venue %i` and its required metrics environment file; use `liqwatch-poller@<venue>.service` with `-venue %i`.
+Verified: `liqwatch-collector@.service` remains the a/b slot template used by [handoff](../deploy/liqwatch-handoff.sh); it is NOT a venue template. The legacy unnumbered collector uses `collect.venue`.
+Designed: do not run legacy/handoff collectors alongside venue collectors; their ports and writers can conflict. Per-venue zero-gap handoff is not built; do not use the legacy script for this layout.
+
+Verified: every recorder service uses `RequiresMountsFor=/data/liqwatch` (mount requirement and ordering even with `nofail`) and `ConditionPathIsMountPoint=/data/liqwatch` (skip start if the directory is not mounted).
+Verified: [systemd.unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html) specifies the mount dependency/ordering and mount-point condition; these guards do not validate a particular UUID or protect against all runtime unmounts.
+Verified: collector limits are 192 MiB, poller 128 MiB, packer 512 MiB, archiver 128 MiB and checks 64 MiB; units impose no CPU quota. Collectors/pollers restart after 5 s, limited to 5 starts per 300 s.
+Inferred: these are conservative per-process ceilings, not reservations or proof of aggregate fit. Total seven-venue memory/CPU on VT01OK is UNMEASURED; packer reads whole members and may hit its ceiling on large files.
+
+| Order | Designed operator action after separate deployment authorization |
+|---|---|
+| 1 | Verify mounted volume/UUID, permissions, config, reviewed map and unique metrics files. Keep both archive timer and service disabled and stopped. |
+| 2 | Start one venue's recorder and poller, inspect raw files, gaps, metrics and memory, then enable those instances. Add remaining venues incrementally only after checking host pressure. |
+| 3 | Enable `liqwatch-checks.timer`; set metrics targets to exactly the running collectors (example lists all seven). Checks also reports unverified age while archiving is disabled; review rather than suppress it. |
+| 4 | Validate a closed-day pack with `liqwatch-packer.service`, then enable `liqwatch-packer.timer`; monitor disk growth while uploads are disabled. |
+| 5 | Leave `liqwatch-archiver.timer` and `liqwatch-archiver.service` DISABLED by default. Do not invoke archiver manually on production data: it deletes files in the same run. |
+| Archive gate | Verify upload, size, full hash readback and metadata using realistic pack sizes on disposable copies; resolve or explicitly accept [archive safety questions](open-questions.md#archive-deployment-gates) before separate authorization to enable the timer. A small connectivity probe is insufficient. |

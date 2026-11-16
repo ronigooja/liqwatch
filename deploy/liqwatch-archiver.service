@@ -1,9 +1,13 @@
 [Unit]
 Description=Liqwatch archiver
+RequiresMountsFor=/data/liqwatch
+ConditionPathIsMountPoint=/data/liqwatch
+# Disabled by default: see docs/storage-design.md#recorder-install-layout-and-enable-order.
 
 [Service]
 Type=oneshot
 User=liqwatch
+MemoryMax=128M
 EnvironmentFile=/etc/liqwatch/secrets.env
 ExecStart=/opt/liqwatch/current/liqwatch-archiver -config /etc/liqwatch/config.toml
 Nice=15

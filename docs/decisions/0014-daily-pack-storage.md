@@ -2,6 +2,8 @@
 
 Date: 2026-11-13. Supersedes [0008](0008-hourly-archive-and-retention.md) (hourly archive, 128 MB chunks, local deletion 6 h after verification). Design: [storage-design.md](../storage-design.md).
 
+Verified: deployment enablement is qualified by [0021](0021-gate-recorder-archiving.md); archiver remains disabled pending its safety gate. Storage format and retention policy are not superseded.
+
 ## Decision
 
 1. Seven centralized venues are recorded for the 522 Binance USDT perpetual coins; `TRADIFI_PERPETUAL` contracts are not (owner, 2026-11-12 and 2026-11-13). DEXes are excluded by [0013](0013-no-dex-recording.md).

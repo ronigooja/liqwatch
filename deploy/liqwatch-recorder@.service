@@ -1,0 +1,21 @@
+[Unit]
+Description=Liqwatch venue collector %i
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/data/liqwatch
+ConditionPathIsMountPoint=/data/liqwatch
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+User=liqwatch
+EnvironmentFile=/etc/liqwatch/collector-%i.env
+ExecStart=/opt/liqwatch/current/liqwatch-collector -config /etc/liqwatch/config.toml -venue %i -metrics-addr ${LIQWATCH_METRICS_ADDR}
+Restart=always
+RestartSec=5s
+TimeoutStopSec=60s
+LimitNOFILE=65536
+MemoryMax=192M
+
+[Install]
+WantedBy=multi-user.target
