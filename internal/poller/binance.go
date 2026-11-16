@@ -359,8 +359,8 @@ func BinanceChannels(b *Binance) []Channel {
 		if n == "exchangeInfo" || n == "brackets" || n == "constituents" || n == "fundingRate" {
 			c.Daily = true
 		}
+		c.History = isHistory(n) || n == "fundingRate"
 		if isHistory(n) {
-			c.History = true
 			c.Skip = func(sym string) bool { return b.Scheduler != nil && b.Scheduler.NoDataSkip("binance", n, sym) }
 		}
 		if n == "openInterest" {

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestOnce(t *testing.T) {
@@ -72,6 +73,16 @@ func TestSelectedSymbols(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "invalid symbol") {
 			t.Errorf("-syms %q: %v", bad, err)
 		}
+	}
+	// Make history phases due: a fresh recording now defers all replayable
+	// per-symbol channels, so its bootstrap sweep cannot exercise selection.
+	raw := filepath.Join(dir, "raw")
+	if err := os.MkdirAll(raw, 0755); err != nil {
+		t.Fatal(err)
+	}
+	state := fmt.Sprintf(`{"recording_start_ms":%d,"jobs":{}}`, time.Now().Add(-24*time.Hour).UnixMilli())
+	if err := os.WriteFile(filepath.Join(raw, "poll-state.json"), []byte(state), 0600); err != nil {
+		t.Fatal(err)
 	}
 	if err := run(context.Background(), []string{"-config", config, "-once", "-syms", "币安人生USDT,BTC-USDT-SWAP"}, server.Client()); err != nil {
 		t.Fatal(err)
