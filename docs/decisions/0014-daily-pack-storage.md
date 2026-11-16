@@ -2,7 +2,7 @@
 
 Date: 2026-11-13. Supersedes [0008](0008-hourly-archive-and-retention.md) (hourly archive, 128 MB chunks, local deletion 6 h after verification). Design: [storage-design.md](../storage-design.md).
 
-Verified: deployment enablement is qualified by [0021](0021-gate-recorder-archiving.md); archiver remains disabled pending its safety gate. Storage format and retention policy are not superseded.
+Verified: deployment enablement is qualified by [0021](0021-gate-archiver-deletion.md); archiver remains disabled pending its safety gate. Storage format and retention policy are not superseded.
 
 ## Decision
 

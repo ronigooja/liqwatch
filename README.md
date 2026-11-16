@@ -40,5 +40,5 @@ Read only what the task needs.
 | [docs/decisions/0018-path-based-raw-envelope.md](docs/decisions/0018-path-based-raw-envelope.md) | Decision | Path-based identity and compact raw envelopes | Changing raw writers or readers |
 | [docs/decisions/0019-live-rest-recording-scope.md](docs/decisions/0019-live-rest-recording-scope.md) | Decision | Live REST recording boundary | Changing startup scope or history recovery |
 | [docs/decisions/0020-smooth-rest-scheduling.md](docs/decisions/0020-smooth-rest-scheduling.md) | Decision | Phased REST eligibility and weighted request pacing | Changing polling order, pacing or capacity reporting |
-| [docs/decisions/0021-gate-recorder-archiving.md](docs/decisions/0021-gate-recorder-archiving.md) | Decision | Archive enablement gate and venue-unit naming | Preparing recorder deployment or enabling deletion |
+| [docs/decisions/0021-gate-archiver-deletion.md](docs/decisions/0021-gate-archiver-deletion.md) | Decision | Archive enablement gate and venue-unit naming | Preparing recorder deployment or enabling deletion |
 | [docs/archive/v1-architecture-zh.md](docs/archive/v1-architecture-zh.md) | Archive | v1 design (Chinese), superseded | Historical reference only |

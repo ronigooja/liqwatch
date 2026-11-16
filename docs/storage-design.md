@@ -1,6 +1,6 @@
 # Storage Design (multi-venue recording)
 
-Design of recording, packing, upload and retention. Verified: writer, packer and archiver are built; [deployment status](infrastructure.md#vt01ok-preparation-status). Records: [0009](decisions/0009-zero-gap-handoff.md), [0014](decisions/0014-daily-pack-storage.md), [0021](decisions/0021-gate-recorder-archiving.md). Venue scope: [adapters](venue-adapters.md).
+Design of recording, packing, upload and retention. Verified: writer, packer and archiver are built; [deployment status](infrastructure.md#vt01ok-preparation-status). Records: [0009](decisions/0009-zero-gap-handoff.md), [0014](decisions/0014-daily-pack-storage.md), [0021](decisions/0021-gate-archiver-deletion.md). Venue scope: [adapters](venue-adapters.md).
 
 ## Scope
 
@@ -118,7 +118,7 @@ Mark-price A included contracts outside the 522 (TRADIFI and others) and B did n
 
 ## Recorder install layout and enable order
 
-Verified: repository preparation only; no live service installation. Policy: [0021](decisions/0021-gate-recorder-archiving.md). Host state: [infrastructure](infrastructure.md#vt01ok-preparation-status).
+Verified: repository preparation only; no live service installation. Policy: [0021](decisions/0021-gate-archiver-deletion.md). Host state: [infrastructure](infrastructure.md#vt01ok-preparation-status).
 
 | Path | Prepared deployment contract (verified in units/config example unless marked designed) |
 |---|---|

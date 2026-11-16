@@ -97,7 +97,7 @@ Move an item to "Verified" with source and date once checked; field handling is 
 
 ## Archive deployment gates
 
-Verified code review date: 2026-11-16. Deployment policy: [0021](decisions/0021-gate-recorder-archiving.md).
+Verified code review date: 2026-11-16. Deployment policy: [0021](decisions/0021-gate-archiver-deletion.md).
 
 | Unresolved question | Evidence and scope |
 |---|---|

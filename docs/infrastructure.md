@@ -1,6 +1,6 @@
 # Infrastructure
 
-Hosts and storage. Credentials are never written in this repo. Provider choice is the owner's; governing records: [0005](decisions/0005-japan-region.md), [0021](decisions/0021-gate-recorder-archiving.md).
+Hosts and storage. Credentials are never written in this repo. Provider choice is the owner's; governing records: [0005](decisions/0005-japan-region.md), [0021](decisions/0021-gate-archiver-deletion.md).
 
 ## Hosts
 
