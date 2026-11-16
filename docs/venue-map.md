@@ -12,11 +12,11 @@ Verified in [map.go](../internal/venuemap/map.go) and [filter.go](../internal/ve
 
 Verified in [match.go](../cmd/liqwatch-mapgen/match.go): normalize scale prefixes and XBT/BTC; exact names require a price ratio near a power of ten (log10 tolerance 0.06), otherwise reject. Chinese aliases require ratio within 3% and review. Substring candidates require ratio within 1%; short or ambiguous names and competing matches require review. Exact candidates take precedence; one venue symbol receives one proposal.
 
-Verified in [main.go](../cmd/liqwatch-mapgen/main.go): regenerate using `liqwatch-mapgen -existing config/venue-map.toml -diff -out /tmp/venue-map.toml`; inspect output before replacing the checked-in file. Live discovery and prices can change proposals.
+Verified in [main.go](../cmd/liqwatch-mapgen/main.go): regenerate using `liqwatch-mapgen -existing config/venue-map.toml -diff -out /tmp/venue-map.toml`; inspect output before replacing the checked-in file. Existing `reviewed`, `review`, and `rejected` decisions and missing proposals are retained. Live discovery and prices can change proposals; `-diff` prints changes and review entries.
 
-Verified: when regenerating a selected venue, remove old associations absent from its eligible active discovery list; preserve unselected venues and active symbols without proposals. For present proposals, preserve existing `reviewed`, `review`, and `rejected` fields.
+Verified: the scoped MEXC cleanup manually removes only associations supported by [official delisting evidence](open-questions.md#mexc-delisted-mapping-associations). Discovery absence alone does not delete durable decisions.
 
-Verified: `-diff` prints removals, changes and review entries; errors or empty discovery abort before writing. The scoped MEXC removals use [official delisting evidence](open-questions.md#mexc-delisted-mapping-associations), not bulk absence alone.
+Verified in [regression tests](../cmd/liqwatch-mapgen/fetch_test.go): after that cleanup, missing contract-detail rows cannot be proposed from stale tickers alone. No blacklist or tombstone is added; any future relisting requires separate verification.
 
 ## Checked-in counts
 

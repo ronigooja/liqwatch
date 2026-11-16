@@ -19,7 +19,7 @@ func (f fixtureFetcher) Get(url string, out any) error {
 	return json.Unmarshal([]byte(body), out)
 }
 
-func TestMEXCDiscoveryAndMergePruneMissingContracts(t *testing.T) {
+func TestMEXCDiscoveryDoesNotRegenerateRemovedAssociations(t *testing.T) {
 	// Synthetic current-list fixture: stale ticker data must not restore an
 	// absent contract; only state 0 USDT-settled perpetuals remain eligible.
 	f := fixtureFetcher{
@@ -32,7 +32,11 @@ func TestMEXCDiscoveryAndMergePruneMissingContracts(t *testing.T) {
 		]}`,
 		"https://contract.mexc.com/api/v1/contract/ticker": `{"data":[
 			{"symbol":"BTC_USDT","fairPrice":100},
-			{"symbol":"CROSS_USDT","fairPrice":1}
+			{"symbol":"CROSS_USDT","fairPrice":1},
+			{"symbol":"CTK_USDT","fairPrice":1},
+			{"symbol":"DASH_USDT","fairPrice":1},
+			{"symbol":"RIF_USDT","fairPrice":1},
+			{"symbol":"XMR_USDT","fairPrice":1}
 		]}`,
 	}
 	symbols, err := discover(f, "mexc")
@@ -43,27 +47,47 @@ func TestMEXCDiscoveryAndMergePruneMissingContracts(t *testing.T) {
 	if !reflect.DeepEqual(symbols, want) {
 		t.Fatalf("discovered %+v, want %+v", symbols, want)
 	}
-	active := map[string]map[string]bool{"mexc": {}}
-	for _, s := range symbols {
-		active["mexc"][s.Symbol] = true
+	bn := []instrument{{"BTCUSDT", "BTC", 100}, {"ETHUSDT", "ETH", 10}}
+	for _, base := range []string{"CROSS", "CTK", "DASH", "RIF", "XMR"} {
+		bn = append(bn, instrument{base + "USDT", base, 1})
 	}
-	bn := []instrument{{"BTCUSDT", "BTC", 100}, {"ETHUSDT", "ETH", 10}, {"CROSSUSDT", "CROSS", 1}}
 	fresh := propose(bn, symbols, "mexc")
+	wantPairs := []venuemap.Pair{{Binance: "BTCUSDT", Venue: "mexc", Symbol: "BTC_USDT", Status: "auto", Note: "ratio=1"}}
+	if !reflect.DeepEqual(fresh, wantPairs) {
+		t.Fatalf("proposed %+v, want %+v", fresh, wantPairs)
+	}
+	// The checked-in cleanup removes only MEXC associations, not other venues.
+	other := venuemap.Pair{Binance: "CROSSUSDT", Venue: "gate", Symbol: "CROSS_USDT", Status: "reviewed"}
+	got, _ := merge([]venuemap.Pair{other}, fresh, map[string]bool{"mexc": true})
+	if !reflect.DeepEqual(got, append([]venuemap.Pair{other}, wantPairs...)) {
+		t.Fatalf("stale associations regenerated: %+v", got)
+	}
+}
+
+func TestMergePreservesDecisionsAcrossIncompleteDiscovery(t *testing.T) {
 	for _, status := range []string{"auto", "reviewed", "review", "rejected"} {
 		t.Run(status, func(t *testing.T) {
-			kept := venuemap.Pair{Binance: "ETHUSDT", Venue: "mexc", Symbol: "ETH_USDT", Status: status, Note: "no current price"}
-			other := venuemap.Pair{Binance: "CROSSUSDT", Venue: "gate", Symbol: "CROSS_USDT", Status: status}
 			old := []venuemap.Pair{
-				{Binance: "CROSSUSDT", Venue: "mexc", Symbol: "CROSS_USDT", Status: status},
-				{Binance: "HALTEDUSDT", Venue: "mexc", Symbol: "HALTED_USDT", Status: status},
-				kept, other,
+				{Binance: "ETHUSDT", Venue: "mexc", Symbol: "ETH_USDT", Exp10: 3, Status: status, Note: "absent from partial response"},
+				{Binance: "HALTEDUSDT", Venue: "mexc", Symbol: "HALTED_USDT", Exp10: 2, Status: status, Note: "temporarily suspended"},
 			}
-			got, diff := merge(old, fresh, active)
-			want := []venuemap.Pair{other, fresh[0], kept}
-			if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(diff, []string{
-				"added mexc BTC_USDT auto", "removed mexc CROSS_USDT", "removed mexc HALTED_USDT",
-			}) {
-				t.Fatalf("got %+v diff %v, want %+v", got, diff, want)
+			got, _ := merge(old, nil, map[string]bool{"mexc": true})
+			if !reflect.DeepEqual(got, old) {
+				t.Fatalf("incomplete discovery changed decisions: %+v, want %+v", got, old)
+			}
+			fresh := append([]venuemap.Pair(nil), old...)
+			for i := range fresh {
+				fresh[i].Status = "auto"
+				fresh[i].Exp10 = 0
+				fresh[i].Note = "ratio=1"
+			}
+			returned, _ := merge(got, fresh, map[string]bool{"mexc": true})
+			want := old
+			if status == "auto" {
+				want = fresh
+			}
+			if !reflect.DeepEqual(returned, want) {
+				t.Fatalf("returning discovery lost decisions: %+v, want %+v", returned, want)
 			}
 		})
 	}
