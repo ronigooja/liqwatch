@@ -1,4 +1,4 @@
-# 0021 Gate recorder archiving before enabling deletion
+# 0021 Gate archiver deletion
 
 Verified deployment-preparation policy; design: [storage](../storage-design.md#recorder-install-layout-and-enable-order).
 
