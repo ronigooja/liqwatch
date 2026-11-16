@@ -16527,28 +16527,12 @@ status = 'auto'
 note = 'ratio=0.9995533372'
 
 [[pair]]
-binance = 'CROSSUSDT'
-venue = 'mexc'
-symbol = 'CROSS_USDT'
-exp10 = 0
-status = 'auto'
-note = 'ratio=0.9994559304'
-
-[[pair]]
 binance = 'CRVUSDT'
 venue = 'mexc'
 symbol = 'CRV_USDT'
 exp10 = 0
 status = 'auto'
 note = 'ratio=1.000424989'
-
-[[pair]]
-binance = 'CTKUSDT'
-venue = 'mexc'
-symbol = 'CTK_USDT'
-exp10 = 0
-status = 'auto'
-note = 'ratio=0.9994404575'
 
 [[pair]]
 binance = 'CTRUSDT'
@@ -16613,14 +16597,6 @@ symbol = 'CYS_USDT'
 exp10 = 0
 status = 'auto'
 note = 'ratio=1'
-
-[[pair]]
-binance = 'DASHUSDT'
-venue = 'mexc'
-symbol = 'DASH_USDT'
-exp10 = 0
-status = 'auto'
-note = 'ratio=0.9985873293'
 
 [[pair]]
 binance = 'DATAIPUSDT'
@@ -18439,14 +18415,6 @@ status = 'auto'
 note = 'ratio=0.9996723837'
 
 [[pair]]
-binance = 'RIFUSDT'
-venue = 'mexc'
-symbol = 'RIF_USDT'
-exp10 = 0
-status = 'auto'
-note = 'ratio=1.000360231'
-
-[[pair]]
 binance = 'RIVERUSDT'
 venue = 'mexc'
 symbol = 'RIVER_USDT'
@@ -19349,14 +19317,6 @@ symbol = 'XLM_USDT'
 exp10 = 0
 status = 'auto'
 note = 'ratio=0.9992329943'
-
-[[pair]]
-binance = 'XMRUSDT'
-venue = 'mexc'
-symbol = 'XMR_USDT'
-exp10 = 0
-status = 'auto'
-note = 'ratio=0.9998903275'
 
 [[pair]]
 binance = 'XNYUSDT'

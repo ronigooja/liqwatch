@@ -17,7 +17,7 @@ import (
 )
 
 func key(p venuemap.Pair) string { return p.Venue + "\x00" + p.Symbol }
-func merge(current, proposed []venuemap.Pair, selected map[string]bool) ([]venuemap.Pair, []string) {
+func merge(current, proposed []venuemap.Pair, active map[string]map[string]bool) ([]venuemap.Pair, []string) {
 	old := map[string]venuemap.Pair{}
 	fresh := map[string]venuemap.Pair{}
 	for _, p := range current {
@@ -44,10 +44,11 @@ func merge(current, proposed []venuemap.Pair, selected map[string]bool) ([]venue
 	}
 	for _, p := range current {
 		if _, ok := fresh[key(p)]; !ok {
-			out = append(out, p)
-			if selected[p.Venue] {
-				diff = append(diff, fmt.Sprintf("removed %s %s (retained)", p.Venue, p.Symbol))
+			if symbols, selected := active[p.Venue]; selected && !symbols[p.Symbol] {
+				diff = append(diff, fmt.Sprintf("removed %s %s", p.Venue, p.Symbol))
+				continue
 			}
+			out = append(out, p)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -95,6 +96,7 @@ func run() error {
 		return fmt.Errorf("Binance returned no instruments")
 	}
 	var proposals []venuemap.Pair
+	active := map[string]map[string]bool{}
 	for _, v := range []string{"bybit", "okx", "bitget", "gate", "mexc", "kucoin"} {
 		if !selected[v] {
 			continue
@@ -106,9 +108,13 @@ func run() error {
 		if len(symbols) == 0 {
 			return fmt.Errorf("%s returned no instruments", v)
 		}
+		active[v] = map[string]bool{}
+		for _, symbol := range symbols {
+			active[v][symbol.Symbol] = true
+		}
 		proposals = append(proposals, propose(bn, symbols, v)...)
 	}
-	pairs, changes := merge(current, proposals, selected)
+	pairs, changes := merge(current, proposals, active)
 	b, err := toml.Marshal(venuemap.Map{Pairs: pairs})
 	if err != nil {
 		return err

@@ -12,11 +12,15 @@ Verified in [map.go](../internal/venuemap/map.go) and [filter.go](../internal/ve
 
 Verified in [match.go](../cmd/liqwatch-mapgen/match.go): normalize scale prefixes and XBT/BTC; exact names require a price ratio near a power of ten (log10 tolerance 0.06), otherwise reject. Chinese aliases require ratio within 3% and review. Substring candidates require ratio within 1%; short or ambiguous names and competing matches require review. Exact candidates take precedence; one venue symbol receives one proposal.
 
-Verified in [main.go](../cmd/liqwatch-mapgen/main.go): regenerate using `liqwatch-mapgen -existing config/venue-map.toml -diff -out /tmp/venue-map.toml`; inspect output before replacing the checked-in file. Existing `reviewed`, `review`, and `rejected` decisions and missing proposals are retained. Live discovery and prices can change proposals; `-diff` prints changes and review entries.
+Verified in [main.go](../cmd/liqwatch-mapgen/main.go): regenerate using `liqwatch-mapgen -existing config/venue-map.toml -diff -out /tmp/venue-map.toml`; inspect output before replacing the checked-in file. Live discovery and prices can change proposals.
+
+Verified: when regenerating a selected venue, remove old associations absent from its eligible active discovery list; preserve unselected venues and active symbols without proposals. For present proposals, preserve existing `reviewed`, `review`, and `rejected` fields.
+
+Verified: `-diff` prints removals, changes and review entries; errors or empty discovery abort before writing. The scoped MEXC removals use [official delisting evidence](open-questions.md#mexc-delisted-mapping-associations), not bulk absence alone.
 
 ## Checked-in counts
 
-Measured from [the map](../config/venue-map.toml), 2026-11-13; counts are rows, not verified token identity or live coverage.
+Measured from [the map](../config/venue-map.toml), 2026-11-16; counts are rows, not verified token identity or live coverage.
 
 | Venue | auto | reviewed | review | rejected |
 |---|---:|---:|---:|---:|
@@ -24,7 +28,7 @@ Measured from [the map](../config/venue-map.toml), 2026-11-13; counts are rows, 
 | Bybit | 461 | 9 | 3 | 1 |
 | Gate | 492 | 8 | 4 | 3 |
 | KuCoin | 477 | 9 | 4 | 0 |
-| MEXC | 501 | 12 | 5 | 1 |
+| MEXC | 496 | 12 | 5 | 1 |
 | OKX | 264 | 2 | 1 | 4 |
 
 ## Entries needing review

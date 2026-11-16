@@ -103,7 +103,7 @@ Move an item to "Verified" with source and date once checked; field handling is 
 | Unknown: why did Bitget return HTTP 429 in the production-scheduler trial? | Measured: exact first-attempt endpoint/symbol failures are in [trial results](recording-results.md#rest-production-scheduler-trial), separate from the earlier field-review sample. Unknown: cause; retained evidence lacks response headers/body and exact request spacing. |
 | Unknown: will Bitget rate limits constrain production? | Verified 2026-11-15: official [trading-insight endpoints](https://www.bitget.com/docs/catalog/classic-common-apidata/classic-common-apidata) specify 1 request/s/IP each. Verified: [poller](../internal/poller/bitget.go) defaults to 1 request/s per channel; [HTTP wrapper](../internal/poller/venue.go) already handles `Retry-After`. |
 | Unknown: why is OKX currency `CT` unavailable to account ratio? | Measured: [trial](recording-results.md#rest-production-scheduler-trial) recorded `51012: Token does not exist` for `CT-USDT-SWAP`. Verified: [fix scope](poller.md#operation) is a channel/symbol cooldown, not instrument or mapping deletion. |
-| Unknown: why are selected MEXC symbols missing from contract detail? | Measured: missing set in [trial results](recording-results.md#rest-production-scheduler-trial). Unknown: cause; absence from one bulk response does not establish delisting or five failed requests. Verified: [implementation](../internal/poller/mexc.go) keeps the endpoint and mapping unchanged. |
+| Resolved: why are the five selected MEXC symbols missing from contract detail? | Verified: official delisting notices establish the bounded cause, not bulk absence alone; [facts and retained evidence](#mexc-delisted-mapping-associations). Poller endpoint unchanged. |
 | Unknown: which Gate ratio descriptions are correct? | Verified: official [REST](https://www.gate.com/docs/developers/apiv4/en/futures/) and [WebSocket](https://www.gate.com/docs/developers/futures/) descriptions of `lsr_taker` and `lsr_account` are reversed relative to each other (field audit sub-agent reports, 2026-11-15). |
 | Unknown: what does OKX contract long/short ratio measure? | Verified: [official wording](https://www.okx.com/docs-v5/en/#trading-statistics-rest-api-get-long-short-ratio-contract) is inconsistent (field audit sub-agent reports, 2026-11-15). |
 | Unknown: what do KuCoin maintenance constants mean? | Verified: `k`, `m`, `f`, `mmrLimit`, `mmrLevConstant` are undefined in the [official contract field tables](https://www.kucoin.com/docs-new/rest/futures-trading/market-data/get-all-symbols) and dropped ([policy](../internal/poller/kucoin_policy.go)); [cross-margin formula example](https://www.kucoin.com/support/35084093025049) does not map them to JSON fields. |
@@ -124,3 +124,16 @@ Move an item to "Verified" with source and date once checked; field handling is 
 [M1]: https://mexcdevelop.github.io/apidocs/contract_v1_en/#get-the-contract-information
 [M2]: https://www.mexc.com/api-docs/futures/market-endpoints/get-contract-info
 [M3]: https://www.mexc.com/zh-hans/api-docs/futures/market-endpoints/get-contract-info
+
+## MEXC delisted mapping associations
+
+| Fact | Official source and bounded scope | Checked |
+|---|---|---|
+| Verified: CROSS USDT perpetual delisting effective 2026-11-13 13:00 UTC. | [M4]; supports removing only its MEXC association, not the Binance coin or other venues. | 2026-11-15 |
+| Verified: CTK and RIF USDT-M perpetual delistings effective 2026-11-14 07:00 UTC. | [M5]; other contracts in the notice are outside this mapping correction. | 2026-11-15 |
+| Verified: XMR and DASH USDT-M perpetual delistings effective 2026-11-13 10:00 UTC. | [M6]; no claim about later relistings. | 2026-11-15 |
+| Verified: successful official HTML and request metadata were retained, not freshly fetched for this change. | Original `/root/liqwatch-mexc-symbols-20261115T112255Z/`; inspected local copy `/tmp/liqwatch-mexc-symbols-docs-20261115T112255Z/`: `announcement-*.body`, headers, `requests.json`. | 2026-11-15 |
+
+[M4]: https://www.mexc.com/announcements/article/delisting-of-crossusdt-perpetual-futures-pair-nov-13-2026-13-17827791539671
+[M5]: https://www.mexc.com/announcements/article/delisting-of-ctk-puffer-epic-dna-baton-cnpy-ritual-hooked-nex-rif-kii-up-and-xten-usdt-m-perpetual-futures-pairs-nov-14-2026-07-17827791539672
+[M6]: https://www.mexc.com/announcements/article/delisting-of-xmr-and-dash-usdt-m-perpetual-futures-pairs-nov-13-2026-10-17827791539677
