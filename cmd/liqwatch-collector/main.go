@@ -73,6 +73,7 @@ func run(cfg *config.Config, instance string) error {
 	}
 	w, err := rawlog.NewWriter(rawlog.Options{
 		Dir: rawDir, QueueSize: cfg.Collect.QueueSize, MaxDiskPct: 92, Instance: instance, DropClass: adapter.Classes(),
+		Compress: cfg.Record.Compress, Level: cfg.Record.Level,
 	})
 	if err != nil {
 		return err

@@ -66,7 +66,10 @@ func run(ctx context.Context, args []string, client poller.HTTPDoer) error {
 		}
 	}
 	raw := filepath.Join(base.DataDir, "raw")
-	sink := poller.NewFileSink(raw, time.Second)
+	sink, err := poller.NewFileSinkCompressed(raw, time.Second, base.Record.Compress, base.Record.Level)
+	if err != nil {
+		return err
+	}
 	defer sink.Close()
 	if cfg.Poller.MapPath == "" {
 		cfg.Poller.MapPath = base.Poller.MapPath

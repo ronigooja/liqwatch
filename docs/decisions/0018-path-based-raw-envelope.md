@@ -8,6 +8,8 @@ Verified: records the owner-authorized compact envelope; governs [storage design
 
 ## Decision
 
+- Verified: [0026](0026-live-zstd-recording.md) supersedes only the plain-JSONL storage assumption for opt-in compressed writes; envelope v2 and path identity remain unchanged.
+
 - Verified: for new collector and poller writes, remove envelope `ch`, `sym`, `venue`, and diagnostic `conn`; use version 2 and recover identity from the storage path.
 - Verified: supersedes only the envelope-field deferral in [0016](0016-drop-unneeded-payload-fields.md); its payload policies and [0017](0017-poller-field-policies.md) remain unchanged.
 - Verified: annotate only the superseded deferral in 0016; its remaining historical content stays unchanged.

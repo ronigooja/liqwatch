@@ -2,6 +2,17 @@
 
 Move an item to "Verified" with source and date once checked; field handling is governed by [0017](decisions/0017-poller-field-policies.md).
 
+## Live compression deployment gates
+
+Verified scope: [0026](decisions/0026-live-zstd-recording.md) implements live compression; [offline results](packing-results.md#live-writer-compression) do not validate production operation.
+
+| Unresolved question | Evidence needed before claiming fit |
+|---|---|
+| Inferred: do per-venue live CPU/RAM and drops fit existing limits? | Sustained authorized recorder trial including queues, adapters, slab/cache and `MemoryMax=192M`; replay has extra scanners and is not live collection |
+| Inferred: what survives an actual recorder crash? | Authorized crash/restart trial; every-byte truncation tests establish decoder behavior only |
+| Inferred: can shared root safely hold upload backlog? | Sustained root occupancy with nginx/docker, free-space policy and accepted lack of a dedicated mount guard; root loss loses unarchived data |
+| Inferred: can archive uploads preserve data safely? | Existing [archive deployment gates](#archive-deployment-gates); no deletion authorization is added |
+
 ## Inputs needed from the owner
 
 | Question | Affects |

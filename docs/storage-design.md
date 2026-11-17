@@ -23,19 +23,21 @@ Raw venue symbol names are kept in paths. Mapping (`1000PEPE` to `PEPE`, `XBT` t
 
 ## Writing
 
+Verified: governed by [0026](decisions/0026-live-zstd-recording.md); root-disk live compression is implemented but deployment is not performed by this change.
+
 | Item | Rule |
 |---|---|
-| Path | `raw/<venue>/<symbol>/<UTC date>/<channel>.<slot>.jsonl` |
+| Path | Verified: `raw/<venue>/<symbol>/<UTC date>/<channel>.<slot>.jsonl`; append `.zst` when `[record].compress=true` |
 | Split | Every channel is split by symbol: trades, mark (with index and funding), liquidations, open interest, long/short ratios, leverage tiers, index constituents. A liquidation file exists only if that symbol had a liquidation that day |
 | All-market streams | Binance mark price (array) and liquidation streams are cut into one record per symbol, each keeping the original envelope shape. See [adapter filtering](venue-adapters.md#recorded-content) for other transformations |
-| Content | Verified: filtered payload appended uncompressed; [recorded content](venue-adapters.md#recorded-content). Version 2 envelope below follows [0018](decisions/0018-path-based-raw-envelope.md) |
+| Content | Verified: filtered payload and unchanged v2 JSON lines; optional zstd container under [0026](decisions/0026-live-zstd-recording.md). [Recorded content](venue-adapters.md#recorded-content) |
 | Rotation | UTC day boundary only. One file per symbol per channel per day; no size limit, no sequence number |
 | Processes | One collector process per venue (own reconnects, limits, token handshakes); slots a/b and handoff per [0009](decisions/0009-zero-gap-handoff.md). Poller files use slot `p` |
 | Gaps | Verified: one gap file per venue per day: WebSocket lifecycle below, adapter diagnostics and unchanged queue drops. Poll failures and history gaps remain in the [poller](poller.md) |
 
 Verified in [rawlog](../internal/rawlog/writer.go) and [poller](../internal/poller/sink.go): new envelopes use `v:2`, `rw` (wall ns), `rm` (process monotonic ns), and `p`. Collector adds `wseq` and `cseq`; poller retains `meta`.
 
-Verified: identity exists only in the path: venue directory, raw-symbol directory and channel filename (remove optional lowercase slot before `.jsonl`). `_all` means a bulk payload, not one symbol; `gap/gap` identifies venue-level gap records.
+Verified: identity exists only in the path: venue, raw symbol and channel (strip optional `.zst`, `.jsonl`, then optional lowercase slot). `_all` means a bulk payload; `gap/gap` identifies venue-level gaps.
 
 Verified: affected symbols/channels in gaps and individual symbols in bulk responses remain in payloads. Exchange timestamps remain in `p`, including MEXC `t` and `cts`. `conn` is absent from the envelope; lifecycle gaps keep it in `p`. Existing version 1 files are unchanged.
 
@@ -65,7 +67,13 @@ Verified: pack paths preserve venue/symbol/date and tar member names preserve ch
 
 Verified in [research poller](../research/liqwatch_research/poll/__init__.py): its legacy mixed-channel hourly files lack path identity and retain version 1. This is not the production Go poller format; migrating that writer requires a separate layout change.
 
-The collector only appends text and opens no compressor. Measured in the trial: writing zstd per file with a frame closed every 5 s kept one core near full at 522 symbols plus splitting (Binance only).
+Verified: compression defaults off. When enabled, collector and poller each share one level-1 encoder with a 64 KiB window, concurrency 1 and lower-memory mode; `[record].level` accepts 1..22.
+
+Verified: each 4 KiB buffered output publishes independent finished frames on writes/flushes; oversized writes can be larger. Collector ticks remain 5 s and poller ticks 1 s. LRU close, shutdown and append reopen preserve concatenated-frame validity.
+
+Verified: compression state is independent of file count; collector retains at most `MaxOpenFiles` buffers (default 4,096). Compressed poller flushes also close/release idle descriptors. [Measurements](packing-results.md#live-writer-compression) quantify the ratio tradeoff.
+
+Verified: every-byte-cut tests require a whole-record prefix plus an incomplete-tail indication except at complete frame boundaries. Inferred: unsynced writes may still be lost on host crash; no recorder crash trial is claimed.
 
 ## Pack and compress (after the UTC day boundary)
 

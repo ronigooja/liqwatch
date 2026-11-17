@@ -6,6 +6,7 @@ import (
 	"container/list"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -53,6 +54,8 @@ type Options struct {
 	Instance     string
 	MaxOpenFiles int
 	Fsync        bool
+	Compress     bool
+	Level        int
 	DropClass    func(channel string) (class string, ok bool)
 }
 type Stats struct {
@@ -98,6 +101,9 @@ func absolute(p string) string {
 }
 
 func NewWriter(opts Options) (*Writer, error) {
+	if opts.Level < 0 || opts.Level > 22 {
+		return nil, fmt.Errorf("rawlog: compression level must be 1..22 or 0 (default 1)")
+	}
 	if opts.QueueSize <= 0 {
 		opts.QueueSize = 200000
 	}
@@ -191,6 +197,16 @@ func validInstance(s string) bool {
 }
 func (w *Writer) Run(ctx context.Context) {
 	defer close(w.done)
+	var encoderWriter func(io.Writer) io.Writer
+	if w.opts.Compress {
+		enc, err := NewFrameEncoder(w.opts.Level)
+		if err != nil {
+			log.Printf("rawlog: encoder: %v", err)
+			return
+		}
+		defer enc.Close()
+		encoderWriter = func(dst io.Writer) io.Writer { return FrameWriter{Encoder: enc, Dst: dst} }
+	}
 	files := map[string]*outFile{}
 	streams := map[string]string{}
 	// counts survives LRU eviction; callbacks report all writes in this run.
@@ -263,6 +279,9 @@ func (w *Writer) Run(ctx context.Context) {
 			name += "." + w.opts.Instance
 		}
 		name += ".jsonl"
+		if w.opts.Compress {
+			name += ".zst"
+		}
 		path := filepath.Join(v, sym, d.Format("20060102"), name)
 		// Rotate only the same stream, not unrelated symbols or channels.
 		stream := filepath.Join(v, sym, ch)
@@ -290,7 +309,11 @@ func (w *Writer) Run(ctx context.Context) {
 				log.Printf("rawlog: open %s: %v", path, err)
 				return
 			}
-			o = &outFile{f: f, buf: bufio.NewWriter(f), meta: Closed{Path: path, Venue: v, Symbol: sym, Channel: ch, Day: d}}
+			var dst io.Writer = f
+			if encoderWriter != nil {
+				dst = encoderWriter(f)
+			}
+			o = &outFile{f: f, buf: bufio.NewWriter(dst), meta: Closed{Path: path, Venue: v, Symbol: sym, Channel: ch, Day: d}}
 			o.elem = lru.PushFront(path)
 			files[path] = o
 			streams[stream] = path
