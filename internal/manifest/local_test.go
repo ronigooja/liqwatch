@@ -55,6 +55,16 @@ func TestLocalStatesAndLegacyMigration(t *testing.T) {
 	if err = s.MarkLocalVerified(id, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	if err = s.SetState(id, StateLocalDeleted); err == nil {
+		t.Fatal("deletion intent bypass")
+	}
+	if err = s.BeginLocalDeletion(id, members); err != nil {
+		t.Fatal(err)
+	}
+	wantEvidence := []Member{{Name: "a.jsonl", Bytes: 3, MtimeNS: 123}}
+	if got, err := s.DeletionMembers(id); err != nil || !reflect.DeepEqual(got, wantEvidence) {
+		t.Fatal(got, err)
+	}
 	if err = s.SetState(id, StateLocalDeleted); err != nil {
 		t.Fatal(err)
 	}

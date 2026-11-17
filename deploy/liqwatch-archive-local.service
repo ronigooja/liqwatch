@@ -1,6 +1,6 @@
 [Unit]
 Description=Liqwatch local archive verification and raw cleanup
-RequiresMountsFor=/data/liqwatch-archive
+RequiresMountsFor=/data/liqwatch-archive /var/lib/liqwatch
 ConditionPathIsMountPoint=/data/liqwatch-archive
 # Not enabled by this repository change. Config must select archive.mode = "local".
 

@@ -1,7 +1,7 @@
 [Unit]
 Description=Liqwatch daily packer
-RequiresMountsFor=/data/liqwatch
-ConditionPathIsMountPoint=/data/liqwatch
+RequiresMountsFor=/data/liqwatch-archive /var/lib/liqwatch
+ConditionPathIsMountPoint=/data/liqwatch-archive
 
 [Service]
 Type=oneshot

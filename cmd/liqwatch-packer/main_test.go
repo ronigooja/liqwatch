@@ -13,6 +13,13 @@ import (
 
 func TestRun(t *testing.T) {
 	root := t.TempDir()
+	deleting := filepath.Join(root, "raw/v/BTC/20260101.deleting")
+	if err := os.MkdirAll(deleting, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(deleting, "trade.jsonl"), []byte("must not pack"), 0640); err != nil {
+		t.Fatal(err)
+	}
 	day := time.Now().UTC().AddDate(0, 0, -1).Format("20060102")
 	for _, sym := range []string{"BTC", "gap"} {
 		dir := filepath.Join(root, "raw", "v", sym, day)

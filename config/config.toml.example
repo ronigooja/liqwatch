@@ -1,4 +1,5 @@
 data_dir = "/data/liqwatch"
+# Recorder host: data_dir = "/var/lib/liqwatch/data" (root disk); [pack].dir = "/data/liqwatch-archive" (mounted HDD).
 
 [record]
 compress = false # Opt in to live zstd: .jsonl.zst; false preserves byte-identical plain JSONL.
@@ -21,6 +22,10 @@ enabled = true # Set false to disable; override declared channels with e.g. "mar
 [archive]
 mode = "webdav" # Default; choose "local" for HDD-only verification, with no network or credentials.
 delete_sources = true # Local only: false verifies/reports without deleting raw. WebDAV behavior is unchanged.
+retention = true # Local only: capacity pruning deletes oldest packs, including the only copy; false disables.
+retention_high_pct = 90 # Start pruning at >= high; zero is invalid, not a disable switch.
+retention_low_pct = 80 # Stop after a whole day when usage <= low; 0 < low < high <= 99.
+retention_max_days_per_run = 3 # Positive whole-day cap; usage still >= high produces WARNING and nonzero exit.
 remote_root = "https://example.invalid/dav/ronigooja_onedrive/liqwatch/"
 max_pack_mb = 400
 verify_sample_percent = 10

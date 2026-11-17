@@ -21,7 +21,7 @@ import (
 
 var localNow = time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 
-func localFixture(t *testing.T, unit string) (config.Config, *manifest.SQLiteStore, manifest.Pack, string, string) {
+func localFixture(t *testing.T, unit string, extra ...bool) (config.Config, *manifest.SQLiteStore, manifest.Pack, string, string) {
 	t.Helper()
 	cfg := config.Config{DataDir: t.TempDir(), Pack: config.Pack{Dir: t.TempDir(), QuietMinutes: 10}, Archive: config.Archive{Mode: "local", DeleteSources: true}}
 	raw := filepath.Join(cfg.DataDir, "raw/v/s/20261116")
@@ -33,6 +33,13 @@ func localFixture(t *testing.T, unit string) (config.Config, *manifest.SQLiteSto
 	old := localNow.Add(-48 * time.Hour)
 	if err := os.Chtimes(filepath.Join(raw, name), old, old); err != nil {
 		t.Fatal(err)
+	}
+	if len(extra) != 0 && extra[0] {
+		second := filepath.Join(raw, "second.jsonl")
+		writeLocal(t, second, "second verified member\n")
+		if err := os.Chtimes(second, old, old); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if unit == pack.StoredTar {
 		unit = pack.TarThenZstd
@@ -349,6 +356,8 @@ func TestLocalSourceMetadataAndMissingPack(t *testing.T) {
 				err = os.Chtimes(filename, old, old)
 			case "size":
 				writeLocal(t, filename, "short")
+				old := time.Unix(0, ms[0].MtimeNS)
+				err = os.Chtimes(filename, old, old)
 			case "missing-pack":
 				err = os.Remove(packed)
 			case "symlink":

@@ -1,9 +1,10 @@
 [Unit]
-Description=Run local archive verification every 15 minutes
+Description=Run local archive verification and retention daily
 # Disabled in repository preparation; no deployment is performed.
 
 [Timer]
-OnCalendar=*:0/15
+OnCalendar=*-*-* 02:00:00 UTC
+RandomizedDelaySec=60
 Persistent=true
 Unit=liqwatch-archive-local.service
 

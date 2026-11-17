@@ -14,6 +14,8 @@ const (
 	StateDeleted       State = "deleted"
 	StateLocalVerified State = "local_verified"
 	StateLocalDeleted  State = "local_deleted"
+	StateLocalDeleting State = "local_deleting"
+	StatePruned        State = "pruned"
 )
 
 type Member struct {

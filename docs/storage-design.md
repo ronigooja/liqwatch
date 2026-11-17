@@ -2,7 +2,7 @@
 
 Design of recording, packing, upload and retention. Verified: writer, packer and archiver are built; [deployment status](infrastructure.md#vt01ok-preparation-status).
 Records: [0009](decisions/0009-zero-gap-handoff.md), [0014](decisions/0014-daily-pack-storage.md), [0021](decisions/0021-gate-archiver-deletion.md), [0023](decisions/0023-packer-streaming.md), [0024](decisions/0024-pack-output-dir.md), [0025](decisions/0025-packer-drop-page-cache.md).
-Local destination and deletion: [0029](decisions/0029-local-archive-no-webdav.md).
+Local destination: [0029](decisions/0029-local-archive-no-webdav.md); deletion, retention and mount safety: [0030](decisions/0030-archive-retention-and-delete-safety.md).
 Venue scope: [adapters](venue-adapters.md).
 
 ## Scope
@@ -127,12 +127,14 @@ Verified in [local archiver](../cmd/liqwatch-archiver/local.go) and [verificatio
 | Tar members | Read tar without extraction; every manifest member must occur exactly once with matching source-byte hash/size; reject extra members; decode legacy compressed members only |
 | Sources | Reread every source still under `data_dir/raw`; match hash/size and optional pack-time mtime, check identity/size/mtime across the read |
 | Closure | Only past UTC days, all entries regular and outside pack quiet period, no source-day leftovers; recheck directory before returning verification success |
-| State | `closed → local_verified → local_deleted`, separate from remote verification/deletion; reverify local_verified each run |
-| Deletion | `archive.delete_sources=true` by default in local mode; false leaves raw and packs intact. Delete only that raw-day directory; never remove the local pack |
+| State | Verified: `closed → local_verified → local_deleting → local_deleted → pruned`; local states never enter remote verification/deletion. Reverify `local_verified` each run. Protocol: [0030](decisions/0030-archive-retention-and-delete-safety.md). |
+| Deletion | Verified: `delete_sources=true` by default; false verifies/reports only. Persist evidence, rename to sibling `.deleting`, recheck size/mtime/member set, remove; changed content blocks and no-replace restore protects recreated original paths. |
 | Resources | Sequential days, bounded decode memory/32 KiB read buffer; Linux best-effort cache release on pack and source reads, no source sync; `max_kbps=0` unlimited, otherwise pace physical reads |
 | Reporting | One deletion line with member/source-byte counts; summary verified/would-delete/blocked/deleted. Rule exclusions exit 0; integrity/I/O errors nonzero |
 
-Inferred: source rereads close the pack-to-verification late-write gap, not concurrent writes after verification. Durable writer exclusion and recovery from a crash between raw removal and state update are not built; such a retry fails closed on missing sources.
+Verified: `local_deleting` recovery runs first: neither path means deleted; original-only returns to verification; renamed paths recheck and resume. Missing members are accepted only after durable removal-start evidence. [Remaining open-handle race and tick limits](decisions/0030-archive-retention-and-delete-safety.md#consequences).
+
+Verified: packer day parsing, raw Sweep and exact-day checks/poller reconstruction exclude `.deleting`; replay skips those directories. No separate integrity-scan command exists in this repository; verification accepts only strict UTC day paths.
 
 ## Upload
 
@@ -152,7 +154,7 @@ Verified: retained `webdav` mode is not selected for the local recorder. Its ver
 | Where | Rule |
 |---|---|
 | Raw root | Verified: local mode deletes after full verification unless report-only is configured |
-| Archive HDD | Verified: automatic old-pack cleanup/retention is not built; capacity estimate in [0029](decisions/0029-local-archive-no-webdav.md#why) |
+| Archive HDD | Verified: local capacity retention prunes the only copy oldest-day-first; settings, cap, protected newest day and loss consequences: [0030](decisions/0030-archive-retention-and-delete-safety.md). Unknown packs warn and remain untouched. |
 
 ## Local disk size
 
@@ -233,7 +235,7 @@ Verified: use `liqwatch-recorder@<venue>.service` with `-venue %i` and its requi
 Verified: `liqwatch-collector@.service` remains the a/b slot template used by [handoff](../deploy/liqwatch-handoff.sh); it is NOT a venue template. The legacy unnumbered collector uses `collect.venue`.
 Designed: do not run legacy/handoff collectors alongside venue collectors; their ports and writers can conflict. Per-venue zero-gap handoff is not built; do not use the legacy script for this layout.
 
-Verified: legacy recorder/packer/WebDAV units retain `/data/liqwatch` mount guards; they are not deployment-ready for the current root-recording layout without a separate reviewed unit update. Local archive unit guards `/data/liqwatch-archive` and requires `-mode local`.
+Verified: packer/local archive/checks require `/data/liqwatch-archive` and `/var/lib/liqwatch`, with mount-point condition only on the HDD; recorder/poller require the root path without that condition. Legacy collector/WebDAV units remain unchanged. Local archive requires `-mode local`.
 Verified: packer, archiver and checks units have no `ProtectSystem` sandbox; no `ReadWritePaths` change is needed. Changing a populated output root requires a separately reviewed migration.
 Verified: [systemd.unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html) specifies the mount dependency/ordering and mount-point condition; these guards do not validate a particular UUID or protect against all runtime unmounts.
 Verified: collector limits are 192 MiB, poller 128 MiB, packer/local archiver 512 MiB, WebDAV archiver 128 MiB and checks 64 MiB; units impose no CPU quota. Collectors/pollers restart after 5 s, limited to 5 starts per 300 s.

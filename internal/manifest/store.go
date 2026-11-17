@@ -59,6 +59,10 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 	if !found {
 		_, err = s.db.Exec(`ALTER TABLE pack_members ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0`)
 	}
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE TABLE IF NOT EXISTS local_deletions (pack_id INTEGER NOT NULL REFERENCES packs(id), name TEXT NOT NULL, bytes INTEGER NOT NULL, mtime_ns INTEGER NOT NULL, PRIMARY KEY(pack_id,name));`)
 	return err
 }
 func (s *SQLiteStore) RegisterPack(p Pack) error {
@@ -139,6 +143,55 @@ func (s *SQLiteStore) Members(id int64) ([]Member, error) {
 	}
 	return out, rows.Err()
 }
+
+// BeginLocalDeletion atomically persists the exact verified metadata and intent.
+func (s *SQLiteStore) BeginLocalDeletion(id int64, members []Member) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`DELETE FROM local_deletions WHERE pack_id=?`, id); err != nil {
+		return err
+	}
+	for _, m := range members {
+		if _, err = tx.Exec(`INSERT INTO local_deletions VALUES(?,?,?,?)`, id, m.Name, m.Bytes, m.MtimeNS); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.Exec(`DELETE FROM settings WHERE key=?`, fmt.Sprintf("local-removing:%d", id)); err != nil {
+		return err
+	}
+	r, err := tx.Exec(`UPDATE packs SET state=? WHERE id=? AND state=?`, StateLocalDeleting, id, StateLocalVerified)
+	if err != nil {
+		return err
+	}
+	n, err := r.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return errors.New("pack is not locally verified")
+	}
+	return tx.Commit()
+}
+
+func (s *SQLiteStore) DeletionMembers(id int64) ([]Member, error) {
+	rows, err := s.db.Query(`SELECT name,bytes,mtime_ns FROM local_deletions WHERE pack_id=? ORDER BY name`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ms []Member
+	for rows.Next() {
+		var m Member
+		if err := rows.Scan(&m.Name, &m.Bytes, &m.MtimeNS); err != nil {
+			return nil, err
+		}
+		ms = append(ms, m)
+	}
+	return ms, rows.Err()
+}
 func (s *SQLiteStore) SetState(id int64, st State) error {
 	var old State
 	err := s.db.QueryRow(`SELECT state FROM packs WHERE id=?`, id).Scan(&old)
@@ -151,7 +204,7 @@ func (s *SQLiteStore) SetState(id int64, st State) error {
 	order := map[State]int{StateOpen: 0, StateClosed: 1, StateUploading: 2, StateUploaded: 3, StateVerified: 4, StateDeleted: 5}
 	a, ok := order[old]
 	b, valid := order[st]
-	localDelete := old == StateLocalVerified && st == StateLocalDeleted
+	localDelete := old == StateLocalDeleting && (st == StateLocalDeleted || st == StateLocalVerified) || old == StateLocalDeleted && st == StatePruned
 	if !localDelete && (!ok || !valid || b != a+1 || st == StateVerified) {
 		return fmt.Errorf("invalid manifest transition %s -> %s", old, st)
 	}

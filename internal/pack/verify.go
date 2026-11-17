@@ -64,7 +64,7 @@ func hashReader(r io.Reader) (int64, string, error) {
 // VerifyLocal rereads the entire pack, its tar members and the still-present
 // sources. It never extracts members or changes any file. Call immediately
 // before deletion; no durable writer exclusion is provided by this function.
-func VerifyLocal(rawRoot, packRoot, venue, symbol, day, relative string, size int64, sum string, members []Member, quiet time.Duration, now time.Time, limiter *ReadLimiter) error {
+func VerifyLocal(rawRoot, packRoot, venue, symbol, day, relative string, size int64, sum string, members []Member, quiet time.Duration, now time.Time, limiter *ReadLimiter, snapshot ...*[]Member) error {
 	if err := validate(venue, symbol, day); err != nil {
 		return err
 	}
@@ -196,6 +196,7 @@ func VerifyLocal(rawRoot, packRoot, venue, symbol, day, relative string, size in
 	if len(seen) != len(want) {
 		return errors.New("manifest member missing in tar")
 	}
+	var observed []Member
 	for _, m := range members {
 		filename := filepath.Join(dir, m.Name)
 		before, err := os.Lstat(filename)
@@ -228,8 +229,19 @@ func VerifyLocal(rawRoot, packRoot, venue, symbol, day, relative string, size in
 		if n != m.Bytes || got != m.SHA256 || !os.SameFile(before, after) || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
 			return fmt.Errorf("source checksum/identity changed: %s", m.Name)
 		}
+		m.MtimeNS = after.ModTime().UnixNano()
+		observed = append(observed, m)
 	}
-	return checkEntries()
+	if err := checkEntries(); err != nil {
+		return err
+	}
+	if err := RecheckDeletion(dir, observed, false); err != nil {
+		return err
+	}
+	if len(snapshot) != 0 {
+		*snapshot[0] = observed
+	}
+	return nil
 }
 
 func verifyDecoder(r io.Reader) (*zstd.Decoder, error) {

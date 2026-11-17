@@ -2,8 +2,7 @@
 Description=Liqwatch venue collector %i
 After=network-online.target
 Wants=network-online.target
-RequiresMountsFor=/data/liqwatch
-ConditionPathIsMountPoint=/data/liqwatch
+RequiresMountsFor=/var/lib/liqwatch
 StartLimitIntervalSec=300
 StartLimitBurst=5
 

@@ -106,6 +106,9 @@ func main() {
 		if e != nil {
 			return e
 		}
+		if d.IsDir() && strings.HasSuffix(d.Name(), ".deleting") {
+			return filepath.SkipDir
+		}
 		if d.Type().IsRegular() {
 			h, n := digest(p)
 			before[p] = h

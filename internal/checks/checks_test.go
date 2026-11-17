@@ -26,6 +26,11 @@ func TestUnverifiedHonorsAge(t *testing.T) {
 	}
 	defer s.Close()
 	now := time.Now()
+	for _, state := range []manifest.State{manifest.StatePruned, manifest.StateLocalDeleted, manifest.StateLocalVerified, manifest.StateLocalDeleting} {
+		if err := s.RegisterPack(manifest.Pack{Path: string(state), Venue: "v", Symbol: "s", Day: 20260101, ClosedAt: now.Add(-24 * time.Hour), State: state}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for path, closed := range map[string]time.Time{"a": now.Add(-time.Minute), "b": now.Add(-4 * time.Hour)} {
 		if err := s.RegisterPack(manifest.Pack{Path: path, Venue: "binance", Symbol: path, Day: 20260101, ClosedAt: closed, State: manifest.StateClosed}); err != nil {
 			t.Fatal(err)

@@ -114,11 +114,11 @@ Verified code review date: 2026-11-17. WebDAV deployment-preparation policy: [00
 |---|---|
 | Resolved for local: sampled hash gap | Verified: [local verifier](../internal/pack/verify.go) rereads every pack, tar member and source before deletion, not a sample. WebDAV still uses its existing sampling; its deletion safety question remains open. |
 | Resolved for local: writes between packing and verification | Verified: source byte hash/size/known mtime and complete directory membership are checked; late append, replacement or extra file blocks deletion. Whole-result mutation coverage is in [tests](../cmd/liqwatch-archiver/local_test.go). |
-| Unknown: concurrent write after verification | Verified: quiet/past-day rules and final directory check are not durable writer exclusion. Inferred: a writer racing the final check/removal can still lose data; closure lock is not built. |
+| Partially resolved: concurrent write after verification | Verified: exclusive rename and metadata recheck protect recreated paths and detected changes; already-open handles still race. [Protocol and flush-tick limits](decisions/0030-archive-retention-and-delete-safety.md#consequences). |
 | Unknown: can realistic largest packs upload and verify reliably? | Verified: [WebDAV client](../internal/webdav/client.go) uses one PUT per pack per attempt, retries whole files and has a 5-minute HTTP timeout; size limit only warns in archiver. Historical unfinished 500 MB PUT: [probe](infrastructure.md#storage-probe-2026-11-01-admin-account-historical). |
 | Unknown: how will the remote manifest be backed up and restored? | Verified: [archiver](../cmd/liqwatch-archiver/main.go) uploads packs and per-pack metadata only; a remote SQLite manifest copy specified by [storage design](storage-design.md#upload) is not built. |
-| Unknown: local retention and disk-loss recovery | Verified: no offsite copy or automatic old-pack cleanup is built; capacity estimate and failure consequences in [0029](decisions/0029-local-archive-no-webdav.md#consequences). Full-day/busy-day capacity remains unmeasured. |
-| Unknown: crash between raw deletion and local state update | Verified: retry rechecks sources and fails on missing files; reconciliation/recovery tooling is not built. Local and remote manifest states are distinct. |
+| Partially resolved: local retention and disk-loss recovery | Verified: capacity pruning of the only copy is built; no offsite recovery exists. [Policy](decisions/0030-archive-retention-and-delete-safety.md). Full-day/busy-day capacity and retention IO remain unmeasured. |
+| Resolved in code: process crash during local raw deletion | Verified: persisted deletion evidence and idempotent reconciliation cover intent, rename, partial unlink and removal before state update; [tests](../cmd/liqwatch-archiver/deletion_test.go). Power-loss trials are not measured. |
 
 ## Poller field policy questions
 

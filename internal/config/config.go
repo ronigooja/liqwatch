@@ -120,13 +120,17 @@ type Collect struct {
 }
 
 type Archive struct {
-	Mode                string `toml:"mode"`           // webdav (default) or local
-	DeleteSources       bool   `toml:"delete_sources"` // local only; default true
-	RemoteRoot          string `toml:"remote_root"`    // https://.../dav/ronigooja_onedrive/liqwatch/
-	MaxPackMB           int    `toml:"max_pack_mb"`
-	FullVerifyDays      int    `toml:"full_verify_days"` // 7: download-and-hash
-	VerifySamplePercent int    `toml:"verify_sample_percent"`
-	MaxKBps             int    `toml:"max_kbps"`
+	Retention              bool   `toml:"retention"`
+	RetentionHighPct       int    `toml:"retention_high_pct"`
+	RetentionLowPct        int    `toml:"retention_low_pct"`
+	RetentionMaxDaysPerRun int    `toml:"retention_max_days_per_run"`
+	Mode                   string `toml:"mode"`           // webdav (default) or local
+	DeleteSources          bool   `toml:"delete_sources"` // local only; default true
+	RemoteRoot             string `toml:"remote_root"`    // https://.../dav/ronigooja_onedrive/liqwatch/
+	MaxPackMB              int    `toml:"max_pack_mb"`
+	FullVerifyDays         int    `toml:"full_verify_days"` // 7: download-and-hash
+	VerifySamplePercent    int    `toml:"verify_sample_percent"`
+	MaxKBps                int    `toml:"max_kbps"`
 }
 
 type Pack struct {
@@ -164,7 +168,7 @@ func Load(path string) (*Config, error) {
 		DataDir: "/var/lib/liqwatch",
 		Record:  Record{Level: 1},
 		Collect: Collect{Venue: "binance", MapPath: "/etc/liqwatch/venue-map.toml", MetricsAddr: "127.0.0.1:9101", MaxStreamsPerWS: 100, QueueSize: 10000, OpenSpacingMS: 500, Throttle: map[string]any{"enabled": true}},
-		Archive: Archive{Mode: "webdav", DeleteSources: true, MaxPackMB: 400, FullVerifyDays: 7, VerifySamplePercent: 10},
+		Archive: Archive{Mode: "webdav", DeleteSources: true, Retention: true, RetentionHighPct: 90, RetentionLowPct: 80, RetentionMaxDaysPerRun: 3, MaxPackMB: 400, FullVerifyDays: 7, VerifySamplePercent: 10},
 		Pack:    Pack{Unit: "tar_then_zstd", Level: 3, QuietMinutes: 10},
 		Checks:  Checks{DiskWarnPct: 80, StaleSec: map[string]int{"aggTrade": 120, "markPrice_all": 60, "forceOrder_all": 0}, UnverifiedHours: 3},
 	}
@@ -185,6 +189,9 @@ func Load(path string) (*Config, error) {
 }
 
 func (c Config) validate() error {
+	if c.Archive.RetentionLowPct <= 0 || c.Archive.RetentionLowPct >= c.Archive.RetentionHighPct || c.Archive.RetentionHighPct > 99 || c.Archive.RetentionMaxDaysPerRun <= 0 {
+		return fmt.Errorf("archive retention requires 0 < low < high <= 99 and max_days_per_run > 0")
+	}
 	if c.Archive.Mode != "webdav" && c.Archive.Mode != "local" {
 		return fmt.Errorf("archive.mode must be webdav or local")
 	}
