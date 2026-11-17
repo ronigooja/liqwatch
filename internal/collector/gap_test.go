@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -81,7 +82,7 @@ func TestGapInitialAndNoMessages(t *testing.T) {
 
 func TestGapReconnectSequence(t *testing.T) {
 	s := &captureSink{}
-	connections := 0
+	var connections atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ws, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -91,11 +92,11 @@ func TestGapReconnectSequence(t *testing.T) {
 		if _, _, err := ws.Read(r.Context()); err != nil {
 			return
 		}
-		connections++
+		n := connections.Add(1)
 		if ws.Write(r.Context(), websocket.MessageText, []byte("control")) != nil {
 			return
 		}
-		if connections == 1 {
+		if n == 1 {
 			// Wait for the collector to consume the frame before ending this connection.
 			time.Sleep(20 * time.Millisecond)
 			return

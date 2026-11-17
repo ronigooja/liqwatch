@@ -46,9 +46,10 @@ Verified in [collector](../internal/collector/collector.go); governed by [0022](
 | `conn_closed` | Existing `cause`, `err`, `shard`, `streams`; adds `conn`, `prev` (preceding close or null), `last_rw` (last message wall ns), `last_rm` (process monotonic ns), `up_ms` (dial success to close), `msgs` (including controls). Last times are zero if none |
 | `conn_opened` | `shard`, `conn`, `prev` (preceding closed connection or null), `initial` (first process connection), `attempt` (process shard dial ordinal), `backoff_ms` (last retry sleep), `down_ms` (preceding close to completed subscription writes; null without close), `subscribed`, `subs_ok` |
 | `conn_first` | `shard`, `conn`; envelope `rw`/`rm` give the first received message on this connection, including controls; may precede completed subscription writes |
-| `snapshot` | Bybit decoded ticker snapshot: `shard`, `conn`, `symbol`, `channel`; records known state replacement, not a guarantee of trade replay |
 
 Verified: `conn_opened` is emitted only after every subscription write succeeds; `subscribed` counts intended `Shard.Streams`, including URL subscriptions. `subs_ok=true` is not server acknowledgement; adapters retain `subscribe_error` diagnostics. Failed writes emit no successful-open event.
+
+Verified in [Bybit](../internal/venue/bybit/bybit.go): ticker snapshots rebuild per-symbol state but do not emit gap events. A per-connection snapshot summary would require new aggregation state; no snapshot/resync completion or replay guarantee is recorded.
 
 Verified: correlate by `shard` and payload `conn`/`prev`, not file order (subscription and read goroutines can interleave). Each failed dial closes separately; follow `prev` across failures with zero last times to the last connection that received messages.
 

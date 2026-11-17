@@ -1,7 +1,10 @@
 package bybit
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -121,27 +124,95 @@ func TestTickerConnectionIsolationAndClose(t *testing.T) {
 	}
 }
 
-func TestTickerSnapshotGap(t *testing.T) {
+func TestTickerSnapshotsNoGapWholeRecordGolden(t *testing.T) {
 	a := &Adapter{}
 	sh := venue.Shard{Name: "market"}
-	a.ConnOpened(sh, "c1")
-	defer a.ConnClosed(sh, "c1")
-	records := a.SplitConn(sh, "c1", []byte(`{"topic":"tickers.X","type":"snapshot","data":{"markPrice":"1"}}`))
-	count := 0
-	for _, r := range records {
-		if r.Channel == "gap" {
-			count++
-			if string(r.Payload) != `{"channel":"mark","conn":"c1","event":"snapshot","shard":"market","symbol":"X"}` {
-				t.Fatal(string(r.Payload))
+	dir := t.TempDir()
+	w, err := rawlog.NewWriter(rawlog.Options{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go w.Run(ctx)
+	defer func() { cancel(); <-w.Done() }()
+	// Multiple symbols, repeated snapshots on a healthy connection, and a reconnect.
+	for _, id := range []string{"c1", "c2"} {
+		a.ConnOpened(sh, id)
+		for _, symbol := range []string{"X", "Y", "X"} {
+			frame := fmt.Sprintf(`{"topic":"tickers.%s","type":"snapshot","data":{"markPrice":"1"}}`, symbol)
+			for _, r := range a.SplitConn(sh, id, []byte(frame)) {
+				if r.Channel == "gap" {
+					t.Fatalf("snapshot must not emit gap: %s", r.Payload)
+				}
+				if strings.HasPrefix(string(r.Payload), `{"sample":`) {
+					continue
+				}
+				r.Venue, r.Conn, r.CSeq, r.RecvWal, r.RecvMon = "bybit", id, 1, 42, 3
+				w.Write(rawlog.GroupTrade, r)
 			}
 		}
+		a.ConnClosed(sh, id)
 	}
-	if count != 1 {
-		t.Fatalf("snapshot gaps = %d", count)
+	cancel()
+	<-w.Done()
+	data, err := os.ReadFile(filepath.Join(dir, "bybit/X/19700101/mark.jsonl"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, r := range a.SplitConn(sh, "c1", []byte(`{"topic":"tickers.X","type":"delta","data":{"markPrice":"2"}}`)) {
-		if r.Channel == "gap" {
-			t.Fatal("delta claimed snapshot")
+	const golden = `{"v":2,"wseq":1,"cseq":1,"rw":42,"rm":3,"p":{"data":{"markPrice":"1"}}}
+{"v":2,"wseq":3,"cseq":1,"rw":42,"rm":3,"p":{"data":{"markPrice":"1"}}}
+{"v":2,"wseq":4,"cseq":1,"rw":42,"rm":3,"p":{"data":{"markPrice":"1"}}}
+{"v":2,"wseq":6,"cseq":1,"rw":42,"rm":3,"p":{"data":{"markPrice":"1"}}}
+`
+	if string(data) != golden {
+		t.Fatalf("whole records:\n%s\nwant:\n%s", data, golden)
+	}
+	data, err = os.ReadFile(filepath.Join(dir, "bybit/Y/19700101/mark.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const otherGolden = `{"v":2,"wseq":2,"cseq":1,"rw":42,"rm":3,"p":{"data":{"markPrice":"1"}}}
+{"v":2,"wseq":5,"cseq":1,"rw":42,"rm":3,"p":{"data":{"markPrice":"1"}}}
+`
+	if string(data) != otherGolden {
+		t.Fatalf("whole records:\n%s\nwant:\n%s", data, otherGolden)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "bybit/gap")); !os.IsNotExist(err) {
+		t.Fatalf("unexpected gap directory: %v", err)
+	}
+}
+
+func TestSnapshotDiagnosticScope469Symbols(t *testing.T) {
+	syms := make([]venue.Symbol, 469)
+	for i := range syms {
+		syms[i] = fmt.Sprintf("S%03dUSDT", i)
+	}
+	a := &Adapter{}
+	shards, err := a.Shards(context.Background(), syms)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shards) != 16 {
+		t.Fatalf("shards = %d", len(shards))
+	}
+	count := 0
+	for i, sh := range shards {
+		tickers := 0
+		for _, stream := range sh.Streams {
+			if strings.HasPrefix(stream, "tickers.") {
+				tickers++
+			}
 		}
+		want := 30
+		if i == 15 {
+			want = 19
+		}
+		if tickers != want {
+			t.Fatalf("%s ticker streams = %d, want %d", sh.Name, tickers, want)
+		}
+		count += tickers
+	}
+	if count != 469 {
+		t.Fatalf("ticker streams = %d", count)
 	}
 }

@@ -195,12 +195,14 @@ func refreshURL(ctx context.Context, sh Shard, oldURL string) string {
 }
 
 type conn struct {
-	id                        string
-	cancel                    context.CancelFunc
-	opened                    chan struct{}
-	done                      chan struct{}
-	mu                        sync.Mutex
-	e                         error
+	id     string
+	cancel context.CancelFunc
+	opened chan struct{}
+	done   chan struct{}
+	mu     sync.Mutex
+	e      error
+	// Reader-owned lifecycle stats are published by closing done; runShard waits for done.
+	// up is initialized before subscription workers start. previous/backoff/gen are immutable.
 	up, closed, last          time.Time
 	upMon, closedMon, lastMon int64
 	msgs                      uint64
