@@ -32,6 +32,33 @@ CREATE TABLE IF NOT EXISTS pack_members (pack_id INTEGER NOT NULL REFERENCES pac
 CREATE TABLE IF NOT EXISTS gaps (stream TEXT NOT NULL, start_ns INTEGER NOT NULL, end_ns INTEGER NOT NULL, cause TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS drops (window_start INTEGER NOT NULL, channel TEXT NOT NULL, count INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`)
+	if err != nil {
+		return err
+	}
+	// Upgrade existing manifests; old members retain unknown (zero) mtime.
+	rows, err := s.db.Query(`PRAGMA table_info(pack_members)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var def any
+		if err = rows.Scan(&cid, &name, &typ, &notnull, &def, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		found = found || name == "mtime_ns"
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if !found {
+		_, err = s.db.Exec(`ALTER TABLE pack_members ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0`)
+	}
 	return err
 }
 func (s *SQLiteStore) RegisterPack(p Pack) error {
@@ -62,7 +89,7 @@ func (s *SQLiteStore) RegisterPack(p Pack) error {
 		return err
 	}
 	for _, m := range p.Members {
-		if _, err = tx.Exec(`INSERT INTO pack_members VALUES(?,?,?,?)`, id, m.Name, m.Bytes, m.SHA256); err != nil {
+		if _, err = tx.Exec(`INSERT INTO pack_members(pack_id,name,bytes,sha256,mtime_ns) VALUES(?,?,?,?,?)`, id, m.Name, m.Bytes, m.SHA256, m.MtimeNS); err != nil {
 			return err
 		}
 	}
@@ -97,7 +124,7 @@ func (s *SQLiteStore) ListByState(st State) ([]Pack, error) {
 	return out, rows.Err()
 }
 func (s *SQLiteStore) Members(id int64) ([]Member, error) {
-	rows, err := s.db.Query(`SELECT name,bytes,sha256 FROM pack_members WHERE pack_id=? ORDER BY name`, id)
+	rows, err := s.db.Query(`SELECT name,bytes,sha256,mtime_ns FROM pack_members WHERE pack_id=? ORDER BY name`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +132,7 @@ func (s *SQLiteStore) Members(id int64) ([]Member, error) {
 	var out []Member
 	for rows.Next() {
 		var m Member
-		if err = rows.Scan(&m.Name, &m.Bytes, &m.SHA256); err != nil {
+		if err = rows.Scan(&m.Name, &m.Bytes, &m.SHA256, &m.MtimeNS); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -124,7 +151,8 @@ func (s *SQLiteStore) SetState(id int64, st State) error {
 	order := map[State]int{StateOpen: 0, StateClosed: 1, StateUploading: 2, StateUploaded: 3, StateVerified: 4, StateDeleted: 5}
 	a, ok := order[old]
 	b, valid := order[st]
-	if !ok || !valid || b != a+1 || st == StateVerified {
+	localDelete := old == StateLocalVerified && st == StateLocalDeleted
+	if !localDelete && (!ok || !valid || b != a+1 || st == StateVerified) {
 		return fmt.Errorf("invalid manifest transition %s -> %s", old, st)
 	}
 	res, err := s.db.Exec(`UPDATE packs SET state=? WHERE id=? AND state=?`, st, id, old)
@@ -139,6 +167,22 @@ func (s *SQLiteStore) SetState(id int64, st State) error {
 }
 func (s *SQLiteStore) SetSHA256(id int64, sum string) error {
 	_, err := s.db.Exec(`UPDATE packs SET sha256=? WHERE id=? AND sha256=''`, sum, id)
+	return err
+}
+
+// MarkLocalVerified never advances an uploaded/remote-verified pack.
+func (s *SQLiteStore) MarkLocalVerified(id int64, at time.Time) error {
+	if at.IsZero() {
+		return errors.New("verification time required")
+	}
+	r, err := s.db.Exec(`UPDATE packs SET state=?,verified_at=? WHERE id=? AND state IN (?,?)`, StateLocalVerified, nanos(at), id, StateClosed, StateLocalVerified)
+	if err != nil {
+		return err
+	}
+	n, err := r.RowsAffected()
+	if err == nil && n != 1 {
+		return errors.New("pack is not locally closed/verified")
+	}
 	return err
 }
 func (s *SQLiteStore) SetUploadMetadata(id int64, path string) error {

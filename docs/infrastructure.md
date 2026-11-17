@@ -6,7 +6,7 @@ Hosts and storage. Credentials are never written in this repo. Provider choice i
 
 | Role | Address | Spec | Notes |
 |---|---|---|---|
-| Recorder (prepared, not deployed) | Osaka, hostname VT01OK | Verified: Debian 12, 1 vCPU, ~1 GB RAM, ~2.4 GB swap | Verified: main-session report, 2026-11-16. Disk, connectivity and deployment state below. |
+| Recorder | Osaka, hostname VT01OK | Verified: Debian 12, kernel `6.1.0-50`; current resource sizing not rechecked here | Verified: owner report, 2026-11-17; recording/release/storage below. |
 | Historical recorder (P0) | 136.0.11.159, Japan, hostname EV02OK | 2 vCPU, ~3.9 GB RAM, 30 GB disk (~25 GB free), Debian 12, 2 GB swap | [Down; outage and open recovery questions](p0-rollout.md#recorder-outage). Reinstalled clean by the owner on 2026-11-01 and confirmed as the recorder. Still to do: timezone is Asia/Shanghai, uses systemd-timesyncd (no chrony), open-file limit 1024, no Go. Docker, python3, curl, zstd present |
 | Linux build, test and live recording measurement | 64.118.141.231, Singapore | 1 core, 1.8 GB RAM | Verified: test machine; live measurements run with nothing else running (owner report, 2026-11-15); current collector and poller code is built and merged, not deployed. |
 | Linux build and test | 38.47.101.8, Hong Kong | Debian 12, 1 core, 1.9 GB RAM | Verified: shared with permanent services `xboard-node` and `3proxy`; rsync installed 2026-11-15 (owner report). Never use for CPU measurements. |
@@ -18,11 +18,12 @@ Hosts and storage. Credentials are never written in this repo. Provider choice i
 
 | Item | Current status | Source/date |
 |---|---|---|
-| Block storage | Verified: 100 GB HDD attached, label `liqwatch-recorder-hdd-100g`, region `itm`, ID `e15da6e9-d5bf-4a2b-9585-40e2a1f13c45`; listed price $2.5/month | Main-session `vultr-cli` report, 2026-11-16 |
-| Mount | Verified: ext4 mounted at `/data/liqwatch` by UUID with `nofail` | Main-session host checks, 2026-11-16 |
+| Archive volume | Verified: 100 GB HDD, `liqwatch-archive-hdd-100g`, ID `a0230815-700a-4e12-a66c-afa5a841ae7d`, $2.50/month | Owner report, 2026-11-17; replaces deleted prior disk |
+| Archive mount | Verified: `/dev/vdb`, UUID `eaa9e603-29a1-432d-ae78-4116b90e2659`, mounted `/data/liqwatch-archive`; `[pack].dir` selects this root | Owner report, 2026-11-17; [0029](decisions/0029-local-archive-no-webdav.md) |
 | WebDAV reachability | Measured: one 1 MiB write/readback/delete test passed; no spread available, not a sustained-throughput test | Main-session probe from VT01OK to the [archive root](#storage-account-and-re-test-2026-11-02), 2026-11-16 |
-| Services | Verified: not deployed; archiver deletion not enabled | Main-session report, 2026-11-16; [install plan](storage-design.md#recorder-install-layout-and-enable-order) |
-| Sustained seven-venue load | Verified: no measurements on this host; CPU, memory, full-day disk and pack upload capacity remain UNMEASURED | Main-session report, 2026-11-16; [open gates](open-questions.md#archive-deployment-gates) |
+| Recording | Verified: release `98f4937`, root `/var/lib/liqwatch/data`, `[record].compress=true`; running since `2026-11-17T09:22:56Z`; archive units not enabled by this change | Owner report, 2026-11-17 |
+| nginx upload limit | Verified: on VT01OK `client_max_body_size` changed `50m → 512m` after HTTP 413; backup `/etc/nginx/sites-available/icandrinkmore.beer.bak-20261117T102641Z` | Owner report, 2026-11-17; upstream not measured |
+| Sustained capacity | Inferred: short-run volume does not establish full-day/busy-day capacity; [measurements and decision](decisions/0029-local-archive-no-webdav.md#why) | Owner evidence, 2026-11-17; [remaining gates](open-questions.md#archive-deployment-gates) |
 
 ## Historical recorder network probe
 

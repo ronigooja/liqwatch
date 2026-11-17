@@ -80,9 +80,10 @@ type Options struct {
 }
 
 type Member struct {
-	Name   string `json:"name"`
-	Bytes  int64  `json:"bytes"`
-	SHA256 string `json:"sha256"`
+	Name    string `json:"name"`
+	Bytes   int64  `json:"bytes"`
+	SHA256  string `json:"sha256"`
+	MtimeNS int64  `json:"mtime_ns,omitempty"`
 }
 
 type Result struct {
@@ -270,7 +271,7 @@ func pack(rawRoot, venue, symbol, day string, opts Options, copyFile func(io.Wri
 			tmp.Close()
 			return result, ErrIncomplete
 		}
-		result.Members = append(result.Members, Member{Name: name, Bytes: n, SHA256: hex.EncodeToString(h.Sum(nil))})
+		result.Members = append(result.Members, Member{Name: name, Bytes: n, SHA256: hex.EncodeToString(h.Sum(nil)), MtimeNS: before.ModTime().UnixNano()})
 		if opts.Unit == ZstdThenTar {
 			if err := encoder.Close(); err != nil {
 				return result, err
@@ -317,6 +318,11 @@ func pack(rawRoot, venue, symbol, day string, opts Options, copyFile func(io.Wri
 	result.SHA256 = hex.EncodeToString(h.Sum(nil))
 	if existing, openErr := os.Open(dst); openErr == nil {
 		members, readErr := readMembers(existing, opts.Unit)
+		for i := range members {
+			if i < len(result.Members) {
+				members[i].MtimeNS = result.Members[i].MtimeNS
+			}
+		}
 		if readErr == nil && reflect.DeepEqual(members, result.Members) {
 			if _, err := existing.Seek(0, io.SeekStart); err != nil {
 				existing.Close()

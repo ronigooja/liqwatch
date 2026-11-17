@@ -120,7 +120,9 @@ type Collect struct {
 }
 
 type Archive struct {
-	RemoteRoot          string `toml:"remote_root"` // https://.../dav/ronigooja_onedrive/liqwatch/
+	Mode                string `toml:"mode"`           // webdav (default) or local
+	DeleteSources       bool   `toml:"delete_sources"` // local only; default true
+	RemoteRoot          string `toml:"remote_root"`    // https://.../dav/ronigooja_onedrive/liqwatch/
 	MaxPackMB           int    `toml:"max_pack_mb"`
 	FullVerifyDays      int    `toml:"full_verify_days"` // 7: download-and-hash
 	VerifySamplePercent int    `toml:"verify_sample_percent"`
@@ -162,7 +164,7 @@ func Load(path string) (*Config, error) {
 		DataDir: "/var/lib/liqwatch",
 		Record:  Record{Level: 1},
 		Collect: Collect{Venue: "binance", MapPath: "/etc/liqwatch/venue-map.toml", MetricsAddr: "127.0.0.1:9101", MaxStreamsPerWS: 100, QueueSize: 10000, OpenSpacingMS: 500, Throttle: map[string]any{"enabled": true}},
-		Archive: Archive{MaxPackMB: 400, FullVerifyDays: 7, VerifySamplePercent: 10},
+		Archive: Archive{Mode: "webdav", DeleteSources: true, MaxPackMB: 400, FullVerifyDays: 7, VerifySamplePercent: 10},
 		Pack:    Pack{Unit: "tar_then_zstd", Level: 3, QuietMinutes: 10},
 		Checks:  Checks{DiskWarnPct: 80, StaleSec: map[string]int{"aggTrade": 120, "markPrice_all": 60, "forceOrder_all": 0}, UnverifiedHours: 3},
 	}
@@ -183,6 +185,9 @@ func Load(path string) (*Config, error) {
 }
 
 func (c Config) validate() error {
+	if c.Archive.Mode != "webdav" && c.Archive.Mode != "local" {
+		return fmt.Errorf("archive.mode must be webdav or local")
+	}
 	if c.Record.Flush != "" {
 		d, err := time.ParseDuration(c.Record.Flush)
 		if err != nil || d <= 0 || d > 5*time.Minute {

@@ -19,14 +19,16 @@ queue_size = 10000
 enabled = true # Set false to disable; override declared channels with e.g. "mark" = "1s".
 
 [archive]
+mode = "webdav" # Default; choose "local" for HDD-only verification, with no network or credentials.
+delete_sources = true # Local only: false verifies/reports without deleting raw. WebDAV behavior is unchanged.
 remote_root = "https://example.invalid/dav/ronigooja_onedrive/liqwatch/"
 max_pack_mb = 400
 verify_sample_percent = 10
 full_verify_days = 7
-max_kbps = 0
+max_kbps = 0 # 0 unlimited; local mode paces all physical verification reads with a 32 KiB burst.
 
 [pack]
-# dir = "/var/lib/liqwatch/pack" # Absolute root for packs/ and manifest/; omitted or empty uses data_dir; pre-create owned by liqwatch.
+# dir = "/data/liqwatch-archive" # Absolute root for packs/ and manifest/; omitted or empty uses data_dir; pre-create owned by liqwatch.
 unit = "tar_then_zstd"
 level = 3
 quiet_minutes = 10

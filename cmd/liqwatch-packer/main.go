@@ -93,7 +93,7 @@ func run(cfg config.Config) error {
 				}
 				p := manifest.Pack{Venue: v.Name(), Symbol: sym.Name(), Day: day, Path: r.Path, Bytes: r.Bytes, SHA256: r.SHA256, State: manifest.StateClosed, ClosedAt: time.Now().UTC()}
 				for _, m := range r.Members {
-					p.Members = append(p.Members, manifest.Member{Name: m.Name, Bytes: m.Bytes, SHA256: m.SHA256})
+					p.Members = append(p.Members, manifest.Member{Name: m.Name, Bytes: m.Bytes, SHA256: m.SHA256, MtimeNS: m.MtimeNS})
 				}
 				if e = s.RegisterPack(p); e != nil {
 					return e

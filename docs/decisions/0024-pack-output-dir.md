@@ -4,6 +4,8 @@ Purpose: choose independent pack placement under [0014](0014-daily-pack-storage.
 
 Date: 2026-11-17.
 
+Verified: [0029](0029-local-archive-no-webdav.md) supersedes the designed recorder disk placement; output-root configuration remains unchanged.
+
 ## Decision
 
 - Verified in [config](../../internal/config/config.go): optional `[pack].dir` selects one root for `packs/` and `manifest/manifest.db`; empty preserves existing paths. Raw JSONL stays on HDD `data_dir` with its current layout.

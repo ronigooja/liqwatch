@@ -77,7 +77,11 @@ func TestLegacyCompatibility(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(members, result.Members) {
+			contentMembers := append([]Member(nil), result.Members...)
+			for i := range contentMembers {
+				contentMembers[i].MtimeNS = 0
+			}
+			if !reflect.DeepEqual(members, contentMembers) {
 				t.Fatalf("legacy members %v, new %v", members, result.Members)
 			}
 			// Existing reader accepts new bytes; old archive is preserved on retry.

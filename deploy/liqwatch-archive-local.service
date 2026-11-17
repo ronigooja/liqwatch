@@ -1,0 +1,13 @@
+[Unit]
+Description=Liqwatch local archive verification and raw cleanup
+RequiresMountsFor=/data/liqwatch-archive
+ConditionPathIsMountPoint=/data/liqwatch-archive
+# Not enabled by this repository change. Config must select archive.mode = "local".
+
+[Service]
+Type=oneshot
+User=liqwatch
+MemoryMax=512M
+ExecStart=/opt/liqwatch/current/liqwatch-archiver -config /etc/liqwatch/config.toml -mode local
+Nice=15
+IOSchedulingClass=idle

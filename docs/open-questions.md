@@ -108,14 +108,17 @@ Verified scope: [0026](decisions/0026-live-zstd-recording.md) implements live co
 
 ## Archive deployment gates
 
-Verified code review date: 2026-11-16. Deployment policy: [0021](decisions/0021-gate-archiver-deletion.md).
+Verified code review date: 2026-11-17. WebDAV deployment-preparation policy: [0021](decisions/0021-gate-archiver-deletion.md); local upload gate superseded by [0029](decisions/0029-local-archive-no-webdav.md).
 
 | Unresolved question | Evidence and scope |
 |---|---|
-| Unknown: is immediate deletion acceptable with sampled verification? | Verified: [archiver](../cmd/liqwatch-archiver/main.go) calls deletion immediately after verification; defaults use full hashes for the first 7 days since first verification, then 10% deterministic pack sampling; other packs get size checks. |
-| Unknown: how will late writes be protected? | Verified: [packer](../internal/pack/pack.go) checks quiet time and size/mtime during reads, without a durable closure lock. Archiver removes the entire raw-day directory. Inferred: a later append or new member can be lost after packing. |
+| Resolved for local: sampled hash gap | Verified: [local verifier](../internal/pack/verify.go) rereads every pack, tar member and source before deletion, not a sample. WebDAV still uses its existing sampling; its deletion safety question remains open. |
+| Resolved for local: writes between packing and verification | Verified: source byte hash/size/known mtime and complete directory membership are checked; late append, replacement or extra file blocks deletion. Whole-result mutation coverage is in [tests](../cmd/liqwatch-archiver/local_test.go). |
+| Unknown: concurrent write after verification | Verified: quiet/past-day rules and final directory check are not durable writer exclusion. Inferred: a writer racing the final check/removal can still lose data; closure lock is not built. |
 | Unknown: can realistic largest packs upload and verify reliably? | Verified: [WebDAV client](../internal/webdav/client.go) uses one PUT per pack per attempt, retries whole files and has a 5-minute HTTP timeout; size limit only warns in archiver. Historical unfinished 500 MB PUT: [probe](infrastructure.md#storage-probe-2026-11-01-admin-account-historical). |
 | Unknown: how will the remote manifest be backed up and restored? | Verified: [archiver](../cmd/liqwatch-archiver/main.go) uploads packs and per-pack metadata only; a remote SQLite manifest copy specified by [storage design](storage-design.md#upload) is not built. |
+| Unknown: local retention and disk-loss recovery | Verified: no offsite copy or automatic old-pack cleanup is built; capacity estimate and failure consequences in [0029](decisions/0029-local-archive-no-webdav.md#consequences). Full-day/busy-day capacity remains unmeasured. |
+| Unknown: crash between raw deletion and local state update | Verified: retry rechecks sources and fails on missing files; reconciliation/recovery tooling is not built. Local and remote manifest states are distinct. |
 
 ## Poller field policy questions
 

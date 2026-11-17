@@ -2,6 +2,7 @@
 
 Design of recording, packing, upload and retention. Verified: writer, packer and archiver are built; [deployment status](infrastructure.md#vt01ok-preparation-status).
 Records: [0009](decisions/0009-zero-gap-handoff.md), [0014](decisions/0014-daily-pack-storage.md), [0021](decisions/0021-gate-archiver-deletion.md), [0023](decisions/0023-packer-streaming.md), [0024](decisions/0024-pack-output-dir.md), [0025](decisions/0025-packer-drop-page-cache.md).
+Local destination and deletion: [0029](decisions/0029-local-archive-no-webdav.md).
 Venue scope: [adapters](venue-adapters.md).
 
 ## Scope
@@ -17,8 +18,8 @@ Raw venue symbol names are kept in paths. Mapping (`1000PEPE` to `PEPE`, `XBT` t
 
 | Layer | Where | Holds | Role |
 |---|---|---|---|
-| Hot | Recorder local disk | Today's raw files; closed packs awaiting upload | Buffer; a file is deleted once its pack is verified |
-| Archive | WebDAV (OneDrive mount behind OpenList) | Every pack, kept without limit | The only authoritative copy |
+| Hot | Verified: recorder root disk | Raw files | Verified: local mode removes a past-day directory only after full verification; report-only switch below |
+| Archive | Verified: local HDD | Packs and SQLite manifest | Inferred: sole archive copy; no offsite durability; host paths in [infrastructure](infrastructure.md#vt01ok-preparation-status) |
 | Research | Mac or on-demand machine | Parquet converted from downloaded packs, for modelling | Temporary; may be deleted at any time; holds nothing that must be kept |
 
 ## Writing
@@ -116,23 +117,42 @@ Verified: output keeps same-directory temp → sync → hash → rename publicat
 
 Measured: bounded anonymous memory did not bound recorder cgroup cache; see [recorder baseline](packing-results.md#recorder-baseline) and [build-machine comparison](packing-results.md#build-machine-cache-release). Inferred: cache release is not a slab or collector-drop fix; it is not yet measured on the recorder.
 
+## Archive modes
+
+Verified in [local archiver](../cmd/liqwatch-archiver/local.go) and [verification](../internal/pack/verify.go): `archive.mode="local"` makes no network client and reads no WebDAV credentials or `remote_root`. Default mode remains `webdav` for compatibility.
+
+| Local rule | Verified implementation |
+|---|---|
+| Whole pack | Reread output-root file, streaming SHA-256 and byte count must match manifest |
+| Tar members | Read tar without extraction; every manifest member must occur exactly once with matching source-byte hash/size; reject extra members; decode legacy compressed members only |
+| Sources | Reread every source still under `data_dir/raw`; match hash/size and optional pack-time mtime, check identity/size/mtime across the read |
+| Closure | Only past UTC days, all entries regular and outside pack quiet period, no source-day leftovers; recheck directory before returning verification success |
+| State | `closed → local_verified → local_deleted`, separate from remote verification/deletion; reverify local_verified each run |
+| Deletion | `archive.delete_sources=true` by default in local mode; false leaves raw and packs intact. Delete only that raw-day directory; never remove the local pack |
+| Resources | Sequential days, bounded decode memory/32 KiB read buffer; Linux best-effort cache release on pack and source reads, no source sync; `max_kbps=0` unlimited, otherwise pace physical reads |
+| Reporting | One deletion line with member/source-byte counts; summary verified/would-delete/blocked/deleted. Rule exclusions exit 0; integrity/I/O errors nonzero |
+
+Inferred: source rereads close the pack-to-verification late-write gap, not concurrent writes after verification. Durable writer exclusion and recovery from a crash between raw removal and state update are not built; such a retry fails closed on missing sources.
+
 ## Upload
+
+Verified: retained `webdav` mode is not selected for the local recorder. Its verification and raw/pack deletion behavior is unchanged; local `delete_sources` does not gate WebDAV deletion. WebDAV remains unvalidated at scale.
 
 | Item | Rule |
 |---|---|
 | Unit | One pack per venue, symbol and day; one PUT; no chunking, no `.partNNNN` |
 | Remote | Verified: container suffix follows the pack rule above; `<date>.meta.json` holds size, whole-pack sha256, member hashes, compression unit and level |
 | Verify | Compare remote size after upload (the storage once accepted a PUT and kept a zero-byte file). First 7 days: download and re-hash; afterwards a sampled fraction |
-| Local delete | Raw files and the pack are deleted only after the pack is verified; unverified packs are never deleted |
+| WebDAV local delete | Verified: raw files and the local pack are deleted after remote verification; local-only states are never processed |
 | Manifest | Verified: SQLite, one row per pack, member checksums stored separately. Designed remote daily copy: not built; [gate](open-questions.md#archive-deployment-gates) |
-| Basis for no chunking | Inferred: the largest Binance coin was about 70 MB compressed per day for trades, extrapolated from 10 minutes. Measured upload: 100 MB in about 22 s, nginx limit raised to 1 GB; a 500 MB single PUT did not finish ([infrastructure.md](infrastructure.md)). Packs of other venues are unmeasured; re-evaluate if packs exceed a few hundred MB |
+| Current destination | Verified: upload dropped for this recorder; latest measured request overhead and rationale are in [0029](decisions/0029-local-archive-no-webdav.md#why) |
 
 ## Retention
 
 | Where | Rule |
 |---|---|
-| Local | Delete after verification; no buffer days |
-| Archive | No limit; storage governs ([0011](decisions/0011-no-alert-narrower-recording.md)) |
+| Raw root | Verified: local mode deletes after full verification unless report-only is configured |
+| Archive HDD | Verified: automatic old-pack cleanup/retention is not built; capacity estimate in [0029](decisions/0029-local-archive-no-webdav.md#why) |
 
 ## Local disk size
 
@@ -171,11 +191,11 @@ Mark-price A included contracts outside the 522 (TRADIFI and others) and B did n
 | Compression level | Offline, so above default is possible; unmeasured |
 | Chart-state snapshot location | Not on the recorder, not in the research layer |
 | Other six venues' volume | Full-day volume remains unmeasured; adapters are built |
-| Upload of about 3,200 packs per day | Per-day time and failure rate unmeasured on WebDAV; [infrastructure.md](infrastructure.md) states WebDAV suits few large files |
+| Archive sustained capacity | Inferred: local retention headroom and IO impact need full-day measurement; [0029](decisions/0029-local-archive-no-webdav.md#why) is only a short sample |
 | Many open append files per process | Descriptor and IO load unmeasured |
 | Peak and busy days | Unmeasured; short-run samples are linked in [recording results](recording-results.md#seven-venue-load-and-recording) |
-| Recorder host | Verified: [VT01OK prepared, not deployed](infrastructure.md#vt01ok-preparation-status); sustained capacity remains unmeasured |
-| OneDrive quota | Unchecked; the archive is a single copy |
+| Recorder host | Verified: [VT01OK recording status](infrastructure.md#vt01ok-preparation-status); sustained capacity remains unmeasured |
+| Offsite recovery | Verified: no offsite copy or archive-manifest backup is built |
 
 ## Code status
 
@@ -187,17 +207,16 @@ Mark-price A included contracts outside the 522 (TRADIFI and others) and B did n
 
 ## Recorder install layout and enable order
 
-Verified: repository preparation only; no live service installation. Policy: [0021](decisions/0021-gate-archiver-deletion.md). Host state: [infrastructure](infrastructure.md#vt01ok-preparation-status).
+Verified: this change prepares units only, without installation or enabling. WebDAV policy: [0021](decisions/0021-gate-archiver-deletion.md); local upload-gate supersession: [0029](decisions/0029-local-archive-no-webdav.md). Host state: [infrastructure](infrastructure.md#vt01ok-preparation-status).
 
 | Path | Prepared deployment contract (verified in units/config example unless marked designed) |
 |---|---|
 | `/opt/liqwatch/current/` | Release binaries: collector, poller, packer, archiver, checks; release artifact also includes mapgen for reviewed map maintenance. Verified: no `cmd/trialrec` remains. |
-| `/etc/liqwatch/config.toml` | Copy [example](../config/config.toml.example); `data_dir = "/data/liqwatch"`; set archive URL to the [verified root](infrastructure.md#storage-account-and-re-test-2026-11-02). |
+| `/etc/liqwatch/config.toml` | Verified: [example](../config/config.toml.example) retains compatibility defaults; local recorder paths/settings are in [host status](infrastructure.md#vt01ok-preparation-status); select local mode explicitly. |
 | `/etc/liqwatch/venue-map.toml` | Designed: install the reviewed [venue map](venue-map.md); readable by `liqwatch`. |
-| `/etc/liqwatch/secrets.env` | Designed: root-owned mode `0600`; keys `LIQWATCH_WEBDAV_USER` and `LIQWATCH_WEBDAV_PASS`, values supplied out of band; systemd reads this only for archiver. Never copy credentials into the repository or release artifact. |
+| `/etc/liqwatch/secrets.env` | Verified: only WebDAV archiver unit references it; local archive unit has no EnvironmentFile. Never copy credentials into repository or release artifact. |
 | `/etc/liqwatch/collector-<venue>.env` | Required by venue collector; one `LIQWATCH_METRICS_ADDR=127.0.0.1:<port>` line per venue using the port table below. |
-| `/data/liqwatch/` | Designed: mounted HDD data volume, `liqwatch` write access; raw and recorder/check state remain here. Keep `data_dir` aligned with the units' fixed mount guard; output placement is defined above. |
-| `/var/lib/liqwatch/pack/` | Designed root-disk output: pre-create with `install -d -o liqwatch -g liqwatch -m 0750 /var/lib/liqwatch/pack`, then set `[pack].dir` to this path. No symlink is needed. |
+| Raw and pack roots | Verified: current host paths in [infrastructure](infrastructure.md#vt01ok-preparation-status). Designed: directories owned by `liqwatch`, no symlink aliases; local archive unit guards the archive mount. |
 | `/etc/systemd/system/` | Designed: install [deploy units](../deploy/) and run `systemctl daemon-reload`; create the unprivileged `liqwatch` user first. No service installation is performed by the release workflow. |
 
 | Venue instance | Collector metrics port (verified deployment assignment) |
@@ -214,10 +233,10 @@ Verified: use `liqwatch-recorder@<venue>.service` with `-venue %i` and its requi
 Verified: `liqwatch-collector@.service` remains the a/b slot template used by [handoff](../deploy/liqwatch-handoff.sh); it is NOT a venue template. The legacy unnumbered collector uses `collect.venue`.
 Designed: do not run legacy/handoff collectors alongside venue collectors; their ports and writers can conflict. Per-venue zero-gap handoff is not built; do not use the legacy script for this layout.
 
-Verified: every recorder service uses `RequiresMountsFor=/data/liqwatch` (mount requirement and ordering even with `nofail`) and `ConditionPathIsMountPoint=/data/liqwatch` (skip start if the directory is not mounted).
-Verified: packer, archiver and checks units have no `ProtectSystem` sandbox; no `ReadWritePaths` change is needed. The designed output lives on `/`, not a separate mount; there is no additional mount guard. Changing a populated output root requires a separately reviewed migration.
+Verified: legacy recorder/packer/WebDAV units retain `/data/liqwatch` mount guards; they are not deployment-ready for the current root-recording layout without a separate reviewed unit update. Local archive unit guards `/data/liqwatch-archive` and requires `-mode local`.
+Verified: packer, archiver and checks units have no `ProtectSystem` sandbox; no `ReadWritePaths` change is needed. Changing a populated output root requires a separately reviewed migration.
 Verified: [systemd.unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html) specifies the mount dependency/ordering and mount-point condition; these guards do not validate a particular UUID or protect against all runtime unmounts.
-Verified: collector limits are 192 MiB, poller 128 MiB, packer 512 MiB, archiver 128 MiB and checks 64 MiB; units impose no CPU quota. Collectors/pollers restart after 5 s, limited to 5 starts per 300 s.
+Verified: collector limits are 192 MiB, poller 128 MiB, packer/local archiver 512 MiB, WebDAV archiver 128 MiB and checks 64 MiB; units impose no CPU quota. Collectors/pollers restart after 5 s, limited to 5 starts per 300 s.
 Inferred: these are ceilings, not reservations or proof of aggregate fit. Bounded buffers alone did not prevent [recorder cache pressure](packing-results.md#recorder-baseline); keep the packer ceiling unchanged pending recorder measurement of cache release.
 
 | Order | Designed operator action after separate deployment authorization |
@@ -226,5 +245,5 @@ Inferred: these are ceilings, not reservations or proof of aggregate fit. Bounde
 | 2 | Start one venue's recorder and poller, inspect raw files, gaps, metrics and memory, then enable those instances. Add remaining venues incrementally only after checking host pressure. |
 | 3 | Enable `liqwatch-checks.timer`; set metrics targets to exactly the running collectors (example lists all seven). Checks also reports unverified age while archiving is disabled; review rather than suppress it. |
 | 4 | Validate a closed-day pack with `liqwatch-packer.service`, then enable `liqwatch-packer.timer`; monitor disk growth while uploads are disabled. |
-| 5 | Leave `liqwatch-archiver.timer` and `liqwatch-archiver.service` DISABLED by default. Do not invoke archiver manually on production data: it deletes files in the same run. |
-| Archive gate | Verify upload, size, full hash readback and metadata using realistic pack sizes on disposable copies; resolve or explicitly accept [archive safety questions](open-questions.md#archive-deployment-gates) before separate authorization to enable the timer. A small connectivity probe is insufficient. |
+| 5 | Verified repository preparation: both archive modes' units remain disabled; no deployment/enablement is performed here. Local runs delete verified raw by default; select `delete_sources=false` for report-only. |
+| Archive gate | Verified: local mode does not inherit the upload gate; [remaining safety/retention questions](open-questions.md#archive-deployment-gates) still apply. WebDAV retains the realistic upload/readback checks in 0021. |

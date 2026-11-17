@@ -80,6 +80,7 @@ func TestSeparateOutput(t *testing.T) {
 	}
 	s.Close()
 	wantMembers := []manifest.Member{{Name: "trade.a.jsonl", Bytes: 4, SHA256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"}}
+	wantMembers[0].MtimeNS = old.UnixNano()
 	if len(p) != 1 || p[0].Path != "v/BTC/20260101.tar.zst" || !reflect.DeepEqual(members, wantMembers) {
 		t.Fatalf("manifest = %+v", p)
 	}

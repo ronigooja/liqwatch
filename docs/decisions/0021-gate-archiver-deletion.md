@@ -4,6 +4,8 @@ Verified deployment-preparation policy; design: [storage](../storage-design.md#r
 
 Date: 2026-11-16. Qualifies deployment of [0014](0014-daily-pack-storage.md); pack format and retention code are unchanged.
 
+Verified: local mode [0029](0029-local-archive-no-webdav.md) supersedes this record's upload gate for local mode only.
+
 ## Decision
 
 - When deploying the prepared recorder layout, leave both archiver service and timer disabled and stopped by default.

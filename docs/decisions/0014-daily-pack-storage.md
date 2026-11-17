@@ -8,6 +8,8 @@ Verified: [0027](0027-pack-of-compressed-members.md) supersedes the container co
 
 ## Decision
 
+Verified: [0029](0029-local-archive-no-webdav.md) supersedes the WebDAV destination and local pack deletion for the local recorder; daily grouping is unchanged.
+
 1. Seven centralized venues are recorded for the 522 Binance USDT perpetual coins; `TRADIFI_PERPETUAL` contracts are not (owner, 2026-11-12 and 2026-11-13). DEXes are excluded by [0013](0013-no-dex-recording.md).
 2. Raw files are split by venue, symbol and channel, one file per UTC day. No hourly rotation, no size limit. The collector appends uncompressed text; no compressor runs in it.
 3. After the UTC day boundary, each symbol's channel files are packed and compressed into one pack per venue, symbol and day. One PUT per pack to WebDAV; no chunking.

@@ -33,8 +33,12 @@ type meta struct {
 
 func main() {
 	p := flag.String("config", "/etc/liqwatch/config.toml", "configuration file")
+	mode := flag.String("mode", "", "require configured archive mode (optional)")
 	flag.Parse()
 	cfg, err := config.Load(*p)
+	if err == nil && *mode != "" && cfg.Archive.Mode != *mode {
+		err = errors.New("archive mode does not match required mode")
+	}
 	if err == nil {
 		err = run(context.Background(), *cfg)
 	}
@@ -44,6 +48,10 @@ func main() {
 	}
 }
 func run(ctx context.Context, cfg config.Config) error {
+	return runWithDAV(ctx, cfg, webdav.New)
+}
+
+func runWithDAV(ctx context.Context, cfg config.Config, newDAV func(string, string, string) *webdav.Client) error {
 	if err := os.MkdirAll(filepath.Dir(cfg.ManifestPath()), 0750); err != nil {
 		return err
 	}
@@ -52,7 +60,10 @@ func run(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 	defer s.Close()
-	dav := webdav.New(cfg.Archive.RemoteRoot, os.Getenv(config.EnvWebDAVUser), os.Getenv(config.EnvWebDAVPass))
+	if cfg.Archive.Mode == "local" {
+		return runLocal(ctx, cfg, s, time.Now().UTC())
+	}
+	dav := newDAV(cfg.Archive.RemoteRoot, os.Getenv(config.EnvWebDAVUser), os.Getenv(config.EnvWebDAVPass))
 	dav.MaxKBps = cfg.Archive.MaxKBps
 	var pending []manifest.Pack
 	for _, st := range []manifest.State{manifest.StateUploading, manifest.StateClosed} {
@@ -97,6 +108,10 @@ func metadata(cfg config.Config, s manifest.Store, p manifest.Pack) ([]byte, err
 	}
 	if members == nil {
 		members = []manifest.Member{}
+	}
+	// Pack-time mtime is local deletion evidence; preserve the WebDAV wire format.
+	for i := range members {
+		members[i].MtimeNS = 0
 	}
 	unit := pack.ZstdThenTar
 	level := cfg.Pack.Level

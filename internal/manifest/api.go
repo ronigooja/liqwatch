@@ -6,18 +6,21 @@ import "time"
 type State string
 
 const (
-	StateOpen      State = "open"
-	StateClosed    State = "closed"
-	StateUploading State = "uploading"
-	StateUploaded  State = "uploaded"
-	StateVerified  State = "verified"
-	StateDeleted   State = "deleted"
+	StateOpen          State = "open"
+	StateClosed        State = "closed"
+	StateUploading     State = "uploading"
+	StateUploaded      State = "uploaded"
+	StateVerified      State = "verified"
+	StateDeleted       State = "deleted"
+	StateLocalVerified State = "local_verified"
+	StateLocalDeleted  State = "local_deleted"
 )
 
 type Member struct {
-	Name   string `json:"name"`
-	Bytes  int64  `json:"bytes"`
-	SHA256 string `json:"sha256"`
+	Name    string `json:"name"`
+	Bytes   int64  `json:"bytes"`
+	SHA256  string `json:"sha256"`
+	MtimeNS int64  `json:"mtime_ns,omitempty"`
 }
 type Pack struct {
 	ID                   int64
