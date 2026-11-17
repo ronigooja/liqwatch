@@ -26,6 +26,7 @@ Read only what the task needs.
 | [docs/p0-support-design.md](docs/p0-support-design.md) | Design | Design of symbol manager, archiver, manifest, monitoring, quality report, deployment | Building or reviewing P0 support components |
 | [docs/infrastructure.md](docs/infrastructure.md) | Operations | Hosts, storage, constraints | Deploying or sizing |
 | [docs/storage-design.md](docs/storage-design.md) | Design | Multi-venue storage: layout, packing, upload, retention, disk size | Building or changing recording, archiving or storage |
+| [docs/packing-results.md](docs/packing-results.md) | Results | Recorder baseline and build-machine page-cache measurements | Reviewing packer cgroup memory behavior |
 | [docs/data-recording.md](docs/data-recording.md) | Design | P0 recording design | Working on data capture or storage |
 | [docs/universe.md](docs/universe.md) | Design | Instrument tiers and selection rules | Choosing symbols or tiers |
 | [docs/labels-and-evaluation.md](docs/labels-and-evaluation.md) | Design | Labels, leakage rules, metrics, trading-cost evaluation | Building labels, backtests, or metrics |
@@ -34,7 +35,7 @@ Read only what the task needs.
 | [docs/roadmap.md](docs/roadmap.md) | Design | Phases P0–P5, gates, stop rules | Planning or checking progress |
 | [docs/open-questions.md](docs/open-questions.md) | Facts | Unresolved inputs and unverified facts | Before relying on any external fact |
 | [docs/venue-apis.md](docs/venue-apis.md) | Facts | Keyless public API facts for non-Binance venues and Binance index constituents, 2026-11-12 | Considering recording another venue |
-| [docs/decisions/](docs/decisions/) | Decisions | One record per decision, 0001 to 0024 | Need the reason behind a choice or before changing direction or scope |
+| [docs/decisions/](docs/decisions/) | Decisions | One record per decision, 0001 to 0025 | Need the reason behind a choice or before changing direction or scope |
 | [docs/decisions/0016-drop-unneeded-payload-fields.md](docs/decisions/0016-drop-unneeded-payload-fields.md) | Decision | Payload field filter and per-venue removals | Working on recorded payload fields |
 | [docs/decisions/0017-poller-field-policies.md](docs/decisions/0017-poller-field-policies.md) | Decision | REST field policies and MEXC alignment | Working on polled payload fields |
 | [docs/decisions/0018-path-based-raw-envelope.md](docs/decisions/0018-path-based-raw-envelope.md) | Decision | Path-based identity and compact raw envelopes | Changing raw writers or readers |
@@ -44,4 +45,5 @@ Read only what the task needs.
 | [docs/decisions/0022-ws-gap-records.md](docs/decisions/0022-ws-gap-records.md) | Decision | Self-sufficient WebSocket gap boundaries | Diagnosing reconnect silence without scanning market files |
 | [docs/decisions/0023-packer-streaming.md](docs/decisions/0023-packer-streaming.md) | Decision | Bounded packer memory and streaming members | Changing packer compression or memory use |
 | [docs/decisions/0024-pack-output-dir.md](docs/decisions/0024-pack-output-dir.md) | Decision | Independent pack/manifest root; raw layout unchanged | Configuring output storage or checking filesystem capacity |
+| [docs/decisions/0025-packer-drop-page-cache.md](docs/decisions/0025-packer-drop-page-cache.md) | Decision | Best-effort source and synced-output cache release | Changing packer cache lifetime |
 | [docs/archive/v1-architecture-zh.md](docs/archive/v1-architecture-zh.md) | Archive | v1 design (Chinese), superseded | Historical reference only |

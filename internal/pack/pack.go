@@ -30,6 +30,9 @@ var ErrIncomplete = errors.New("raw day is not complete")
 // share an encoder. The pool may be cleared by GC without affecting correctness.
 var encoders sync.Pool
 
+// Tests replace this hook only while no packs are running.
+var dropSourceCache = dropFileCache
+
 type packEncoder struct {
 	*zstd.Encoder
 	level int
@@ -233,6 +236,10 @@ func pack(rawRoot, venue, symbol, day string, opts Options, copyFile func(io.Wri
 			return result, err
 		}
 		n, readErr := copyFile(io.MultiWriter(memberOutput, h), f, before.Size())
+		if readErr == nil {
+			// Past-day sources are clean; never sync the recorder's files.
+			dropSourceCache(f)
+		}
 		closeErr := f.Close()
 		if readErr != nil {
 			return result, readErr
@@ -287,6 +294,8 @@ func pack(rawRoot, venue, symbol, day string, opts Options, copyFile func(io.Wri
 	}
 	h := sha256.New()
 	result.Bytes, err = io.Copy(h, f)
+	// The writer was synced above. Drop after hashing to avoid warming it again.
+	dropFileCache(f)
 	f.Close()
 	if err != nil {
 		return result, err

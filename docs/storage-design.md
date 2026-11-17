@@ -1,7 +1,8 @@
 # Storage Design (multi-venue recording)
 
 Design of recording, packing, upload and retention. Verified: writer, packer and archiver are built; [deployment status](infrastructure.md#vt01ok-preparation-status).
-Records: [0009](decisions/0009-zero-gap-handoff.md), [0014](decisions/0014-daily-pack-storage.md), [0021](decisions/0021-gate-archiver-deletion.md), [0023](decisions/0023-packer-streaming.md), [0024](decisions/0024-pack-output-dir.md). Venue scope: [adapters](venue-adapters.md).
+Records: [0009](decisions/0009-zero-gap-handoff.md), [0014](decisions/0014-daily-pack-storage.md), [0021](decisions/0021-gate-archiver-deletion.md), [0023](decisions/0023-packer-streaming.md), [0024](decisions/0024-pack-output-dir.md), [0025](decisions/0025-packer-drop-page-cache.md).
+Venue scope: [adapters](venue-adapters.md).
 
 ## Scope
 
@@ -81,6 +82,12 @@ Verified in [packer](../internal/pack/pack.go): members stream through SHA-256; 
 Verified: one reusable zstd encoder uses concurrency 1, a 1 MiB window and lower-memory mode; the default level remains 3. `tar_then_zstd` streams directly; `zstd_then_tar` spools one compressed member on disk to obtain its tar header size.
 
 Verified: encoder reuse retains only bounded compression state, not whole packs; member metadata and bounded compression/copy buffers occupy heap. Existing pack formats, reader compatibility, naming and manifest schema are unchanged; rationale: [0023](decisions/0023-packer-streaming.md).
+
+Verified in [packer](../internal/pack/pack.go): Linux best-effort `FADV_DONTNEED` follows each successful member read before close; sources are never synced. Non-Linux builds use a no-op. Only past days passing quiet-period checks are eligible.
+
+Verified: output keeps same-directory temp → sync → hash → rename publication; cache release follows the final hash read on the already-synced temporary pack. No extra output sync or source read-ahead tuning is added.
+
+Measured: bounded anonymous memory did not bound recorder cgroup cache; see [recorder baseline](packing-results.md#recorder-baseline) and [build-machine comparison](packing-results.md#build-machine-cache-release). Inferred: cache release is not a slab or collector-drop fix; it is not yet measured on the recorder.
 
 ## Upload
 
@@ -184,7 +191,7 @@ Verified: every recorder service uses `RequiresMountsFor=/data/liqwatch` (mount 
 Verified: packer, archiver and checks units have no `ProtectSystem` sandbox; no `ReadWritePaths` change is needed. The designed output lives on `/`, not a separate mount; there is no additional mount guard. Changing a populated output root requires a separately reviewed migration.
 Verified: [systemd.unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html) specifies the mount dependency/ordering and mount-point condition; these guards do not validate a particular UUID or protect against all runtime unmounts.
 Verified: collector limits are 192 MiB, poller 128 MiB, packer 512 MiB, archiver 128 MiB and checks 64 MiB; units impose no CPU quota. Collectors/pollers restart after 5 s, limited to 5 starts per 300 s.
-Inferred: these are conservative per-process ceilings, not reservations or proof of aggregate fit. Bounded packer buffers remove whole-member heap growth; synthetic Go heap measurements do not establish recorder cgroup headroom. Keep the packer ceiling unchanged pending recorder measurement.
+Inferred: these are ceilings, not reservations or proof of aggregate fit. Bounded buffers alone did not prevent [recorder cache pressure](packing-results.md#recorder-baseline); keep the packer ceiling unchanged pending recorder measurement of cache release.
 
 | Order | Designed operator action after separate deployment authorization |
 |---|---|
