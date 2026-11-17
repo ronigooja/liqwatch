@@ -1,7 +1,7 @@
 # Storage Design (multi-venue recording)
 
 Design of recording, packing, upload and retention. Verified: writer, packer and archiver are built; [deployment status](infrastructure.md#vt01ok-preparation-status).
-Records: [0009](decisions/0009-zero-gap-handoff.md), [0014](decisions/0014-daily-pack-storage.md), [0021](decisions/0021-gate-archiver-deletion.md), [0023](decisions/0023-packer-streaming.md). Venue scope: [adapters](venue-adapters.md).
+Records: [0009](decisions/0009-zero-gap-handoff.md), [0014](decisions/0014-daily-pack-storage.md), [0021](decisions/0021-gate-archiver-deletion.md), [0023](decisions/0023-packer-streaming.md), [0024](decisions/0024-pack-output-dir.md). Venue scope: [adapters](venue-adapters.md).
 
 ## Scope
 
@@ -68,7 +68,13 @@ The collector only appends text and opens no compressor. Measured in the trial: 
 
 ## Pack and compress (after the UTC day boundary)
 
-When all channel files of a symbol for the day are closed, they are packed into `raw/<venue>/<symbol>/<date>.tar.zst`. Compression unit and level are open (see Open items).
+Verified in [config](../internal/config/config.go): `[pack].dir` selects the output root; omitted or empty uses `data_dir`. A set value must be absolute and lexically outside `data_dir/raw`; raw JSONL paths and recorder state are unchanged. Designed: use real directories, not symlink aliases into raw.
+
+Verified: output is `<output root>/packs/<venue>/<symbol>/<date>.tar.zst` (`.tar` for `zstd_then_tar`); SQLite is `<output root>/manifest/manifest.db`. Packer, archiver and backlog checks share this resolution; remote layout is unchanged.
+
+Verified in [checks](../internal/checks/checks.go): disk thresholds apply independently to `data_dir` and a distinct output root, with path-qualified findings; default configuration checks only `data_dir`.
+
+Verified in [packer](../internal/pack/pack.go): temporary packs and compressed-member spools are created beside the final pack, so publication by rename stays on the output filesystem; directories retain mode `0750`.
 
 Verified in [packer](../internal/pack/pack.go): members stream through SHA-256; byte count, size, modification time and quiet-period checks reject changed files before publication. Raw member size has no configured cap; see Writing.
 
@@ -156,7 +162,8 @@ Verified: repository preparation only; no live service installation. Policy: [00
 | `/etc/liqwatch/venue-map.toml` | Designed: install the reviewed [venue map](venue-map.md); readable by `liqwatch`. |
 | `/etc/liqwatch/secrets.env` | Designed: root-owned mode `0600`; keys `LIQWATCH_WEBDAV_USER` and `LIQWATCH_WEBDAV_PASS`, values supplied out of band; systemd reads this only for archiver. Never copy credentials into the repository or release artifact. |
 | `/etc/liqwatch/collector-<venue>.env` | Required by venue collector; one `LIQWATCH_METRICS_ADDR=127.0.0.1:<port>` line per venue using the port table below. |
-| `/data/liqwatch/` | Designed: mounted data volume, `liqwatch` write access; raw, packs, state and manifest stay beneath this root. Keep config data_dir aligned with the units' fixed mount guard. |
+| `/data/liqwatch/` | Designed: mounted HDD data volume, `liqwatch` write access; raw and recorder/check state remain here. Keep `data_dir` aligned with the units' fixed mount guard; output placement is defined above. |
+| `/var/lib/liqwatch/pack/` | Designed root-disk output: pre-create with `install -d -o liqwatch -g liqwatch -m 0750 /var/lib/liqwatch/pack`, then set `[pack].dir` to this path. No symlink is needed. |
 | `/etc/systemd/system/` | Designed: install [deploy units](../deploy/) and run `systemctl daemon-reload`; create the unprivileged `liqwatch` user first. No service installation is performed by the release workflow. |
 
 | Venue instance | Collector metrics port (verified deployment assignment) |
@@ -174,6 +181,7 @@ Verified: `liqwatch-collector@.service` remains the a/b slot template used by [h
 Designed: do not run legacy/handoff collectors alongside venue collectors; their ports and writers can conflict. Per-venue zero-gap handoff is not built; do not use the legacy script for this layout.
 
 Verified: every recorder service uses `RequiresMountsFor=/data/liqwatch` (mount requirement and ordering even with `nofail`) and `ConditionPathIsMountPoint=/data/liqwatch` (skip start if the directory is not mounted).
+Verified: packer, archiver and checks units have no `ProtectSystem` sandbox; no `ReadWritePaths` change is needed. The designed output lives on `/`, not a separate mount; there is no additional mount guard. Changing a populated output root requires a separately reviewed migration.
 Verified: [systemd.unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html) specifies the mount dependency/ordering and mount-point condition; these guards do not validate a particular UUID or protect against all runtime unmounts.
 Verified: collector limits are 192 MiB, poller 128 MiB, packer 512 MiB, archiver 128 MiB and checks 64 MiB; units impose no CPU quota. Collectors/pollers restart after 5 s, limited to 5 starts per 300 s.
 Inferred: these are conservative per-process ceilings, not reservations or proof of aggregate fit. Bounded packer buffers remove whole-member heap growth; synthetic Go heap measurements do not establish recorder cgroup headroom. Keep the packer ceiling unchanged pending recorder measurement.

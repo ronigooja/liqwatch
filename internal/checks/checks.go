@@ -129,11 +129,9 @@ func Run(c *config.Config) error {
 }
 
 func evaluate(c *config.Config) ([]finding, error) {
-	var out []finding
-	if pct, err := diskPct(c.DataDir); err != nil {
+	out, err := diskFindings(c, diskPct)
+	if err != nil {
 		return nil, err
-	} else if pct >= float64(c.Checks.DiskWarnPct) {
-		out = append(out, finding{"disk.high", "warning", "disk.high", "disk usage is high", map[string]any{"percent": pct}})
 	}
 	for channel, threshold := range c.Checks.StaleSec {
 		if threshold == 0 {
@@ -168,13 +166,33 @@ func evaluate(c *config.Config) ([]finding, error) {
 	if reachable == 0 {
 		out = append(out, finding{"collector.metrics", "critical", "collector.metrics", "collector metrics endpoint is unreachable", map[string]any{"error": fmt.Sprint(lastErr)}})
 	}
-	if n, ok, err := unverified(c.DataDir, time.Duration(c.Checks.UnverifiedHours)*time.Hour); err != nil {
+	if n, ok, err := unverified(c.PackDir(), time.Duration(c.Checks.UnverifiedHours)*time.Hour); err != nil {
 		return nil, err
 	} else if ok && n > 0 {
 		out = append(out, finding{"archive.unverified", "warning", "archive.unverified", "closed files remain unverified", map[string]any{"count": n}})
 	}
 	if offset, ok := clockOffset(); ok && offset > .05 {
 		out = append(out, finding{"clock.offset", "warning", "clock.offset", "clock offset is high", map[string]any{"seconds": offset}})
+	}
+	return out, nil
+}
+
+// Check both configured roots, even if they currently resolve to one filesystem.
+// Keep the legacy raw-disk alert key so existing alert state still resolves.
+func diskFindings(c *config.Config, usage func(string) (float64, error)) ([]finding, error) {
+	paths := []struct{ key, path string }{{"disk.high", c.DataDir}}
+	if filepath.Clean(c.PackDir()) != filepath.Clean(c.DataDir) {
+		paths = append(paths, struct{ key, path string }{"disk.high:pack", c.PackDir()})
+	}
+	var out []finding
+	for _, p := range paths {
+		pct, err := usage(p.path)
+		if err != nil {
+			return nil, fmt.Errorf("disk usage %s: %w", p.path, err)
+		}
+		if pct >= float64(c.Checks.DiskWarnPct) {
+			out = append(out, finding{p.key, "warning", "disk.high", "disk usage is high", map[string]any{"percent": pct, "path": p.path}})
+		}
 	}
 	return out, nil
 }

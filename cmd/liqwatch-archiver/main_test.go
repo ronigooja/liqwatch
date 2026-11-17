@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -27,6 +28,74 @@ type fakeDAV struct {
 	gets    map[string]int
 	heads   map[string]int
 	failPut string
+}
+
+func TestSeparateOutputRun(t *testing.T) {
+	root, output := t.TempDir(), t.TempDir()
+	d := &fakeDAV{files: map[string][]byte{}, puts: map[string]int{}, gets: map[string]int{}, heads: map[string]int{}}
+	server := httptest.NewServer(d)
+	defer server.Close()
+	cfg := config.Config{DataDir: root, Pack: config.Pack{Dir: output, Unit: "tar_then_zstd", Level: 3}, Archive: config.Archive{RemoteRoot: server.URL, MaxPackMB: 400, FullVerifyDays: 7}}
+	data := []byte("new pack content")
+	sum := sha256.Sum256(data)
+	p := manifest.Pack{Venue: "v", Symbol: "s", Day: 20260101, Path: "v/s/20260101.tar.zst", Bytes: int64(len(data)), SHA256: hex.EncodeToString(sum[:]), State: manifest.StateClosed, Members: []manifest.Member{{Name: "trade.a.jsonl", Bytes: 3, SHA256: "raw-hash"}}}
+	write := func(path string, data []byte) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0640); err != nil {
+			t.Fatal(err)
+		}
+	}
+	packPath := filepath.Join(output, "packs", p.Path)
+	rawPath := filepath.Join(root, "raw/v/s/20260101/trade.a.jsonl")
+	write(packPath, data)
+	write(rawPath, []byte("raw"))
+	// Decoys must survive: the legacy pack location, another raw day, and output/raw.
+	decoys := []string{filepath.Join(root, "packs", p.Path), filepath.Join(root, "raw/v/s/20260102/keep.jsonl"), filepath.Join(output, "raw/v/s/20260101/keep.jsonl")}
+	for _, path := range decoys {
+		write(path, []byte("keep"))
+	}
+	if err := os.MkdirAll(filepath.Join(output, "manifest"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	s, err := manifest.Open(filepath.Join(output, "manifest/manifest.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.RegisterPack(p); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if err = run(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	wantMeta := fmt.Sprintf("{\"size\":%d,\"sha256\":%q,\"members\":[{\"name\":\"trade.a.jsonl\",\"bytes\":3,\"sha256\":\"raw-hash\"}],\"unit\":\"tar_then_zstd\",\"level\":3}", len(data), p.SHA256)
+	// Compare the complete remote layout and payloads, independent of SQL row order.
+	wantRemote := map[string][]byte{"/raw/v/s/20260101.tar.zst": data, "/raw/v/s/20260101.meta.json": []byte(wantMeta)}
+	if !reflect.DeepEqual(d.files, wantRemote) {
+		t.Fatalf("remote = %q, want %q", d.files, wantRemote)
+	}
+	for _, path := range []string{packPath, rawPath, filepath.Join(root, "manifest")} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("should be absent %s: %v", path, err)
+		}
+	}
+	for _, path := range decoys {
+		if got, err := os.ReadFile(path); err != nil || string(got) != "keep" {
+			t.Fatalf("decoy changed %s: %q %v", path, got, err)
+		}
+	}
+	s, err = manifest.Open(filepath.Join(output, "manifest/manifest.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	deleted, err := s.ListByState(manifest.StateDeleted)
+	if err != nil || len(deleted) != 1 || deleted[0].Path != p.Path {
+		t.Fatalf("deleted = %+v, %v", deleted, err)
+	}
 }
 
 func (d *fakeDAV) ServeHTTP(w http.ResponseWriter, r *http.Request) {

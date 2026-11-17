@@ -44,10 +44,10 @@ func main() {
 	}
 }
 func run(ctx context.Context, cfg config.Config) error {
-	if err := os.MkdirAll(filepath.Join(cfg.DataDir, "manifest"), 0750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfg.ManifestPath()), 0750); err != nil {
 		return err
 	}
-	s, err := manifest.Open(filepath.Join(cfg.DataDir, "manifest", "manifest.db"))
+	s, err := manifest.Open(cfg.ManifestPath())
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ func metadata(cfg config.Config, s manifest.Store, p manifest.Pack) ([]byte, err
 	return json.Marshal(meta{Size: p.Bytes, SHA256: p.SHA256, Members: members, Unit: unit, Level: level})
 }
 func archiveOne(ctx context.Context, cfg config.Config, s manifest.Store, dav *webdav.Client, p manifest.Pack) error {
-	local := filepath.Join(cfg.DataDir, "packs", filepath.FromSlash(p.Path))
+	local := filepath.Join(cfg.PacksPath(), filepath.FromSlash(p.Path))
 	f, err := os.Open(local)
 	if err != nil {
 		return err
@@ -282,7 +282,7 @@ func deleteOne(cfg config.Config, s manifest.Store, p manifest.Pack) error {
 	if err := pack.RemoveRaw(filepath.Join(cfg.DataDir, "raw"), p.Venue, p.Symbol, fmt.Sprintf("%08d", p.Day)); err != nil {
 		return err
 	}
-	if err := os.Remove(filepath.Join(cfg.DataDir, "packs", filepath.FromSlash(p.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(filepath.Join(cfg.PacksPath(), filepath.FromSlash(p.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return s.SetState(p.ID, manifest.StateDeleted)

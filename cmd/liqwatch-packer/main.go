@@ -27,10 +27,10 @@ func main() {
 }
 func run(cfg config.Config) error {
 	raw := filepath.Join(cfg.DataDir, "raw")
-	if err := os.MkdirAll(filepath.Join(cfg.DataDir, "manifest"), 0750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfg.ManifestPath()), 0750); err != nil {
 		return err
 	}
-	s, err := manifest.Open(filepath.Join(cfg.DataDir, "manifest", "manifest.db"))
+	s, err := manifest.Open(cfg.ManifestPath())
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func run(cfg config.Config) error {
 					skipped++
 					continue
 				}
-				r, e := pack.Pack(raw, v.Name(), sym.Name(), d.Name(), pack.Options{PackRoot: filepath.Join(cfg.DataDir, "packs"), Unit: cfg.Pack.Unit, Level: cfg.Pack.Level, QuietPeriod: time.Duration(cfg.Pack.QuietMinutes) * time.Minute})
+				r, e := pack.Pack(raw, v.Name(), sym.Name(), d.Name(), pack.Options{PackRoot: cfg.PacksPath(), Unit: cfg.Pack.Unit, Level: cfg.Pack.Level, QuietPeriod: time.Duration(cfg.Pack.QuietMinutes) * time.Minute})
 				if errors.Is(e, pack.ErrIncomplete) {
 					skipped++
 					continue

@@ -21,6 +21,7 @@ full_verify_days = 7
 max_kbps = 0
 
 [pack]
+# dir = "/var/lib/liqwatch/pack" # Absolute root for packs/ and manifest/; omitted or empty uses data_dir; pre-create owned by liqwatch.
 unit = "tar_then_zstd"
 level = 3
 quiet_minutes = 10

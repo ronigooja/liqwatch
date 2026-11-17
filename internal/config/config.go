@@ -5,6 +5,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
@@ -107,10 +109,22 @@ type Archive struct {
 }
 
 type Pack struct {
+	Dir          string `toml:"dir"` // empty uses DataDir for packs and manifest
 	Unit         string `toml:"unit"`
 	Level        int    `toml:"level"`
 	QuietMinutes int    `toml:"quiet_minutes"`
 }
+
+// PackDir is the shared output/state root; raw recording always uses DataDir.
+func (c Config) PackDir() string {
+	if c.Pack.Dir != "" {
+		return filepath.Clean(c.Pack.Dir)
+	}
+	return c.DataDir
+}
+
+func (c Config) PacksPath() string    { return filepath.Join(c.PackDir(), "packs") }
+func (c Config) ManifestPath() string { return filepath.Join(c.PackDir(), "manifest", "manifest.db") }
 
 type Checks struct {
 	DiskWarnPct     int            `toml:"disk_warn_pct"` // 80
@@ -149,6 +163,22 @@ func Load(path string) (*Config, error) {
 }
 
 func (c Config) validate() error {
+	if c.Pack.Dir != "" {
+		if !filepath.IsAbs(c.Pack.Dir) {
+			return fmt.Errorf("pack.dir must be absolute")
+		}
+		raw, err := filepath.Abs(filepath.Join(c.DataDir, "raw"))
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(raw, filepath.Clean(c.Pack.Dir))
+		if err != nil {
+			return err
+		}
+		if rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("pack.dir must not be inside data_dir/raw")
+		}
+	}
 	for key, value := range c.Collect.Throttle {
 		if key == "enabled" {
 			if _, ok := value.(bool); !ok {
