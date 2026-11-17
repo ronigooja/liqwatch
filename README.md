@@ -34,11 +34,12 @@ Read only what the task needs.
 | [docs/roadmap.md](docs/roadmap.md) | Design | Phases P0–P5, gates, stop rules | Planning or checking progress |
 | [docs/open-questions.md](docs/open-questions.md) | Facts | Unresolved inputs and unverified facts | Before relying on any external fact |
 | [docs/venue-apis.md](docs/venue-apis.md) | Facts | Keyless public API facts for non-Binance venues and Binance index constituents, 2026-11-12 | Considering recording another venue |
-| [docs/decisions/](docs/decisions/) | Decisions | One record per decision, 0001 to 0021 | Need the reason behind a choice or before changing direction or scope |
+| [docs/decisions/](docs/decisions/) | Decisions | One record per decision, 0001 to 0022 | Need the reason behind a choice or before changing direction or scope |
 | [docs/decisions/0016-drop-unneeded-payload-fields.md](docs/decisions/0016-drop-unneeded-payload-fields.md) | Decision | Payload field filter and per-venue removals | Working on recorded payload fields |
 | [docs/decisions/0017-poller-field-policies.md](docs/decisions/0017-poller-field-policies.md) | Decision | REST field policies and MEXC alignment | Working on polled payload fields |
 | [docs/decisions/0018-path-based-raw-envelope.md](docs/decisions/0018-path-based-raw-envelope.md) | Decision | Path-based identity and compact raw envelopes | Changing raw writers or readers |
 | [docs/decisions/0019-live-rest-recording-scope.md](docs/decisions/0019-live-rest-recording-scope.md) | Decision | Live REST recording boundary | Changing startup scope or history recovery |
 | [docs/decisions/0020-smooth-rest-scheduling.md](docs/decisions/0020-smooth-rest-scheduling.md) | Decision | Phased REST eligibility and weighted request pacing | Changing polling order, pacing or capacity reporting |
 | [docs/decisions/0021-gate-archiver-deletion.md](docs/decisions/0021-gate-archiver-deletion.md) | Decision | Archive enablement gate and venue-unit naming | Preparing recorder deployment or enabling deletion |
+| [docs/decisions/0022-ws-gap-records.md](docs/decisions/0022-ws-gap-records.md) | Decision | Self-sufficient WebSocket gap boundaries | Diagnosing reconnect silence without scanning market files |
 | [docs/archive/v1-architecture-zh.md](docs/archive/v1-architecture-zh.md) | Archive | v1 design (Chinese), superseded | Historical reference only |

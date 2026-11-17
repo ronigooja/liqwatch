@@ -29,13 +29,34 @@ Raw venue symbol names are kept in paths. Mapping (`1000PEPE` to `PEPE`, `XBT` t
 | Content | Verified: filtered payload appended uncompressed; [recorded content](venue-adapters.md#recorded-content). Version 2 envelope below follows [0018](decisions/0018-path-based-raw-envelope.md) |
 | Rotation | UTC day boundary only. One file per symbol per channel per day; no size limit, no sequence number |
 | Processes | One collector process per venue (own reconnects, limits, token handshakes); slots a/b and handoff per [0009](decisions/0009-zero-gap-handoff.md). Poller files use slot `p` |
-| Gaps | One gap file per venue per day: disconnects, queue drops, reconnects. Poll failures and history gaps are recorded by the [poller](poller.md) |
+| Gaps | Verified: one gap file per venue per day: WebSocket lifecycle below, adapter diagnostics and unchanged queue drops. Poll failures and history gaps remain in the [poller](poller.md) |
 
 Verified in [rawlog](../internal/rawlog/writer.go) and [poller](../internal/poller/sink.go): new envelopes use `v:2`, `rw` (wall ns), `rm` (process monotonic ns), and `p`. Collector adds `wseq` and `cseq`; poller retains `meta`.
 
 Verified: identity exists only in the path: venue directory, raw-symbol directory and channel filename (remove optional lowercase slot before `.jsonl`). `_all` means a bulk payload, not one symbol; `gap/gap` identifies venue-level gap records.
 
-Verified: affected symbols/channels in gaps and individual symbols in bulk responses remain in payloads. Exchange timestamps remain in `p`, including MEXC `t` and `cts`. `conn` is not stored. Existing version 1 files are unchanged.
+Verified: affected symbols/channels in gaps and individual symbols in bulk responses remain in payloads. Exchange timestamps remain in `p`, including MEXC `t` and `cts`. `conn` is absent from the envelope; lifecycle gaps keep it in `p`. Existing version 1 files are unchanged.
+
+## WebSocket gap payloads
+
+Verified in [collector](../internal/collector/collector.go); governed by [0022](decisions/0022-ws-gap-records.md). The v2 envelope is unchanged; connection identity is diagnostic payload `conn`, not an envelope key.
+
+| Event | Verified payload fields and interpretation |
+|---|---|
+| `conn_closed` | Existing `cause`, `err`, `shard`, `streams`; adds `conn`, `prev` (preceding close or null), `last_rw` (last message wall ns), `last_rm` (process monotonic ns), `up_ms` (dial success to close), `msgs` (including controls). Last times are zero if none |
+| `conn_opened` | `shard`, `conn`, `prev` (preceding closed connection or null), `initial` (first process connection), `attempt` (process shard dial ordinal), `backoff_ms` (last retry sleep), `down_ms` (preceding close to completed subscription writes; null without close), `subscribed`, `subs_ok` |
+| `conn_first` | `shard`, `conn`; envelope `rw`/`rm` give the first received message on this connection, including controls; may precede completed subscription writes |
+| `snapshot` | Bybit decoded ticker snapshot: `shard`, `conn`, `symbol`, `channel`; records known state replacement, not a guarantee of trade replay |
+
+Verified: `conn_opened` is emitted only after every subscription write succeeds; `subscribed` counts intended `Shard.Streams`, including URL subscriptions. `subs_ok=true` is not server acknowledgement; adapters retain `subscribe_error` diagnostics. Failed writes emit no successful-open event.
+
+Verified: correlate by `shard` and payload `conn`/`prev`, not file order (subscription and read goroutines can interleave). Each failed dial closes separately; follow `prev` across failures with zero last times to the last connection that received messages.
+
+Verified: the observable silence interval is `[conn_closed.last_rw/last_rm, conn_first.rw/rm]`. No first event means its end is unknown. Planned overlapping replacement emits open/first without a preceding close; shutdown does not add a reconnect close.
+
+Inferred: silence is not proof of lost exchange data; controls also count as messages, and process monotonic times are comparable only within one process. No server reset cause or completeness claim is inferred from these records.
+
+Inferred overhead (not benchmarked): reuse the existing receive `time.Now`, message counter and stall atomic; add one reader-local `time.Time` assignment and first-message branch per message. Monotonic conversion and JSON/sink work occur only at lifecycle boundaries.
 
 Verified: pack paths preserve venue/symbol/date and tar member names preserve channel/slot; extract into that layout before reading. Compact files renamed outside this layout cannot recover identity. Reader compatibility is specified in [0018](decisions/0018-path-based-raw-envelope.md).
 

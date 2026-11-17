@@ -33,6 +33,8 @@ type Collector struct {
 	throttle *throttler
 	// subscribeWrite overrides subscription writes for deterministic connection tests.
 	subscribeWrite func(context.Context, *websocket.Conn, []byte) error
+	// clock overrides lifecycle timestamps in deterministic tests; not used per message.
+	clock func() (time.Time, int64)
 
 	// OnReconnect is called after a shard reopens following an unplanned disconnect, once the
 	// new connection is open. Planned 23 h replacements overlap and do not call it.
@@ -104,12 +106,14 @@ func (c *Collector) runShard(ctx context.Context, sh Shard) {
 	var cur *conn
 	var reconnected bool
 	var token uint64
+	var previous *conn
+	var slept time.Duration
 	for ctx.Err() == nil {
 		gen++
 		if gen > 1 {
 			url = refreshURL(ctx, sh, url)
 		}
-		cur = c.start(ctx, sh, url, gen)
+		cur = c.startRetry(ctx, sh, url, gen, previous, slept)
 		started := time.Now()
 		if reconnected && (c.OnReconnect != nil || c.OnReconnectToken != nil) {
 			go func(k *conn, tok uint64) {
@@ -136,6 +140,7 @@ func (c *Collector) runShard(ctx context.Context, sh Shard) {
 				c.Reconnects.Add(1)
 				log.Printf("shard %s conn %s ended after %s: %v", sh.Name, cur.id, time.Since(started).Round(time.Second), cur.err())
 				c.gap(sh, cur, "reconnect")
+				previous = cur
 				goto retry
 			case <-time.After(time.Until(started.Add(maxAge))):
 				// planned replacement: new connection first, then retire the old one
@@ -168,6 +173,7 @@ func (c *Collector) runShard(ctx context.Context, sh Shard) {
 			return
 		case <-time.After(backoff):
 		}
+		slept = backoff
 		if backoff < 30*time.Second {
 			backoff *= 2
 		}
@@ -189,12 +195,18 @@ func refreshURL(ctx context.Context, sh Shard, oldURL string) string {
 }
 
 type conn struct {
-	id     string
-	cancel context.CancelFunc
-	opened chan struct{}
-	done   chan struct{}
-	mu     sync.Mutex
-	e      error
+	id                        string
+	cancel                    context.CancelFunc
+	opened                    chan struct{}
+	done                      chan struct{}
+	mu                        sync.Mutex
+	e                         error
+	up, closed, last          time.Time
+	upMon, closedMon, lastMon int64
+	msgs                      uint64
+	previous                  *conn
+	backoff                   time.Duration
+	gen                       int
 }
 
 func (k *conn) stop() { k.cancel() }
@@ -205,15 +217,26 @@ func (k *conn) err() error {
 }
 
 func (c *Collector) start(parent context.Context, sh Shard, url string, gen int) *conn {
+	return c.startRetry(parent, sh, url, gen, nil, 0)
+}
+
+func (c *Collector) startRetry(parent context.Context, sh Shard, url string, gen int, previous *conn, backoff time.Duration) *conn {
 	ctx, cancel := context.WithCancel(parent)
 	k := &conn{
 		id:     fmt.Sprintf("%s-%s-%d", sh.Name, time.Now().UTC().Format("0102T150405"), gen),
 		cancel: cancel, opened: make(chan struct{}), done: make(chan struct{}),
+		gen:      gen,
+		previous: previous, backoff: backoff,
+	}
+	if previous != nil {
+		// Retain only the boundary, not the preceding connection chain.
+		k.previous = &conn{id: previous.id, closedMon: previous.closedMon}
 	}
 	go func() {
 		defer close(k.done)
 		defer cancel()
 		err := c.read(ctx, k, sh, url)
+		k.closed, k.closedMon = c.now()
 		if parent.Err() == nil && ctx.Err() != nil && err != nil && err.Error() == "stopped" {
 			err = nil
 		}
@@ -231,6 +254,7 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		return err
 	}
 	defer ws.CloseNow()
+	k.up, k.upMon = c.now()
 	ws.SetReadLimit(16 << 20)
 	if lifecycle, ok := c.adapter.(venue.ConnLifecycle); ok {
 		lifecycle.ConnOpened(sh, k.id)
@@ -277,6 +301,7 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		}
 		// Start the stall clock on the first frame or the last subscription, whichever comes first.
 		last.CompareAndSwap(0, time.Now().UnixNano())
+		c.openGap(sh, k)
 	}()
 	if every, frame := c.adapter.Heartbeat(sh); every > 0 && frame != nil {
 		workers.Add(1)
@@ -321,6 +346,13 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		}()
 	}
 	var cseq uint64
+	var received time.Time
+	defer func() {
+		k.msgs = cseq
+		if !received.IsZero() {
+			k.last, k.lastMon = received, k.upMon+received.Sub(k.up).Nanoseconds()
+		}
+	}()
 	for {
 		_, data, err := ws.Read(ctx)
 		rw := time.Now()
@@ -337,6 +369,10 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		}
 		last.Store(rw.UnixNano())
 		cseq++
+		received = rw
+		if cseq == 1 {
+			c.writeGap(sh, k, rw, k.upMon+rw.Sub(k.up).Nanoseconds(), map[string]any{"event": "conn_first", "shard": sh.Name, "conn": k.id})
+		}
 		c.Messages.Add(1)
 		var records []rawlog.Record
 		if splitter, ok := c.adapter.(venue.ConnSplitter); ok {
@@ -357,9 +393,45 @@ func (c *Collector) gap(sh Shard, k *conn, cause string) {
 	if err := k.err(); err != nil {
 		e = err.Error()
 	}
-	p, _ := json.Marshal(map[string]any{"event": "conn_closed", "cause": cause, "err": e, "shard": sh.Name, "streams": sh.Streams})
-	now := time.Now()
+	uptime := int64(0)
+	if !k.up.IsZero() {
+		uptime = (k.closedMon - k.upMon) / int64(time.Millisecond)
+	}
+	lastWall := int64(0)
+	if !k.last.IsZero() {
+		lastWall = k.last.UnixNano()
+	}
+	var previous any
+	if k.previous != nil {
+		previous = k.previous.id
+	}
+	c.writeGap(sh, k, k.closed, k.closedMon, map[string]any{"event": "conn_closed", "cause": cause, "err": e, "shard": sh.Name, "streams": sh.Streams,
+		"conn": k.id, "prev": previous, "last_rw": lastWall, "last_rm": k.lastMon, "up_ms": uptime, "msgs": k.msgs})
+}
+
+func (c *Collector) now() (time.Time, int64) {
+	if c.clock != nil {
+		return c.clock()
+	}
+	return time.Now(), rawlog.Mono()
+}
+
+func (c *Collector) openGap(sh Shard, k *conn) {
+	now, mono := c.now()
+	var down any
+	var previous any
+	if k.previous != nil {
+		down = (mono - k.previous.closedMon) / int64(time.Millisecond)
+		previous = k.previous.id
+	}
+	c.writeGap(sh, k, now, mono, map[string]any{"event": "conn_opened", "shard": sh.Name, "conn": k.id,
+		"prev": previous, "initial": k.gen == 1, "attempt": k.gen, "backoff_ms": k.backoff.Milliseconds(), "down_ms": down,
+		"subscribed": len(sh.Streams), "subs_ok": true})
+}
+
+func (c *Collector) writeGap(sh Shard, k *conn, now time.Time, mono int64, payload map[string]any) {
+	p, _ := json.Marshal(payload)
 	c.sink.Write(rawlog.GroupGap, rawlog.Record{
-		Venue: c.adapter.Name(), Conn: k.id, RecvWal: now.UnixNano(), RecvMon: rawlog.Mono(), Channel: "gap", Payload: p,
+		Venue: c.adapter.Name(), Conn: k.id, RecvWal: now.UnixNano(), RecvMon: mono, Channel: "gap", Payload: p,
 	})
 }

@@ -407,8 +407,10 @@ func TestSubscribeHeartbeatAndControlLiveness(t *testing.T) {
 	}
 	sink.mu.Lock()
 	defer sink.mu.Unlock()
-	if len(sink.records) != 0 {
-		t.Fatalf("control frames recorded: %+v", sink.records)
+	for _, r := range sink.records {
+		if r.Channel != "gap" {
+			t.Fatalf("control frames recorded: %+v", sink.records)
+		}
 	}
 }
 

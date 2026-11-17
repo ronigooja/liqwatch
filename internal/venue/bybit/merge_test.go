@@ -120,3 +120,28 @@ func TestTickerConnectionIsolationAndClose(t *testing.T) {
 		t.Fatalf("closed state retained: %s", got)
 	}
 }
+
+func TestTickerSnapshotGap(t *testing.T) {
+	a := &Adapter{}
+	sh := venue.Shard{Name: "market"}
+	a.ConnOpened(sh, "c1")
+	defer a.ConnClosed(sh, "c1")
+	records := a.SplitConn(sh, "c1", []byte(`{"topic":"tickers.X","type":"snapshot","data":{"markPrice":"1"}}`))
+	count := 0
+	for _, r := range records {
+		if r.Channel == "gap" {
+			count++
+			if string(r.Payload) != `{"channel":"mark","conn":"c1","event":"snapshot","shard":"market","symbol":"X"}` {
+				t.Fatal(string(r.Payload))
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("snapshot gaps = %d", count)
+	}
+	for _, r := range a.SplitConn(sh, "c1", []byte(`{"topic":"tickers.X","type":"delta","data":{"markPrice":"2"}}`)) {
+		if r.Channel == "gap" {
+			t.Fatal("delta claimed snapshot")
+		}
+	}
+}

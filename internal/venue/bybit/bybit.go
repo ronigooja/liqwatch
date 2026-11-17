@@ -379,6 +379,10 @@ func (a *Adapter) split(sh venue.Shard, connID string, msg []byte) []rawlog.Reco
 					if suppress {
 						continue
 					}
+					if typ == "snapshot" && connID != "" {
+						p, _ := json.Marshal(map[string]any{"event": "snapshot", "shard": sh.Name, "conn": connID, "symbol": symbol, "channel": ch})
+						out = append(out, rawlog.Record{Channel: "gap", Payload: p})
+					}
 				}
 				payload := make([]byte, 0, len(msg))
 				payload = append(payload, '{')

@@ -83,6 +83,8 @@ Verified in the linked code: each table describes configured subscriptions, not 
 
 Verified in the linked adapter code: unknown fields are retained and counted. Adapters that sample eligible frames produce a complete `{"sample":...}` frame at most once per channel and shard per hour; [Binance](../internal/venue/binance/testdata/README.txt) does not currently emit samples. Subscribe errors become `gap` records with `event=subscribe_error` and the frame; acknowledgements are counted.
 
+Verified in [collector](../internal/collector/collector.go): all seven adapters share one WebSocket dial/read/reconnect path; none implements a separate connect loop. Lifecycle gap fields and known Bybit snapshot events are defined once in [storage](storage-design.md#websocket-gap-payloads), under [0022](decisions/0022-ws-gap-records.md).
+
 Verified: the per-venue field filter is built, including explicit Binance and MEXC trade tables; [0016](decisions/0016-drop-unneeded-payload-fields.md#consequences) links to each adapter's authoritative tables and describes exceptions.
 
 Verified in [Bybit](../internal/venue/bybit/bybit.go): ticker state is per connection and symbol and released on close, fixing the former overlap contamination window. A partial record is suppressed while another open connection of the shard has complete state for that symbol; otherwise it is marked `partial` until a snapshot.
