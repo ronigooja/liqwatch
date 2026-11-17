@@ -4,10 +4,14 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
+	"github.com/ronigooja/liqwatch/internal/rawlog"
 )
 
 type Record struct {
@@ -28,20 +32,34 @@ type fileBuffer struct {
 
 // FileSink buffers JSONL records. Err reports asynchronous write errors.
 type FileSink struct {
-	Dir    string
-	mu     sync.Mutex
-	files  map[string]*fileBuffer
-	err    error
-	stop   chan struct{}
-	done   chan struct{}
-	closed bool
+	Dir     string
+	mu      sync.Mutex
+	files   map[string]*fileBuffer
+	err     error
+	stop    chan struct{}
+	done    chan struct{}
+	closed  bool
+	encoder *zstd.Encoder
 }
 
 func NewFileSink(dir string, interval time.Duration) *FileSink {
+	s, _ := NewFileSinkCompressed(dir, interval, false, 1)
+	return s
+}
+
+// NewFileSinkCompressed retains the legacy path unless compression is enabled.
+func NewFileSinkCompressed(dir string, interval time.Duration, compress bool, level int) (*FileSink, error) {
 	if interval <= 0 {
 		interval = time.Second
 	}
 	s := &FileSink{Dir: dir, files: make(map[string]*fileBuffer), stop: make(chan struct{}), done: make(chan struct{})}
+	if compress {
+		var err error
+		s.encoder, err = rawlog.NewFrameEncoder(level)
+		if err != nil {
+			return nil, err
+		}
+	}
 	go func() {
 		t := time.NewTicker(interval)
 		defer t.Stop()
@@ -55,7 +73,7 @@ func NewFileSink(dir string, interval time.Duration) *FileSink {
 			}
 		}
 	}()
-	return s
+	return s, nil
 }
 
 func safePart(s string) bool { return s != "" && s != "." && s != ".." && filepath.Base(s) == s }
@@ -97,13 +115,20 @@ func (s *FileSink) Write(r Record) {
 		return
 	}
 	path := filepath.Join(s.Dir, r.Venue, sym, time.Unix(0, r.RecvWall).UTC().Format("20060102"), r.Channel+".p.jsonl")
+	if s.encoder != nil {
+		path += ".zst"
+	}
 	f := s.files[path]
 	if f == nil {
 		if err = os.MkdirAll(filepath.Dir(path), 0755); err == nil {
 			var file *os.File
 			file, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 			if err == nil {
-				f = &fileBuffer{file, bufio.NewWriter(file)}
+				var dst io.Writer = file
+				if s.encoder != nil {
+					dst = rawlog.FrameWriter{Encoder: s.encoder, Dst: file}
+				}
+				f = &fileBuffer{file, bufio.NewWriter(dst)}
 				s.files[path] = f
 			}
 		}
@@ -119,9 +144,17 @@ func (s *FileSink) Write(r Record) {
 func (s *FileSink) flush() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, f := range s.files {
+	for path, f := range s.files {
 		if err := f.w.Flush(); err != nil && s.err == nil {
 			s.err = err
+		}
+		// Compression keeps no cross-flush stream state. Release idle poller
+		// descriptors/buffers each tick rather than accumulating days of files.
+		if s.encoder != nil {
+			if err := f.f.Close(); err != nil && s.err == nil {
+				s.err = err
+			}
+			delete(s.files, path)
 		}
 	}
 }
@@ -150,6 +183,9 @@ func (s *FileSink) Close() error {
 		if err := f.f.Close(); err != nil && s.err == nil {
 			s.err = err
 		}
+	}
+	if s.encoder != nil {
+		s.encoder.Close()
 	}
 	return s.err
 }

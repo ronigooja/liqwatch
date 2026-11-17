@@ -19,6 +19,12 @@ type Config struct {
 	Pack    Pack    `toml:"pack"`
 	Checks  Checks  `toml:"checks"`
 	Poller  Poller  `toml:"poller"`
+	Record  Record  `toml:"record"`
+}
+
+type Record struct {
+	Compress bool `toml:"compress"`
+	Level    int  `toml:"level"`
 }
 
 // Poller is the validated subset of [poller] shared with cmd/liqwatch-poller, which decodes the full table
@@ -141,6 +147,7 @@ const (
 func Load(path string) (*Config, error) {
 	c := Config{
 		DataDir: "/var/lib/liqwatch",
+		Record:  Record{Level: 1},
 		Collect: Collect{Venue: "binance", MapPath: "/etc/liqwatch/venue-map.toml", MetricsAddr: "127.0.0.1:9101", MaxStreamsPerWS: 100, QueueSize: 10000, OpenSpacingMS: 500, Throttle: map[string]any{"enabled": true}},
 		Archive: Archive{MaxPackMB: 400, FullVerifyDays: 7, VerifySamplePercent: 10},
 		Pack:    Pack{Unit: "tar_then_zstd", Level: 3, QuietMinutes: 10},
@@ -163,6 +170,9 @@ func Load(path string) (*Config, error) {
 }
 
 func (c Config) validate() error {
+	if c.Record.Level < 1 || c.Record.Level > 22 {
+		return fmt.Errorf("record.level must be 1..22")
+	}
 	if c.Pack.Dir != "" {
 		if !filepath.IsAbs(c.Pack.Dir) {
 			return fmt.Errorf("pack.dir must be absolute")

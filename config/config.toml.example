@@ -1,5 +1,9 @@
 data_dir = "/data/liqwatch"
 
+[record]
+compress = false # Opt in to live zstd: .jsonl.zst; false preserves byte-identical plain JSONL.
+level = 1 # zstd level 1..22; shared encoder, independent frames on buffer flush (collector tick: 5s).
+
 [collect]
 venue = "binance"
 map_path = "/etc/liqwatch/venue-map.toml"
