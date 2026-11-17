@@ -23,8 +23,21 @@ type Config struct {
 }
 
 type Record struct {
-	Compress bool `toml:"compress"`
-	Level    int  `toml:"level"`
+	Compress bool   `toml:"compress"`
+	Level    int    `toml:"level"`
+	Flush    string `toml:"flush"`
+}
+
+// FlushEvery resolves a validated record setting against the caller's legacy tick.
+func (r Record) FlushEvery(legacy time.Duration) time.Duration {
+	if r.Flush != "" {
+		d, _ := time.ParseDuration(r.Flush)
+		return d
+	}
+	if r.Compress {
+		return 30 * time.Second
+	}
+	return legacy
 }
 
 // Poller is the validated subset of [poller] shared with cmd/liqwatch-poller, which decodes the full table
@@ -170,6 +183,12 @@ func Load(path string) (*Config, error) {
 }
 
 func (c Config) validate() error {
+	if c.Record.Flush != "" {
+		d, err := time.ParseDuration(c.Record.Flush)
+		if err != nil || d <= 0 || d > 5*time.Minute {
+			return fmt.Errorf("record.flush %q must be a positive Go duration no greater than 5m", c.Record.Flush)
+		}
+	}
 	if c.Record.Level < 1 || c.Record.Level > 22 {
 		return fmt.Errorf("record.level must be 1..22")
 	}

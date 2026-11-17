@@ -66,7 +66,7 @@ func run(ctx context.Context, args []string, client poller.HTTPDoer) error {
 		}
 	}
 	raw := filepath.Join(base.DataDir, "raw")
-	sink, err := poller.NewFileSinkCompressed(raw, time.Second, base.Record.Compress, base.Record.Level)
+	sink, err := newRecordSink(raw, base.Record)
 	if err != nil {
 		return err
 	}
@@ -96,6 +96,10 @@ func run(ctx context.Context, args []string, client poller.HTTPDoer) error {
 		return nil
 	}
 	return err
+}
+
+func newRecordSink(dir string, record config.Record) (*poller.FileSink, error) {
+	return poller.NewFileSinkCompressed(dir, record.FlushEvery(time.Second), record.Compress, record.Level)
 }
 
 func unknownFieldLines(channels []poller.Channel, count func(string, string) uint64) []string {

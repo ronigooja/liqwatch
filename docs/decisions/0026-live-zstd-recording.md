@@ -1,6 +1,7 @@
 # 0026: Record live zstd on the root disk
 
 Purpose: govern opt-in writer compression; extends [0018](0018-path-based-raw-envelope.md) and supersedes its plain-JSONL assumption, not envelope v2.
+Verified status: existing-tick policy partially superseded by [0028](0028-record-flush-interval.md); other decisions remain in force.
 
 Date: 2026-11-17
 

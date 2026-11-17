@@ -71,10 +71,7 @@ func run(cfg *config.Config, instance string) error {
 		}
 		defer unlock()
 	}
-	w, err := rawlog.NewWriter(rawlog.Options{
-		Dir: rawDir, QueueSize: cfg.Collect.QueueSize, MaxDiskPct: 92, Instance: instance, DropClass: adapter.Classes(),
-		Compress: cfg.Record.Compress, Level: cfg.Record.Level,
-	})
+	w, err := newRecordWriter(cfg, rawDir, instance, adapter.Classes())
 	if err != nil {
 		return err
 	}
@@ -171,6 +168,13 @@ func run(cfg *config.Config, instance string) error {
 	writerStop()
 	writerDone.Wait()
 	return nil
+}
+
+func newRecordWriter(cfg *config.Config, dir, instance string, classes func(string) (string, bool)) (*rawlog.Writer, error) {
+	return rawlog.NewWriter(rawlog.Options{
+		Dir: dir, QueueSize: cfg.Collect.QueueSize, MaxDiskPct: 92, Instance: instance, DropClass: classes,
+		Compress: cfg.Record.Compress, Level: cfg.Record.Level, FlushEvery: cfg.Record.FlushEvery(5 * time.Second),
+	})
 }
 
 func servePprof(addr string) {

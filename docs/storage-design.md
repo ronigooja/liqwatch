@@ -23,7 +23,7 @@ Raw venue symbol names are kept in paths. Mapping (`1000PEPE` to `PEPE`, `XBT` t
 
 ## Writing
 
-Verified: governed by [0026](decisions/0026-live-zstd-recording.md); root-disk live compression is implemented but deployment is not performed by this change.
+Verified: governed by [0026](decisions/0026-live-zstd-recording.md) and [0028](decisions/0028-record-flush-interval.md); root-disk live compression is implemented but deployment is separate.
 
 | Item | Rule |
 |---|---|
@@ -69,11 +69,22 @@ Verified in [research poller](../research/liqwatch_research/poll/__init__.py): i
 
 Verified: compression defaults off. When enabled, collector and poller each share one level-1 encoder with a 64 KiB window, concurrency 1 and lower-memory mode; `[record].level` accepts 1..22.
 
-Verified: each 4 KiB buffered output publishes independent finished frames on writes/flushes; oversized writes can be larger. Collector ticks remain 5 s and poller ticks 1 s. LRU close, shutdown and append reopen preserve concatenated-frame validity.
+Verified in [config](../internal/config/config.go): `[record].flush` accepts a positive Go duration string up to 5m, used in both modes. Unset: compressed collector/poller 30 s; plain collector 5 s and poller 1 s.
 
-Verified: compression state is independent of file count; collector retains at most `MaxOpenFiles` buffers (default 4,096). Compressed poller flushes also close/release idle descriptors. [Measurements](packing-results.md#live-writer-compression) quantify the ratio tradeoff.
+Verified: collector, poller and [replay](../cmd/liqwatch-replay/main.go) all use `bufio.NewWriter` (Go default 4 KiB), not interval-sized buffers. A full buffer writes a finished frame; oversized writes can publish larger frames before a tick.
 
-Verified: every-byte-cut tests require a whole-record prefix plus an incomplete-tail indication except at complete frame boundaries. Inferred: unsynced writes may still be lost on host crash; no recorder crash trial is claimed.
+Inferred: frames for busy files are NOT 30 s long; buffer-fill frames limit ratio gains from longer ticks. Replay has no buffer-size mismatch, but record-time ticks, LRU pressure and live arrival timing can change realized ratios.
+
+Verified in the writer/sink sources linked above: collector LRU close and shutdown flush; poller shutdown flushes and compressed ticks close/release descriptors. Append reopen preserves concatenated-frame validity; poller request scheduling is unchanged.
+
+Verified: collector tick also publishes drop markers and cleans up past-day files. The disk-full check remains in record handling, at most once per 10 s; queue drops keep their existing thresholds and shutdown drains the queue.
+
+Verified: `rawlog` defaults to a 200,000-item queue; collector supplies `collect.queue_size` (default 10,000). Queue consumption is continuous, independent of file flush; increasing the tick does not accumulate 30 s of records in that queue.
+
+Verified: compression state is independent of file count; collector retains at most `MaxOpenFiles` buffers (default 4,096). [Measurements](packing-results.md#flush-interval-sweep) quantify the ratio tradeoff.
+
+Verified: every-byte-cut tests require a whole-record prefix plus an incomplete-tail indication except at complete frame boundaries.
+Inferred: nominal buffered-data crash-loss window equals the flush interval; this is not a durability measurement or a bound on queued records or unsynced kernel writes. No recorder crash trial is claimed.
 
 ## Pack and compress (after the UTC day boundary)
 

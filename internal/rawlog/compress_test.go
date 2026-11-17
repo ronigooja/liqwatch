@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/ronigooja/liqwatch/internal/config"
 )
 
 // decodePrefix deliberately uses the independent library, not the production reader.
@@ -77,7 +78,15 @@ func TestCompressedWholeFileGolden(t *testing.T) {
 
 func TestCompressedTickPublishesBeforeClose(t *testing.T) {
 	dir := t.TempDir()
-	w, err := NewWriter(Options{Dir: dir, Compress: true, FlushEvery: 10 * time.Millisecond})
+	pConfig := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(pConfig, []byte("[record]\ncompress=true\nflush='10ms'\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(pConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := NewWriter(Options{Dir: dir, Compress: cfg.Record.Compress, FlushEvery: cfg.Record.FlushEvery(5 * time.Second)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +101,8 @@ func TestCompressedTickPublishesBeforeClose(t *testing.T) {
 		b, _ := os.ReadFile(p)
 		if len(b) > 0 {
 			got, err := decodePrefix(b)
-			if err == nil && bytes.HasSuffix(got, []byte("\"p\":{\"x\":1}}\n")) {
+			want := fmt.Sprintf("{\"v\":2,\"wseq\":1,\"cseq\":0,\"rw\":%d,\"rm\":0,\"p\":{\"x\":1}}\n", at.UnixNano())
+			if err == nil && string(got) == want {
 				return
 			}
 		}

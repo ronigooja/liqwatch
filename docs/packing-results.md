@@ -1,6 +1,6 @@
 # Packing results
 
-Purpose: measured packing and live compression. Decisions: [0023](decisions/0023-packer-streaming.md), [0025](decisions/0025-packer-drop-page-cache.md), [0026](decisions/0026-live-zstd-recording.md). Design: [storage](storage-design.md).
+Purpose: measured packing and live compression. Decisions: [0023](decisions/0023-packer-streaming.md), [0025](decisions/0025-packer-drop-page-cache.md), [0026](decisions/0026-live-zstd-recording.md), [0028](decisions/0028-record-flush-interval.md). Design: [storage](storage-design.md).
 
 ## Second-pass compression
 
@@ -60,6 +60,8 @@ Verified scope: 2026-11-17; [frame writer](../internal/rawlog/compress.go), [wri
 Verified: replay uses production `FrameWriter`, 4 KiB buffering, record-time five-second flushes and output LRU; original envelopes are preserved rather than reassigning sequences or discarding poller metadata.
 Verified: replay is not live collection; it retains one source scanner per file and performs full decode/hash verification. Its cgroup peak includes input/output cache and verification, not just production writer state.
 
+Verified: the five-second results below remain the historical baseline; the [flush sweep](#flush-interval-sweep) governs the current compressed default.
+
 | Question | Method | Measured result (sample/spread) | Date | Reproducible source |
 |---|---|---|---|---|
 | Input and exact outputs? | Hash sources before/after; decode/SHA-256 every output | 13,380 files / 228,508,012 B; 13,373 JSONL / 228,439,737 B / 1,112,797 records; 13,373/13,373 outputs match; all sources unchanged; n=2, zero count/hash spread | 2026-11-17 | VT01OK `64.176.35.180`, `/var/lib/dirtest3-src-20261117T043405Z`, day 20261116; seven state JSON excluded |
@@ -111,3 +113,39 @@ Verified: replay outputs, helper and temporary reports were removed; final sourc
 | Darwin portability? | `GOOS=darwin go build ./...` | Exit 0; n=1 final run | Same date/build host/environment |
 | Race coverage? | `CGO_ENABLED=1 go test -race -count=1` on rawlog, poller, config, collector and collector/poller/replay commands | All six tested packages passed; replay has no tests; n=1 final run | 2026-11-17; `64.118.133.169`, kernel `6.1.0-21-amd64`; same Go environment/lock |
 | Diff and documentation links? | `git diff --check`; relative paths and heading anchors in six changed documents | Exit 0; zero missing paths/anchors; n=1 | 2026-11-17; worktree based on `823e42a`; live-writer implementation accompanying this table |
+
+## Flush interval sweep
+
+Verified provenance: owner-supplied VT01OK results, not re-run or independently inspected in this change; same day/source corpus as [live writer compression](#live-writer-compression).
+Verified reproduction basis: `cmd/liqwatch-replay` at `39a86ac`, shared level-1 encoder, independent frames, max-open 4,096; change both record-time tick increments from 5 s to the interval under test. The owner's original local revision is not retained.
+Verified provenance caveat: the owner's `-flush` flag was a local, unmerged change; no retained sweep commit or flag is available. Reproduction requires that tick edit, not an invocation of a nonexistent committed flag.
+Verified buffer comparison: replay and both production recorders use the same Go-default 4 KiB `bufio.NewWriter`; see [writer semantics](storage-design.md#writing). No buffer size is changed here.
+Inferred: buffer-fill frames limit the benefit for busy files; record-time replay is not a guarantee of wall-time live ratios or durability. One day and one run per interval provide no repeat-run spread.
+
+| Question | Method | Measured result (sample/spread) | Date | Reproducible source |
+|---|---|---|---|---|
+| Which interval reduces stored bytes? | Record-time sweep; decode/hash every output | 5s 3.241488:1; 30s 4.181217:1 (−22.48% bytes); 60s 4.292070:1; 300s 4.347375:1; 3600s 4.369339:1; n=1/interval, spread unavailable | 2026-11-17 | VT01OK; tick-edit method above; day 20261116, 228,439,737 B / 13,373 files; all 13,373 outputs verified per run |
+| How do venues differ at 30s? | Same sweep, ratio per venue | Binance 5.17; OKX 5.25; Bybit 4.09; Bitget 3.64; KuCoin 3.94; Gate 3.03; MEXC 2.60; n=1/venue, spread unavailable | 2026-11-17 | Same host/corpus/method |
+
+| Question | Method | Inferred answer | Date / source |
+|---|---|---|---|
+| Why cap configured intervals at 300s? | Compare 300s and 3600s stored bytes | Only about 0.5% further byte reduction for a much longer nominal buffered-data exposure; not a universal optimum | 2026-11-17; sweep above |
+| Daily size at the selected default? | Owner-supplied 54–65 GB raw/day divided by 30s ratio | 12.9–15.5 GB/day; not a measured full recording day or retention guarantee | 2026-11-17; sweep above |
+
+| Mutation tried | Expected failing test | Measured exit | Date / reproducible source |
+|---|---|---:|---|
+| Compressed default stays 5s | `TestRecordFlush/compressed` | 1 | 2026-11-17; `38.47.101.8`, base `39a86ac` plus this change; `return 30 * time.Second` → `return 5 * time.Second` |
+| Plain unset default changes | `TestRecordFlush/plain` | 1 | Same host/date/source; `return legacy` → `return 30 * time.Second` |
+| Collector ignores configured tick | `TestCollectorConfiguredFlush` | 1 | Same host/date/source; `cfg.Record.FlushEvery(5 * time.Second)` → `5 * time.Second` |
+| Poller ignores configured tick | `TestPollerConfiguredFlush` | 1 | Same host/date/source; `record.FlushEvery(time.Second)` → `time.Second` |
+
+Verified mutation method: run `go test -count=1 -run '^<test>$'` on the corresponding package after each isolated edit; restore production files after each mutation. All changed-package tests pass after restoration.
+
+| Verification question | Method | Measured result | Date / reproducible source |
+|---|---|---|---|
+| Linux and portability checks? | `GOOS=linux go vet ./...`; `GOOS=linux go build ./...`; `go test -count=1 ./...`; `GOOS=darwin CGO_ENABLED=0 go build ./...` | Exit 0 each; n=1 | 2026-11-17; `38.47.101.8`, Go 1.26.0, base `39a86ac` plus this change |
+| Changed-package race coverage? | `CGO_ENABLED=1 go test -race -count=1` on config, rawlog and collector/poller commands | Exit 0; n=1 | 2026-11-17; `64.118.133.169`; source as above |
+| Restored mutation sources? | `go test -count=1` on the four changed packages | Exit 0; n=1 | 2026-11-17; `38.47.101.8`; mutations above restored before run |
+| Diff and documentation links? | `git diff --check`; relative paths/heading anchors in five changed Markdown documents | Exit 0; zero missing links; n=1 | 2026-11-17; source as above |
+
+Verified build method: both hosts use `flock /tmp/build.lock`, `/root/Agents/environment/go-env.sh`, `GOFLAGS=-p=1`, and isolated `/tmp/liqwatch-flush30-20261117`; no recorder access or deployment.
