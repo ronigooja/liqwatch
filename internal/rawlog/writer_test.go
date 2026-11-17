@@ -218,14 +218,77 @@ func TestDiskStop(t *testing.T) {
 }
 func TestSweep(t *testing.T) {
 	dir := t.TempDir()
-	for _, d := range []string{"20260101", "20260102", "20260103"} {
-		p := filepath.Join(dir, "binance/BTC", d, "trade.a.jsonl")
-		os.MkdirAll(filepath.Dir(p), 0750)
-		os.WriteFile(p, []byte("x"), 0640)
+	for _, path := range []string{
+		"binance/BTC/20260101/trade.a.jsonl",
+		"binance/BTC/20260101/trade.a.jsonl.zst",
+		"binance/BTC/20260101/trade.b.jsonl",
+		"binance/BTC/20260101/trade.b.jsonl.zst",
+		"binance/BTC/20260101/trade.jsonl",
+		"binance/BTC/20260101/trade.jsonl.zst",
+		"okx/牛来-USDT/20251231/mark.Price_1-X.p.jsonl",
+		"okx/牛来-USDT/20251231/mark.Price_1-X.p.jsonl.zst",
+		"okx/牛来-USDT/20251231/rate.UPPER.jsonl",
+		"okx/牛来-USDT/20251231/rate.UPPER.jsonl.zst",
+		"binance/BTC/20260102/trade.a.jsonl",
+		"binance/BTC/20260102/trade.a.jsonl.zst",
+		"binance/BTC/20260103/trade.a.jsonl",
+		"binance/BTC/20260103/trade.a.jsonl.zst",
+		"binance/BTC/invalid/trade.a.jsonl",
+		"binance/BTC/invalid/trade.a.jsonl.zst",
+		"binance/BTC/20260101/held.a.jsonl",
+		"binance/BTC/20260101/held.a.jsonl.zst",
+		"binance/BTC/20260101/notes.txt",
+		"binance/BTC/20260101/trade.jsonl.zst.part",
+		"binance/BTC/20260101/trade.jsonl.backup",
+		"binance/BTC/20260101/trade.zst",
+		"binance/BTC/20260101/.jsonl",
+		"binance/BTC/20260101/.jsonl.zst",
+	} {
+		p := filepath.Join(dir, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(p), 0750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("raw\n"), 0640); err != nil {
+			t.Fatal(err)
+		}
 	}
-	a := Sweep(dir, time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC))
-	if len(a) != 1 || a[0].Channel != "trade" || a[0].MsgCount != -1 || a[0].Bytes != 1 {
-		t.Fatal(a)
+	if err := os.Mkdir(filepath.Join(dir, "binance/BTC/20260101/directory.jsonl.zst"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	// Model the registry used by live writers; both held paths must be excluded.
+	held := []string{
+		absolute(filepath.Join(dir, "binance/BTC/20260101/held.a.jsonl")),
+		absolute(filepath.Join(dir, "binance/BTC/20260101/held.a.jsonl.zst")),
+	}
+	openPaths.Lock()
+	for _, p := range held {
+		openPaths.paths[p]++
+	}
+	openPaths.Unlock()
+	t.Cleanup(func() {
+		openPaths.Lock()
+		defer openPaths.Unlock()
+		for _, p := range held {
+			delete(openPaths.paths, p)
+		}
+	})
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	dec := time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC)
+	want := []Closed{
+		{Path: "binance/BTC/20260101/trade.a.jsonl", Venue: "binance", Symbol: "BTC", Channel: "trade", Day: jan, Bytes: 4, MsgCount: -1},
+		{Path: "binance/BTC/20260101/trade.a.jsonl.zst", Venue: "binance", Symbol: "BTC", Channel: "trade", Day: jan, Bytes: 4, MsgCount: -1},
+		{Path: "binance/BTC/20260101/trade.b.jsonl", Venue: "binance", Symbol: "BTC", Channel: "trade", Day: jan, Bytes: 4, MsgCount: -1},
+		{Path: "binance/BTC/20260101/trade.b.jsonl.zst", Venue: "binance", Symbol: "BTC", Channel: "trade", Day: jan, Bytes: 4, MsgCount: -1},
+		{Path: "binance/BTC/20260101/trade.jsonl", Venue: "binance", Symbol: "BTC", Channel: "trade", Day: jan, Bytes: 4, MsgCount: -1},
+		{Path: "binance/BTC/20260101/trade.jsonl.zst", Venue: "binance", Symbol: "BTC", Channel: "trade", Day: jan, Bytes: 4, MsgCount: -1},
+		{Path: "okx/牛来-USDT/20251231/mark.Price_1-X.p.jsonl", Venue: "okx", Symbol: "牛来-USDT", Channel: "mark.Price_1-X", Day: dec, Bytes: 4, MsgCount: -1},
+		{Path: "okx/牛来-USDT/20251231/mark.Price_1-X.p.jsonl.zst", Venue: "okx", Symbol: "牛来-USDT", Channel: "mark.Price_1-X", Day: dec, Bytes: 4, MsgCount: -1},
+		{Path: "okx/牛来-USDT/20251231/rate.UPPER.jsonl", Venue: "okx", Symbol: "牛来-USDT", Channel: "rate.UPPER", Day: dec, Bytes: 4, MsgCount: -1},
+		{Path: "okx/牛来-USDT/20251231/rate.UPPER.jsonl.zst", Venue: "okx", Symbol: "牛来-USDT", Channel: "rate.UPPER", Day: dec, Bytes: 4, MsgCount: -1},
+	}
+	got := Sweep(dir, time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC))
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Sweep() = %#v\nwant %#v", got, want)
 	}
 }
 func TestPathSafety(t *testing.T) {

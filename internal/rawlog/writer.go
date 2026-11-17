@@ -423,9 +423,12 @@ func monoNow() int64 { return Mono() }
 // Sweep returns past-day files not held open by writers in this process.
 func Sweep(dir string, now time.Time) []Closed {
 	var out []Closed
-	files, _ := filepath.Glob(filepath.Join(dir, "*", "*", "*", "*.jsonl"))
+	files, _ := filepath.Glob(filepath.Join(dir, "*", "*", "*", "*"))
 	current := day(now)
 	for _, p := range files {
+		if !IsRawPath(p) {
+			continue
+		}
 		rel, err := filepath.Rel(dir, p)
 		if err != nil {
 			continue
@@ -438,7 +441,7 @@ func Sweep(dir string, now time.Time) []Closed {
 		if err != nil || !d.Before(current) {
 			continue
 		}
-		name := strings.TrimSuffix(parts[3], ".jsonl")
+		name := strings.TrimSuffix(strings.TrimSuffix(parts[3], ".zst"), ".jsonl")
 		ch := name
 		if i := strings.LastIndexByte(name, '.'); i >= 0 && validInstance(name[i+1:]) && name[i+1:] != "" {
 			ch = name[:i]
