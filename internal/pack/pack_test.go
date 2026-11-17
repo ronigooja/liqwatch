@@ -96,6 +96,18 @@ func TestPack(t *testing.T) {
 				if e != nil {
 					t.Fatal(e)
 				}
+				if _, ok := want[name]; !ok {
+					t.Fatalf("unexpected member %s", name)
+				}
+				if _, duplicate := found[name]; duplicate {
+					t.Fatalf("duplicate member %s", name)
+				}
+				if unit == TarThenZstd && h.Size != int64(len(b)) {
+					t.Fatalf("header size %d, bytes %d", h.Size, len(b))
+				}
+				if string(b) != want[name] {
+					t.Fatalf("member bytes differ: %s", name)
+				}
 				found[name] = string(b)
 				// Restore the archive's venue/symbol/date plus the member's channel/slot.
 				extracted := filepath.Join(root, "extracted", "v", "s", day, name)
@@ -120,6 +132,9 @@ func TestPack(t *testing.T) {
 			}
 			if len(found) != len(want) {
 				t.Fatal(found)
+			}
+			if len(result.Members) != len(want) {
+				t.Fatalf("manifest member count: %d", len(result.Members))
 			}
 			for _, m := range result.Members {
 				sum := sha256.Sum256([]byte(want[m.Name]))

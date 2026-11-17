@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -24,6 +25,46 @@ const (
 )
 
 var ErrIncomplete = errors.New("raw day is not complete")
+
+// A sequential caller reuses one encoder across packs; concurrent callers never
+// share an encoder. The pool may be cleared by GC without affecting correctness.
+var encoders sync.Pool
+
+type packEncoder struct {
+	*zstd.Encoder
+	level int
+}
+
+func acquireEncoder(level int) (*packEncoder, error) {
+	if cached := encoders.Get(); cached != nil {
+		e := cached.(*packEncoder)
+		if e.level == level {
+			return e, nil
+		}
+		e.Close()
+	}
+	e, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level)),
+		zstd.WithEncoderConcurrency(1), zstd.WithWindowSize(1<<20), zstd.WithLowerEncoderMem(true))
+	if err != nil {
+		return nil, err
+	}
+	return &packEncoder{e, level}, nil
+}
+
+// Read through EOF rather than limiting input: growth and truncation must fail,
+// even when timestamps have been restored by the writer.
+func copyMember(dst io.Writer, src *os.File, size int64) (int64, error) {
+	return copyMemberBuffer(dst, src, size, make([]byte, 32<<10))
+}
+
+func copyMemberBuffer(dst io.Writer, src *os.File, size int64, buf []byte) (int64, error) {
+	// Hide File.WriteTo so io.CopyBuffer uses the pack's reusable buffer.
+	n, err := io.CopyBuffer(dst, struct{ io.Reader }{src}, buf)
+	if n != size || errors.Is(err, tar.ErrWriteTooLong) {
+		return n, ErrIncomplete
+	}
+	return n, err
+}
 
 type Options struct {
 	PackRoot    string
@@ -63,6 +104,13 @@ func validate(venue, symbol, day string) error {
 
 // Pack writes an atomic daily archive. Path in the result is relative to PackRoot.
 func Pack(rawRoot, venue, symbol, day string, opts Options) (Result, error) {
+	buf := make([]byte, 32<<10)
+	return pack(rawRoot, venue, symbol, day, opts, func(dst io.Writer, src *os.File, size int64) (int64, error) {
+		return copyMemberBuffer(dst, src, size, buf)
+	})
+}
+
+func pack(rawRoot, venue, symbol, day string, opts Options, copyFile func(io.Writer, *os.File, int64) (int64, error)) (Result, error) {
 	var result Result
 	if err := validate(venue, symbol, day); err != nil {
 		return result, err
@@ -126,15 +174,33 @@ func Pack(rawRoot, venue, symbol, day string, opts Options) (Result, error) {
 		return result, err
 	}
 	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	encoder, err := acquireEncoder(opts.Level)
+	if err != nil {
+		return result, err
+	}
+	defer func() {
+		encoder.Close()
+		encoder.Reset(nil) // Do not retain files or tar writers in the pool.
+		encoders.Put(encoder)
+	}()
 	var output io.Writer = tmp
 	var outer *zstd.Encoder
 	if opts.Unit == TarThenZstd {
-		outer, err = zstd.NewWriter(tmp, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(opts.Level)))
+		outer = encoder.Encoder
+		outer.Reset(tmp)
+		output = outer
+	}
+	// Compressed member sizes are unknown until compression finishes. Spool one
+	// member on disk (not in RAM) before writing its tar header.
+	var spool *os.File
+	if opts.Unit == ZstdThenTar {
+		spool, err = os.CreateTemp(filepath.Dir(dst), ".member-*")
 		if err != nil {
-			tmp.Close()
 			return result, err
 		}
-		output = outer
+		defer os.Remove(spool.Name())
+		defer spool.Close()
 	}
 	tw := tar.NewWriter(output)
 	for _, e := range entries {
@@ -145,10 +211,34 @@ func Pack(rawRoot, venue, symbol, day string, opts Options) (Result, error) {
 			tmp.Close()
 			return result, statErr
 		}
-		data, readErr := os.ReadFile(path)
+		f, openErr := os.Open(path)
+		if openErr != nil {
+			return result, openErr
+		}
+		h := sha256.New()
+		var memberOutput io.Writer = tw
+		if opts.Unit == ZstdThenTar {
+			if err := spool.Truncate(0); err != nil {
+				f.Close()
+				return result, err
+			}
+			if _, err := spool.Seek(0, io.SeekStart); err != nil {
+				f.Close()
+				return result, err
+			}
+			encoder.Reset(spool)
+			memberOutput = encoder
+		} else if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0640, Size: before.Size()}); err != nil {
+			f.Close()
+			return result, err
+		}
+		n, readErr := copyFile(io.MultiWriter(memberOutput, h), f, before.Size())
+		closeErr := f.Close()
 		if readErr != nil {
-			tmp.Close()
 			return result, readErr
+		}
+		if closeErr != nil {
+			return result, closeErr
 		}
 		after, statErr := os.Stat(path)
 		if statErr != nil {
@@ -159,24 +249,24 @@ func Pack(rawRoot, venue, symbol, day string, opts Options) (Result, error) {
 			tmp.Close()
 			return result, ErrIncomplete
 		}
-		sum := sha256.Sum256(data)
-		result.Members = append(result.Members, Member{Name: name, Bytes: int64(len(data)), SHA256: hex.EncodeToString(sum[:])})
+		result.Members = append(result.Members, Member{Name: name, Bytes: n, SHA256: hex.EncodeToString(h.Sum(nil))})
 		if opts.Unit == ZstdThenTar {
-			encoder, encErr := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(opts.Level)))
-			if encErr != nil {
-				tmp.Close()
-				return result, encErr
+			if err := encoder.Close(); err != nil {
+				return result, err
 			}
-			data = encoder.EncodeAll(data, nil)
-			encoder.Close()
-			name += ".zst"
-		}
-		if err = tw.WriteHeader(&tar.Header{Name: name, Mode: 0640, Size: int64(len(data))}); err == nil {
-			_, err = tw.Write(data)
-		}
-		if err != nil {
-			tmp.Close()
-			return result, err
+			size, err := spool.Seek(0, io.SeekCurrent)
+			if err != nil {
+				return result, err
+			}
+			if _, err := spool.Seek(0, io.SeekStart); err != nil {
+				return result, err
+			}
+			if err := tw.WriteHeader(&tar.Header{Name: name + ".zst", Mode: 0640, Size: size}); err != nil {
+				return result, err
+			}
+			if _, err := io.Copy(tw, spool); err != nil {
+				return result, err
+			}
 		}
 	}
 	if err = tw.Close(); err == nil && outer != nil {
@@ -253,6 +343,7 @@ func readMembers(in io.Reader, unit string) ([]Member, error) {
 		}
 		name := hdr.Name
 		var r io.Reader = tr
+		var memberDecoder *zstd.Decoder
 		if unit == ZstdThenTar {
 			if !strings.HasSuffix(name, ".zst") {
 				return nil, errors.New("invalid compressed member")
@@ -262,11 +353,14 @@ func readMembers(in io.Reader, unit string) ([]Member, error) {
 			if err != nil {
 				return nil, err
 			}
-			defer decoder.Close()
+			memberDecoder = decoder
 			r = decoder
 		}
 		h := sha256.New()
 		n, err := io.Copy(h, r)
+		if memberDecoder != nil {
+			memberDecoder.Close()
+		}
 		if err != nil {
 			return nil, err
 		}

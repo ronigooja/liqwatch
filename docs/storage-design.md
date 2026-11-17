@@ -1,6 +1,7 @@
 # Storage Design (multi-venue recording)
 
-Design of recording, packing, upload and retention. Verified: writer, packer and archiver are built; [deployment status](infrastructure.md#vt01ok-preparation-status). Records: [0009](decisions/0009-zero-gap-handoff.md), [0014](decisions/0014-daily-pack-storage.md), [0021](decisions/0021-gate-archiver-deletion.md). Venue scope: [adapters](venue-adapters.md).
+Design of recording, packing, upload and retention. Verified: writer, packer and archiver are built; [deployment status](infrastructure.md#vt01ok-preparation-status).
+Records: [0009](decisions/0009-zero-gap-handoff.md), [0014](decisions/0014-daily-pack-storage.md), [0021](decisions/0021-gate-archiver-deletion.md), [0023](decisions/0023-packer-streaming.md). Venue scope: [adapters](venue-adapters.md).
 
 ## Scope
 
@@ -68,6 +69,12 @@ The collector only appends text and opens no compressor. Measured in the trial: 
 ## Pack and compress (after the UTC day boundary)
 
 When all channel files of a symbol for the day are closed, they are packed into `raw/<venue>/<symbol>/<date>.tar.zst`. Compression unit and level are open (see Open items).
+
+Verified in [packer](../internal/pack/pack.go): members stream through SHA-256; byte count, size, modification time and quiet-period checks reject changed files before publication. Raw member size has no configured cap; see Writing.
+
+Verified: one reusable zstd encoder uses concurrency 1, a 1 MiB window and lower-memory mode; the default level remains 3. `tar_then_zstd` streams directly; `zstd_then_tar` spools one compressed member on disk to obtain its tar header size.
+
+Verified: encoder reuse retains only bounded compression state, not whole packs; member metadata and bounded compression/copy buffers occupy heap. Existing pack formats, reader compatibility, naming and manifest schema are unchanged; rationale: [0023](decisions/0023-packer-streaming.md).
 
 ## Upload
 
@@ -169,7 +176,7 @@ Designed: do not run legacy/handoff collectors alongside venue collectors; their
 Verified: every recorder service uses `RequiresMountsFor=/data/liqwatch` (mount requirement and ordering even with `nofail`) and `ConditionPathIsMountPoint=/data/liqwatch` (skip start if the directory is not mounted).
 Verified: [systemd.unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html) specifies the mount dependency/ordering and mount-point condition; these guards do not validate a particular UUID or protect against all runtime unmounts.
 Verified: collector limits are 192 MiB, poller 128 MiB, packer 512 MiB, archiver 128 MiB and checks 64 MiB; units impose no CPU quota. Collectors/pollers restart after 5 s, limited to 5 starts per 300 s.
-Inferred: these are conservative per-process ceilings, not reservations or proof of aggregate fit. Total seven-venue memory/CPU on VT01OK is UNMEASURED; packer reads whole members and may hit its ceiling on large files.
+Inferred: these are conservative per-process ceilings, not reservations or proof of aggregate fit. Bounded packer buffers remove whole-member heap growth; synthetic Go heap measurements do not establish recorder cgroup headroom. Keep the packer ceiling unchanged pending recorder measurement.
 
 | Order | Designed operator action after separate deployment authorization |
 |---|---|
