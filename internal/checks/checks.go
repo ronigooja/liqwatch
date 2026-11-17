@@ -213,7 +213,7 @@ func newestChannelAge(root, venue, channel string, now time.Time) (time.Duration
 	if venue == "" {
 		venue = "binance"
 	}
-	for _, name := range []string{channel + ".jsonl", channel + ".*.jsonl"} {
+	for _, name := range []string{channel + ".jsonl", channel + ".*.jsonl", channel + ".jsonl.zst", channel + ".*.jsonl.zst"} {
 		paths, err := filepath.Glob(filepath.Join(root, venue, "*", now.UTC().Format("20060102"), name))
 		if err != nil {
 			return 0, false, err

@@ -67,14 +67,13 @@ func run(cfg config.Config) error {
 				if _, e = time.Parse("20060102", d.Name()); e != nil {
 					continue
 				}
-				ext := ".tar.zst"
-				if cfg.Pack.Unit == pack.ZstdThenTar {
-					ext = ".tar"
-				}
-				rel := filepath.Join(v.Name(), sym.Name(), d.Name()+ext)
-				known, e := s.KnownPack(rel)
-				if e != nil {
-					return e
+				known := false
+				for _, ext := range []string{".tar.zst", ".tar"} {
+					found, err := s.KnownPack(filepath.Join(v.Name(), sym.Name(), d.Name()+ext))
+					if err != nil {
+						return err
+					}
+					known = known || found
 				}
 				if known {
 					skipped++

@@ -1,7 +1,6 @@
 package poller
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -14,6 +13,8 @@ import (
 	"sort"
 	"sync/atomic"
 	"time"
+
+	"github.com/ronigooja/liqwatch/internal/rawlog"
 )
 
 type Symbol = string
@@ -382,25 +383,25 @@ func (s *Scheduler) dedup(r *Record) bool {
 		if sink, yes := s.Sink.(*FileSink); yes {
 			for _, day := range []time.Time{s.Clock.Now().Add(-24 * time.Hour), s.Clock.Now()} {
 				path := filepath.Join(sink.Dir, r.Venue, r.Symbol, day.UTC().Format("20060102"), r.Channel+".p.jsonl")
-				f, e := os.Open(path)
-				if e != nil {
-					continue
-				}
-				sc := bufio.NewScanner(f)
-				sc.Buffer(make([]byte, 4096), 16<<20)
-				for sc.Scan() {
-					var v struct {
-						Payload json.RawMessage `json:"p"`
-						Meta    struct {
-							TS int64 `json:"last_row_timestamp"`
-						} `json:"meta"`
+				for _, path := range []string{path, path + ".zst"} {
+					_, err := rawlog.ReadLines(path, func(line []byte) error {
+						var v struct {
+							Payload json.RawMessage `json:"p"`
+							Meta    struct {
+								TS int64 `json:"last_row_timestamp"`
+							} `json:"meta"`
+						}
+						if json.Unmarshal(line, &v) != nil || v.Meta.TS <= 0 {
+							return nil
+						}
+						addHash(m, v.Meta.TS, v.Payload)
+						return nil
+					})
+					if err != nil && !os.IsNotExist(err) {
+						p, _ := json.Marshal(map[string]any{"event": "raw_read_failed", "path": path, "err": err.Error()})
+						s.Sink.Write(Record{Venue: r.Venue, Channel: "gap", RecvWall: s.Clock.Now().UnixNano(), Payload: p})
 					}
-					if json.Unmarshal(sc.Bytes(), &v) != nil || v.Meta.TS <= 0 {
-						continue
-					}
-					addHash(m, v.Meta.TS, v.Payload)
 				}
-				f.Close()
 			}
 		}
 	}

@@ -99,10 +99,18 @@ func metadata(cfg config.Config, s manifest.Store, p manifest.Pack) ([]byte, err
 		members = []manifest.Member{}
 	}
 	unit := pack.ZstdThenTar
+	level := cfg.Pack.Level
 	if strings.HasSuffix(p.Path, ".tar.zst") {
 		unit = pack.TarThenZstd
+	} else {
+		for _, m := range members {
+			if strings.HasSuffix(m.Name, ".jsonl.zst") {
+				unit = pack.StoredTar
+				level = 0
+				break
+			}
+		}
 	}
-	level := cfg.Pack.Level
 	return json.Marshal(meta{Size: p.Bytes, SHA256: p.SHA256, Members: members, Unit: unit, Level: level})
 }
 func archiveOne(ctx context.Context, cfg config.Config, s manifest.Store, dav *webdav.Client, p manifest.Pack) error {

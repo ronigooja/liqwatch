@@ -1,4 +1,4 @@
-// Package pack creates offline daily archives of uncompressed raw files.
+// Package pack creates offline daily archives of plain or compressed raw files.
 package pack
 
 import (
@@ -17,11 +17,13 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/ronigooja/liqwatch/internal/rawlog"
 )
 
 const (
 	TarThenZstd = "tar_then_zstd"
 	ZstdThenTar = "zstd_then_tar"
+	StoredTar   = "stored_tar"
 )
 
 var ErrIncomplete = errors.New("raw day is not complete")
@@ -84,6 +86,7 @@ type Member struct {
 }
 
 type Result struct {
+	Unit    string
 	Path    string
 	Bytes   int64
 	SHA256  string
@@ -150,7 +153,12 @@ func pack(rawRoot, venue, symbol, day string, opts Options, copyFile func(io.Wri
 	if len(entries) == 0 {
 		return result, ErrIncomplete
 	}
+	hasCompressed := false
 	for _, e := range entries {
+		if !rawlog.IsRawPath(e.Name()) {
+			return result, fmt.Errorf("unsupported raw member %s", e.Name())
+		}
+		hasCompressed = hasCompressed || strings.HasSuffix(e.Name(), ".jsonl.zst")
 		info, err := e.Info()
 		if err != nil {
 			return result, err
@@ -162,9 +170,15 @@ func pack(rawRoot, venue, symbol, day string, opts Options, copyFile func(io.Wri
 			return result, ErrIncomplete
 		}
 	}
+	// Transition days preserve every source byte, including plain members.
+	// No compressed input is sent through another compressor.
+	if hasCompressed {
+		opts.Unit = StoredTar
+	}
+	result.Unit = opts.Unit
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	ext := ".tar.zst"
-	if opts.Unit == ZstdThenTar {
+	if opts.Unit != TarThenZstd {
 		ext = ".tar"
 	}
 	result.Path = filepath.Join(venue, symbol, day+ext)

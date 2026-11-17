@@ -26,7 +26,7 @@ Read only what the task needs.
 | [docs/p0-support-design.md](docs/p0-support-design.md) | Design | Design of symbol manager, archiver, manifest, monitoring, quality report, deployment | Building or reviewing P0 support components |
 | [docs/infrastructure.md](docs/infrastructure.md) | Operations | Hosts, storage, constraints | Deploying or sizing |
 | [docs/storage-design.md](docs/storage-design.md) | Design | Multi-venue storage: layout, packing, upload, retention, disk size | Building or changing recording, archiving or storage |
-| [docs/packing-results.md](docs/packing-results.md) | Results | Recorder baseline and build-machine page-cache measurements | Reviewing packer cgroup memory behavior |
+| [docs/packing-results.md](docs/packing-results.md) | Results | Recorder baseline, page-cache and second-pass compression measurements | Reviewing packer memory or compression policy |
 | [docs/data-recording.md](docs/data-recording.md) | Design | P0 recording design | Working on data capture or storage |
 | [docs/universe.md](docs/universe.md) | Design | Instrument tiers and selection rules | Choosing symbols or tiers |
 | [docs/labels-and-evaluation.md](docs/labels-and-evaluation.md) | Design | Labels, leakage rules, metrics, trading-cost evaluation | Building labels, backtests, or metrics |
@@ -46,4 +46,5 @@ Read only what the task needs.
 | [docs/decisions/0023-packer-streaming.md](docs/decisions/0023-packer-streaming.md) | Decision | Bounded packer memory and streaming members | Changing packer compression or memory use |
 | [docs/decisions/0024-pack-output-dir.md](docs/decisions/0024-pack-output-dir.md) | Decision | Independent pack/manifest root; raw layout unchanged | Configuring output storage or checking filesystem capacity |
 | [docs/decisions/0025-packer-drop-page-cache.md](docs/decisions/0025-packer-drop-page-cache.md) | Decision | Best-effort source and synced-output cache release | Changing packer cache lifetime |
+| [docs/decisions/0027-pack-of-compressed-members.md](docs/decisions/0027-pack-of-compressed-members.md) | Decision | Stored tar for live-compressed and mixed-day members | Changing pack container or stored-byte hashes |
 | [docs/archive/v1-architecture-zh.md](docs/archive/v1-architecture-zh.md) | Archive | v1 design (Chinese), superseded | Historical reference only |

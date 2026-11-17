@@ -69,9 +69,17 @@ The collector only appends text and opens no compressor. Measured in the trial: 
 
 ## Pack and compress (after the UTC day boundary)
 
+Verified in [raw reader](../internal/rawlog/read.go): `ReadLines(path, visit) (ReadInfo, error)` streams `.jsonl` and `.jsonl.zst`, checks suffix against zstd magic, and handles concatenated frames with bounded decoder memory and a 16 MiB record limit.
+
+Verified: callbacks borrow newline-free complete records; an unterminated final line is discarded. `ReadInfo` reports compression, stored size, delivered records/decoded bytes and `TruncatedTail`; unexpected final-frame EOF is recoverable, other decoder errors fail the file.
+
+Verified: [poller dedup reconstruction](../internal/poller/scheduler.go) reads both suffixes through this API; non-missing read errors emit `raw_read_failed` gap diagnostics. [Stale checks](../internal/checks/checks.go) discover both suffixes without decoding.
+
 Verified in [config](../internal/config/config.go): `[pack].dir` selects the output root; omitted or empty uses `data_dir`. A set value must be absolute and lexically outside `data_dir/raw`; raw JSONL paths and recorder state are unchanged. Designed: use real directories, not symlink aliases into raw.
 
-Verified: output is `<output root>/packs/<venue>/<symbol>/<date>.tar.zst` (`.tar` for `zstd_then_tar`); SQLite is `<output root>/manifest/manifest.db`. Packer, archiver and backlog checks share this resolution; remote layout is unchanged.
+Verified: output is `<output root>/packs/<venue>/<symbol>/<date>.tar.zst` for outer zstd, otherwise `.tar`; SQLite is `<output root>/manifest/manifest.db`. Packer, archiver and backlog checks share this resolution.
+
+Verified: days containing `.jsonl.zst` use `stored_tar`: every member is copied unchanged, including plain members on mixed days; hashes/sizes cover stored bytes. Remote uses the same container suffix and `.meta.json` records unit/level 0. Basis: [0027](decisions/0027-pack-of-compressed-members.md).
 
 Verified in [checks](../internal/checks/checks.go): disk thresholds apply independently to `data_dir` and a distinct output root, with path-qualified findings; default configuration checks only `data_dir`.
 
@@ -81,7 +89,7 @@ Verified in [packer](../internal/pack/pack.go): members stream through SHA-256; 
 
 Verified: one reusable zstd encoder uses concurrency 1, a 1 MiB window and lower-memory mode; the default level remains 3. `tar_then_zstd` streams directly; `zstd_then_tar` spools one compressed member on disk to obtain its tar header size.
 
-Verified: encoder reuse retains only bounded compression state, not whole packs; member metadata and bounded compression/copy buffers occupy heap. Existing pack formats, reader compatibility, naming and manifest schema are unchanged; rationale: [0023](decisions/0023-packer-streaming.md).
+Verified: encoder reuse retains only bounded compression state, not whole packs; member metadata and bounded compression/copy buffers occupy heap. Manifest paths/member names identify stored containers without a schema change; streaming rationale: [0023](decisions/0023-packer-streaming.md).
 
 Verified in [packer](../internal/pack/pack.go): Linux best-effort `FADV_DONTNEED` follows each successful member read before close; sources are never synced. Non-Linux builds use a no-op. Only past days passing quiet-period checks are eligible.
 
@@ -94,7 +102,7 @@ Measured: bounded anonymous memory did not bound recorder cgroup cache; see [rec
 | Item | Rule |
 |---|---|
 | Unit | One pack per venue, symbol and day; one PUT; no chunking, no `.partNNNN` |
-| Remote | `<date>.tar.zst` plus `<date>.meta.json` (size, whole-pack sha256, member list with each member's sha256) |
+| Remote | Verified: container suffix follows the pack rule above; `<date>.meta.json` holds size, whole-pack sha256, member hashes, compression unit and level |
 | Verify | Compare remote size after upload (the storage once accepted a PUT and kept a zero-byte file). First 7 days: download and re-hash; afterwards a sampled fraction |
 | Local delete | Raw files and the pack are deleted only after the pack is verified; unverified packs are never deleted |
 | Manifest | Verified: SQLite, one row per pack, member checksums stored separately. Designed remote daily copy: not built; [gate](open-questions.md#archive-deployment-gates) |

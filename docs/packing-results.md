@@ -2,6 +2,28 @@
 
 Purpose: measured packer memory and cache behavior. Governing decisions: [0023](decisions/0023-packer-streaming.md), [0025](decisions/0025-packer-drop-page-cache.md). Design: [storage](storage-design.md#pack-and-compress-after-the-utc-day-boundary).
 
+## Second-pass compression
+
+Verified: real-data measurement ran locally on VT01OK (`64.176.35.180`), kernel `6.1.0-50-amd64`; no active `liqwatch*` service. Raw files stayed on that machine, read-only. Decision: [0027](decisions/0027-pack-of-compressed-members.md).
+
+| Question | Method | Measured result (sample/spread) | Date | Reproducible source |
+|---|---|---|---|---|
+| Does outer level 3 help real live-compressed members? | Four largest JSONL files; level 1 per file, Flush at each 5 s `rw` interval; tar then level 3, concurrency 1/window 1 MiB/lower-memory | 22,371,644 raw B; 59,691 records; 134 flushes; 2,705,634 stored B; tar 2,709,504 B → 2,709,577 B; gain −0.002694%; n=3 identical bytes, elapsed 5.237–6.020 ms | 2026-11-17 | Base `823e42a`; source selection and harness below |
+| Does the synthetic control agree? | 16 ×5,000 randomized envelope-v2 aggTrade-like records; seeds 1700–1702; Flush per 500 records (100/s); same codecs | Raw 18,308,330–18,308,828 B; tar 3,523,584–3,525,120 B; outer adds 91 B; gain −0.002583% to −0.002581%; n=3 seeds | 2026-11-17 | Synthetic only; not a representativeness claim |
+
+Verified source root: `/var/lib/dirtest3-src-20261117T043405Z`; selected files below are relative to it, sorted by descending size then path, stopping after ≥20 MiB.
+
+| Verified file | Bytes |
+|---|---:|
+| `binance/EVAAUSDT/20261116/aggTrade.jsonl` | 8,181,920 |
+| `okx/_all/20261116/positionTiers.p.jsonl` | 5,550,910 |
+| `bybit/_all/20261116/riskLimit.p.jsonl` | 4,631,278 |
+| `binance/ARIAUSDT/20261116/aggTrade.jsonl` | 4,007,536 |
+
+Verified method: klauspost/compress v1.20.3; stream each source line plus newline through one level-1 encoder; Flush before a record when `rw-lastFlushRW >= 5e9`; close per file; tar stored members, then stream tar through level 3 three times.
+Verified execution: build-only binary transferred to VT01OK; `systemd-run --wait --pipe -p Nice=19 -p IOSchedulingClass=idle -p MemoryMax=1G`; output under `/data/liqwatch/passtest-20261117T080000Z`; all outputs/binary removed afterward.
+Inferred: below the decision's 1% minimum useful reduction; one largest-first mixed-channel sample does not establish all-day/all-venue ratios. No recorder services were enabled or deployed.
+
 ## Recorder baseline
 
 Verified provenance: owner-supplied measurements, not re-run or independently inspected in this change. Source: `root@VT01OK:/root/liqwatch-packnew2-20261117T052232Z/`; recorder kernel `6.1.0-50-amd64`, 2 vCPU/2 GB; streaming packer [0023](decisions/0023-packer-streaming.md).
