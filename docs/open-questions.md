@@ -88,6 +88,31 @@ Verified scope: [0026](decisions/0026-live-zstd-recording.md) implements live co
 
 ## Recording open issues
 
+### KuCoin and Bybit reconnect audit
+
+Verified on 2026-11-23; measured production evidence: [reconnect results](recording-results.md#production-websocket-reconnects).
+
+| Fact or question | Source and bounded scope |
+|---|---|
+| Verified: KuCoin Classic tokens and connections have a documented 24 h life; token generation supplies the endpoint, `pingInterval` and `pingTimeout`. | [Classic introduction](https://www.kucoin.com/docs-new/websocket-api/base-info/introduction), checked 2026-11-23. |
+| Verified: Classic requires per-session pings at or before `pingInterval`; the current documented values are 18 s interval and 10 s timeout. Sub-10 s cycles need no extra pong-response detection. | Classic introduction above; values are not guaranteed constants. |
+| Verified: KuCoin UTA V2 public welcome advertises `pingInterval`; keepalive uses `{"op":"ping"}`; more than one ping/s can disconnect. | [UTA V2 introduction](https://www.kucoin.com/docs-new/websocket-api/introduction), checked 2026-11-23. |
+| Verified: KuCoin documents active disconnection during load balancing, expected at most once or twice weekly, for both Classic and UTA. | [Classic limits][KCL], [UTA limits][KUL], checked 2026-11-23. This does not establish the cause of the observed resets. |
+| Verified: Classic public limits are 800 concurrent connections/IP, 100 client messages/10 s/connection, 100 topics/request; futures topics/connection are unlimited. | [Classic limits][KCL], checked 2026-11-23. |
+| Verified: UTA public futures limits are 800 concurrent connections/IP, 250 new connections/5 min/IP, 300 client messages/10 s/connection and 600 topics/connection. | [UTA limits][KUL], checked 2026-11-23; the same page also gives a generic additional 300/5 min sliding-window rule. |
+| Verified: Bybit recommends `{"op":"ping"}` every 20 s; public futures subscription args must fit 21,000 characters, with no futures args-count limit; connection creation must not exceed 500/5 min/domain. | [Bybit connection documentation][BWC], checked 2026-11-23. |
+| Verified: Bybit warns network complexity can disconnect connections at any time; its configurable 30–600 s alive time applies to private/order-entry connections, not our public linear stream. | [Bybit connection documentation][BWC], checked 2026-11-23; no public fixed lifetime is specified there. |
+| Verified: the adapters send Classic pings at half the initial token interval, UTA pings every 9 s and Bybit pings every 20 s; subscription writes are asynchronous with reads. | [KuCoin](../internal/venue/kucoin/kucoin.go), [Bybit](../internal/venue/bybit/bybit.go), [collector](../internal/collector/collector.go), reviewed at `6f7a854`. |
+| Verified: Classic refresh obtains a new token/endpoint, while heartbeat lookup still uses the original shard URL and initial interval; the refreshed interval is not installed. | KuCoin/collector source above. This is not missing heartbeat after refresh and does not explain initial-generation resets. Changed server intervals remain an untested edge case. |
+| Unknown: which remote component resets these IPv6 connections, and why? | Inferred: exchange/CDN/path transport behavior fits the resets; no packet capture or exchange trace identifies the sender or trigger. No demonstrated recorder bug warrants a speculative code change. |
+| Verified: reconnect backfill is wired only for Binance, not KuCoin/Bybit; recorded lifecycle gaps bound transport interruption, not exact missed trade/liquidation counts. | [collector command](../cmd/liqwatch-collector/main.go), reviewed at `6f7a854`. Inferred: missed events cannot be claimed recovered. |
+
+[KCL]: https://www.kucoin.com/docs-new/rate-limit-rule-classic
+[KUL]: https://www.kucoin.com/docs-new/rate-limit-rule-uta
+[BWC]: https://bybit-exchange.github.io/docs/v5/ws/connect
+
+### Other recording issues
+
 | Question | Evidence |
 |---|---|
 | Unknown: is sustained machine CPU saturation a risk? | Measured: one run reached 100% maximum; [recording results](recording-results.md#seven-venue-load-and-recording). |

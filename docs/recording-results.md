@@ -7,6 +7,26 @@ Measured adapter profiling and capture results; recording scope: [0015](decision
 | How did Bitget filtering optimization change CPU? | Measured: one-core CPU over a 60 s live run after 90 s warm-up, before and after. | 57.83% before; 35.19% after; one run each; spread not reported and traffic varies. | 2026-11-13 | Commit `558c48d`, commit message; exact command and traffic not recorded. |
 | What did adapter captures observe? | Measured: live venue captures; details and sample sizes in each source. | See source; completeness is not established. | 2026-11-13 | [Bybit](../internal/venue/bybit/testdata/README.txt), [OKX](../internal/venue/okx/testdata/README.txt), [Bitget](../internal/venue/bitget/testdata/README.txt), [Gate](../internal/venue/gate/testdata/README.txt), [MEXC](../internal/venue/mexc/testdata/README.txt), [KuCoin](../internal/venue/kucoin/testdata/README.txt). |
 
+## Production WebSocket reconnects
+
+Verified scope: read-only audit of `root@64.176.35.180`; no data copied, deployment, restart or configuration change.
+Verified evidence paths: `/var/lib/liqwatch/data/raw/{kucoin,bybit}/gap/20261122/gap.jsonl.zst`; metadata inspected on-host with `nice -n 19 python3` and `zstd -dc`.
+Verified journal query: `journalctl --utc -u liqwatch-recorder@kucoin -u liqwatch-recorder@bybit --since '2026-11-22 14:46:00 UTC' --until '2026-11-22 16:20:00 UTC' --no-pager -o short-iso`.
+Verified analysis: decode each record's `p`; group `conn_closed` by `cause`, `err`, `shard`; join `conn_opened.prev` to closed `conn`, then `conn_first.conn` to opened `conn`.
+Verified gap definition: `(next conn_first.rw - previous conn_closed.p.last_rw)/1e6` ms; includes control frames, not first application data on every stream.
+Verified `down_ms` ends after subscription writes, whereas `conn_first` can precede subscription completion; these are different intervals.
+
+| Question | Method | Numbers, sample size and spread | Date | Reproducible source |
+|---|---|---|---|---|
+| KuCoin reconnect cause? | Measured: all closed lifecycle records; cross-check journal/metrics. | n=38: all `cause=reconnect`, all TCP `connection reset by peer`; 0 stalls; uptime 572,796–2,907,545 ms; 2,451–145,497 frames/connection. | 2026-11-23 | Evidence/method above; local review `6f7a854`. |
+| KuCoin concentration? | Measured: closed `shard` and UTC receive time. | n=38 across 19 shards (classic=9, UTA=10), 1–3 closes/shard; 10 resets at 15:32 UTC; no fixed lifetime. | 2026-11-23 | Same source; final close 2026-11-22 16:06:46 UTC. |
+| KuCoin interruption? | Measured: lifecycle join above. | n=38: close-to-first 1,041.950–1,206.776 ms; maximum last-to-first 1,634.269 ms (`classic006-1122T144627-1`); `down_ms` 8,067–11,038. | 2026-11-23 | Same source; subscription pacing accounts for later `conn_opened`. |
+| Bybit reconnect cause? | Measured: all closed lifecycle records; cross-check journal/metrics. | n=8: all `cause=reconnect`, all TCP `connection reset by peer`; 0 stalls; uptime 292,613–4,070,363 ms; 7,955–122,544 frames/connection. | 2026-11-23 | Same source; local review `6f7a854`. |
+| Bybit concentration? | Measured: closed `shard` and UTC receive time. | n=8, one each: linear00/02/04/05/06/08/14/15; 3 resets at 14:51 UTC; no fixed lifetime. | 2026-11-23 | Same source; final close 2026-11-22 15:54:17 UTC. |
+| Bybit interruption? | Measured: lifecycle join above. | n=8: close-to-first 1,064.886–1,251.286 ms; maximum last-to-first 1,252.036 ms (`linear02-1122T144625-1`); `down_ms` 2,141–3,241. | 2026-11-23 | Same source. |
+| Silence or remote close? | Measured: close `rw` minus `last_rw`; inspect error endpoint. | KuCoin n=38: 0.462–542.878 ms; Bybit n=8: 0.467–0.951 ms; all 46 remote endpoints IPv6 `2600:9000:*`; no WebSocket close code, stall, dial or ping-timeout error. | 2026-11-23 | Same source; neither sender identity nor reset trigger established. |
+| Exact missed events? | Verified: review reconnect hooks; no event-sequence audit performed. | Null result: no KuCoin/Bybit backfill; missed-event count unknown; metadata bounds transport gaps only. Earlier multi-day runs unavailable in the inspected raw paths. | 2026-11-23 | [Facts/limits and interpretation](open-questions.md#kucoin-and-bybit-reconnect-audit). |
+
 ## Poller field review
 
 | Question | Method | Numbers, sample size and spread | Date | Reproducible source |
