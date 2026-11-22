@@ -42,7 +42,7 @@ Verified: daily packing is [storage](decisions/0014-daily-pack-storage.md), not 
 
 Verified in [scheduler.go](../internal/poller/scheduler.go): canonical job keys receive equally spaced, collision-free ranks within each venue/cadence group. Unchanged configuration/universe yields stable phases across restart; membership changes recompute ranks.
 
-Verified in the same code: daily phase windows start at 00:05 UTC. First snapshots are immediately eligible under pacing; histories may defer to their first phase without changing the [recording floor](#live-recording-boundary).
+Verified in the same code: `Daily` groups start at 00:05 UTC; `Period = 24h` groups use a separate midnight lattice. First snapshots are immediately eligible under pacing; histories may defer to their first phase without changing the [recording floor](#live-recording-boundary).
 
 Verified in the same code: after success the next phase is at most one period later. This bounds eligibility only, not successful HTTP completion; missed cycles coalesce rather than trigger catch-up bursts.
 

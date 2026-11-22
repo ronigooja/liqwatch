@@ -35,15 +35,13 @@ type Event struct {
 }
 
 type stateFile struct {
-	Alerts map[string]bool      `json:"alerts"`
-	Daily  map[string]time.Time `json:"daily_writes,omitempty"`
+	Alerts map[string]bool `json:"alerts"`
 }
 
 type AlertState struct {
 	Path   string
 	Events string
 	Active map[string]bool
-	Daily  map[string]time.Time
 	Now    func() time.Time
 }
 
@@ -63,7 +61,6 @@ func NewAlertState(dataDir string) (*AlertState, error) {
 	for k, v := range f.Alerts {
 		s.Active[k] = v
 	}
-	s.Daily = f.Daily
 	return s, nil
 }
 
@@ -98,7 +95,7 @@ func (s *AlertState) save() error {
 	if err := os.MkdirAll(filepath.Dir(s.Path), 0750); err != nil {
 		return err
 	}
-	b, err := json.Marshal(stateFile{Alerts: s.Active, Daily: s.Daily})
+	b, err := json.Marshal(stateFile{Alerts: s.Active})
 	if err != nil {
 		return err
 	}
@@ -119,11 +116,8 @@ func Run(c *config.Config) error {
 	if err != nil {
 		return err
 	}
-	var dailyChanged bool
-	if s.Daily == nil {
-		s.Daily = make(map[string]time.Time)
-	}
-	findings, err := evaluateAt(c, s.Now(), s.Daily, &dailyChanged)
+	starts := recorderStarts(checkVenues(c))
+	findings, err := evaluateAt(c, s.Now(), starts, s.Active)
 	if err != nil {
 		return err
 	}
@@ -143,9 +137,6 @@ func Run(c *config.Config) error {
 			}
 		}
 	}
-	if dailyChanged {
-		return s.save()
-	}
 	return nil
 }
 
@@ -153,12 +144,12 @@ func evaluate(c *config.Config) ([]finding, error) {
 	return evaluateAt(c, time.Now(), nil, nil)
 }
 
-func evaluateAt(c *config.Config, now time.Time, daily map[string]time.Time, dailyChanged *bool) ([]finding, error) {
+func evaluateAt(c *config.Config, now time.Time, starts map[string]time.Time, active map[string]bool) ([]finding, error) {
 	out, err := diskFindings(c, diskPct)
 	if err != nil {
 		return nil, err
 	}
-	channels, err := channelFindings(c, now, daily, dailyChanged)
+	channels, err := channelFindings(c, now, starts, active)
 	if err != nil {
 		return nil, err
 	}

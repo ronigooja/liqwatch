@@ -43,7 +43,7 @@ disk_warn_pct = 80
 unverified_hours = 3
 # venues = ["binance"] # Defaults to all seven; narrow on partial/single-venue installs.
 
-# Optional positive Go durations; defaults follow the recorded channel's cadence.
+# Optional positive Go durations for write age (not the bounded startup grace).
 [checks.channel_max_age.binance]
 # forceOrder_all = "6h"
 

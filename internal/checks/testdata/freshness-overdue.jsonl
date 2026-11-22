@@ -1,0 +1,2 @@
+{"Key":"data.stale_write:bitget:longShort","Severity":"critical","Type":"data.stale_write","Summary":"bitget longShort: raw channel is stale","Details":{"age_seconds":10860,"channel":"longShort","max_age_seconds":10800,"missing":false,"venue":"bitget"}}
+{"Key":"data.stale_write:bitget:accountLongShort","Severity":"critical","Type":"data.stale_write","Summary":"bitget accountLongShort: raw channel is missing","Details":{"channel":"accountLongShort","max_age_seconds":10800,"missing":true,"venue":"bitget"}}

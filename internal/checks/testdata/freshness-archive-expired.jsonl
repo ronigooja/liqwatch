@@ -1,0 +1,1 @@
+{"Key":"data.stale_write:mexc:contractDetail","Severity":"critical","Type":"data.stale_write","Summary":"mexc contractDetail: raw channel is stale","Details":{"age_seconds":10800,"channel":"contractDetail","max_age_seconds":9000,"missing":false,"venue":"mexc"}}

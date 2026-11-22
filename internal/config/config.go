@@ -44,6 +44,7 @@ func (r Record) FlushEvery(legacy time.Duration) time.Duration {
 // into poller.PollConfig.
 type Poller struct {
 	MapPath         string                 `toml:"map_path"` // venue map for per-venue symbol universes; default collect.map_path
+	Periods         map[string]string      `toml:"periods"`  // legacy Binance channel overrides
 	Overlap         string                 `toml:"overlap"`
 	InitialLookback string                 `toml:"initial_lookback"`
 	Venues          map[string]PollerVenue `toml:"venues"`

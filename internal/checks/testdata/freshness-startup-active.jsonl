@@ -1,0 +1,1 @@
+{"Key":"data.stale_write:binance:aggTrade","Severity":"critical","Type":"data.stale_write","Summary":"binance aggTrade: raw channel is missing","Details":{"channel":"aggTrade","max_age_seconds":120,"missing":true,"venue":"binance"}}

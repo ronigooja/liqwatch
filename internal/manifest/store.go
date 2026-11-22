@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	_ "modernc.org/sqlite"
+	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -191,6 +194,52 @@ func (s *SQLiteStore) DeletionMembers(id int64) ([]Member, error) {
 		ms = append(ms, m)
 	}
 	return ms, rows.Err()
+}
+
+type DeletedWrite struct {
+	Venue, Symbol, Name string
+	MtimeNS             int64
+}
+
+// LocalDeletionWrites reads original nonempty member mtimes from verified
+// deletion evidence, including while raw directories are renamed for deletion.
+// It does not open packs, create a manifest, or run migrations.
+func LocalDeletionWrites(path string, sinceDay int) ([]DeletedWrite, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	uri := url.URL{Scheme: "file", Path: abs, RawQuery: "mode=ro&_pragma=busy_timeout(1000)"}
+	db, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	var hasEvidence bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='local_deletions')`).Scan(&hasEvidence); err != nil || !hasEvidence {
+		return nil, err
+	}
+	rows, err := db.Query(`SELECT p.venue,p.symbol,d.name,d.mtime_ns FROM packs p
+		JOIN local_deletions d ON d.pack_id=p.id WHERE p.day>=? AND p.state IN (?,?,?) AND d.bytes>0 AND d.mtime_ns>0`,
+		sinceDay, StateLocalDeleting, StateLocalDeleted, StatePruned)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var writes []DeletedWrite
+	for rows.Next() {
+		var w DeletedWrite
+		if err := rows.Scan(&w.Venue, &w.Symbol, &w.Name, &w.MtimeNS); err != nil {
+			return nil, err
+		}
+		writes = append(writes, w)
+	}
+	return writes, rows.Err()
 }
 func (s *SQLiteStore) SetState(id int64, st State) error {
 	var old State

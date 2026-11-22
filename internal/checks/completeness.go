@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ronigooja/liqwatch/internal/config"
+	"github.com/ronigooja/liqwatch/internal/manifest"
 )
 
 type channelRule struct {
@@ -77,7 +78,7 @@ func requiredChannel(venue, channel string) bool {
 	return false
 }
 
-func channelFindings(c *config.Config, now time.Time, daily map[string]time.Time, dailyChanged *bool) ([]finding, error) {
+func checkVenues(c *config.Config) []string {
 	venues := slices.Clone(c.Checks.Venues)
 	if venues == nil {
 		for venue := range requiredChannels {
@@ -85,6 +86,15 @@ func channelFindings(c *config.Config, now time.Time, daily map[string]time.Time
 		}
 	}
 	slices.Sort(venues)
+	return venues
+}
+
+func channelFindings(c *config.Config, now time.Time, starts map[string]time.Time, active map[string]bool) ([]finding, error) {
+	today := now.UTC().Truncate(24 * time.Hour)
+	venues := checkVenues(c)
+	ages := make(map[string]map[string]time.Duration, len(venues))
+	raw := make(map[string]map[string]time.Time, len(venues))
+	var archived map[string]time.Time
 	var out []finding
 	for _, venue := range venues {
 		rules := requiredChannels[venue]
@@ -105,21 +115,37 @@ func channelFindings(c *config.Config, now time.Time, daily map[string]time.Time
 		if err != nil {
 			return nil, err
 		}
-		for _, r := range rules {
+		ages[venue], raw[venue] = maxAges, newest
+	}
+	// Read archive evidence after scanning all venues: removal intent is saved
+	// before archival can make any of these raw directories disappear.
+	for _, venue := range venues {
+		var pollStart time.Time
+		var readFloor bool
+		for _, r := range requiredChannels[venue] {
 			key := "data.stale_write:" + venue + ":" + r.name
-			at, limit := newest[r.name], maxAges[r.name]
-			// Local archival removes yesterday's raw files before some daily jobs
-			// write today's files. Carry forward observed writes, never pack mtimes.
-			if c.Archive.Mode == "local" && c.Archive.DeleteSources && r.poll && r.maxAge == dailyAge && daily != nil {
-				if prev := daily[key]; at.After(prev) {
-					daily[key] = at
-					*dailyChanged = true
-				} else if prev.Before(now.UTC().Truncate(24 * time.Hour)) {
+			at, limit := raw[venue][r.name], ages[venue][r.name]
+			if !at.IsZero() && now.Sub(at) <= limit {
+				continue
+			}
+			if r.poll && !readFloor {
+				pollStart = pollRecordingStart(c.DataDir, venue)
+				readFloor = true
+			}
+			if c.Archive.Mode == "local" && c.Archive.DeleteSources && now.Add(-limit).Before(today) {
+				if archived == nil {
+					var err error
+					archived, err = archivedWrites(c, now)
+					if err != nil {
+						return nil, err
+					}
+				}
+				if prev := archived[key]; prev.After(at) && (!r.poll || !prev.Before(pollStart)) {
 					at = prev
 				}
 			}
 			age, missing := now.Sub(at), at.IsZero()
-			if !missing && age <= limit {
+			if (!missing && age <= limit) || (!active[key] && starting(c, venue, r, now, starts[venue], pollStart, missing, limit)) {
 				continue
 			}
 			details := map[string]any{"venue": venue, "channel": r.name, "missing": missing, "max_age_seconds": int(limit.Seconds())}
@@ -133,6 +159,51 @@ func channelFindings(c *config.Config, now time.Time, daily map[string]time.Time
 		}
 	}
 	return out, nil
+}
+
+func archivedWrites(c *config.Config, now time.Time) (map[string]time.Time, error) {
+	// Include the same UTC lookback as the raw scanner; only verified original
+	// member mtimes count, not pack timestamps or empty successful polls.
+	horizon := dailyAge
+	for _, overrides := range c.Checks.ChannelMaxAge {
+		for _, value := range overrides {
+			d, _ := time.ParseDuration(value)
+			horizon = max(horizon, d)
+		}
+	}
+	since := now.Add(-horizon).UTC()
+	day := since.Year()*10000 + int(since.Month())*100 + since.Day()
+	members, err := manifest.LocalDeletionWrites(c.ManifestPath(), day)
+	if err != nil {
+		return nil, err
+	}
+	writes := make(map[string]time.Time)
+	for _, m := range members {
+		name, isPoll, ok := diskChannel(m.Name)
+		if !ok {
+			continue
+		}
+		for _, r := range requiredChannels[m.Venue] {
+			if matchesChannel(r, m.Symbol, name, isPoll) {
+				key := "data.stale_write:" + m.Venue + ":" + r.name
+				if at := time.Unix(0, m.MtimeNS); at.After(writes[key]) {
+					writes[key] = at
+				}
+				break
+			}
+		}
+	}
+	return writes, nil
+}
+
+func diskChannel(name string) (channel string, isPoll, ok bool) {
+	stem, ok := strings.CutSuffix(strings.TrimSuffix(name, ".zst"), ".jsonl")
+	channel, slot, _ := strings.Cut(stem, ".")
+	return channel, slot == "p", ok
+}
+
+func matchesChannel(r channelRule, symbol, name string, isPoll bool) bool {
+	return r.name == name && symbol != "gap" && r.bulk == (symbol == "_all") && r.poll == isPoll
 }
 
 func latestWrites(root string, rules []channelRule, now time.Time, horizon time.Duration) (map[string]time.Time, error) {
@@ -163,13 +234,12 @@ func latestWrites(root string, rules []channelRule, now time.Time, horizon time.
 				return nil, err
 			}
 			for _, file := range files {
-				stem, ok := strings.CutSuffix(strings.TrimSuffix(file.Name(), ".zst"), ".jsonl")
+				name, isPoll, ok := diskChannel(file.Name())
 				if !ok || !file.Type().IsRegular() {
 					continue
 				}
-				name, slot, _ := strings.Cut(stem, ".")
 				r, ok := byName[name]
-				if !ok || r.bulk != (sym.Name() == "_all") || r.poll != (slot == "p") {
+				if !ok || !matchesChannel(r, sym.Name(), name, isPoll) {
 					continue
 				}
 				info, err := file.Info()

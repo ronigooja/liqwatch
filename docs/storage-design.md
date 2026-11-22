@@ -252,9 +252,9 @@ Inferred: these are ceilings, not reservations or proof of aggregate fit. Bounde
 
 ## Required channel freshness
 
-Verified in [checks](../internal/checks/completeness.go): the timer checks all seven venues unless `[checks].venues` narrows the list. It stats nonempty raw members for relevant UTC dates; it does not decode data or read packs.
-Verified: the newest per-symbol write anywhere in the venue counts, including for rare events. Bulk REST requires `_all`; REST members require `.p`. Missing or stale data emits a critical `data.stale_write:<venue>:<channel>` event, resolved on recovery.
-Verified: in local delete mode, daily REST freshness can use a previously observed raw mtime after midnight cleanup until that mtime expires. On first start after cleanup no prior observation exists. The check does not certify every symbol, payload field or record.
+Verified in [checks](../internal/checks/completeness.go): all seven venues are checked unless `[checks].venues` narrows the list. The newest nonempty raw write anywhere in the venue counts. Bulk REST requires `_all`; REST members require `.p`. No payload is decoded.
+Verified: local delete mode also accepts original nonempty member mtimes from verified deletion evidence, even on the first check after cleanup. Pack mtimes and empty successful polls do not count. This does not certify every symbol, payload field or record.
+Verified: overdue channels emit critical `data.stale_write:<venue>:<channel>`; the same key stays active through startup grace and resolves on recovery. Unsupported Bitget symbols do not affect the venue-wide test if any symbol writes within the age limit.
 
 Verified expected channels from [adapters](venue-adapters.md), [poller](poller.md#configured-channels) and [0016](decisions/0016-drop-unneeded-payload-fields.md)/[0017](decisions/0017-poller-field-policies.md). Names below are on disk; `.p` denotes REST, `*` denotes `_all`.
 
@@ -274,3 +274,15 @@ Verified: no required liquidation or long/short ratio feed for MEXC or KuCoin pe
 Verified: WS cadence is event-driven for trades/liquidations, otherwise see [wire and recorded cadence](venue-apis.md#recordable-data-per-venue-liquidation-model-inputs) and [throttling](venue-adapters.md#throttling). Bitget `tier` sends a snapshot and then changes.
 Verified: default max ages are 2m for trades/mark/index/OI/ticker, 10m for standalone funding and Gate WS stats, 6h for liquidation, 3h for hourly polls, and 36h for daily polls and Bitget WS tiers.
 Verified: intraday WS defaults allow at least twice the configured recorder flush. Use positive `[checks.channel_max_age.<venue>]` durations to override; legacy `[checks.stale_sec]` cannot disable required feeds.
+
+Verified in [startup.go](../internal/checks/startup.go): WS allows 5m after the venue's recorder process starts (longer if twice the flush interval is longer). A missing liquidation stream gets at least its allowed age because it is event-driven.
+Verified: missing REST grace starts at the persisted poller recording floor, not at each restart. Without a readable floor, only the first 5m after recorder start are allowed. Once there is write evidence, REST uses its normal age limit.
+
+| REST job | Verified startup window | Inferred allowance from the [poll schedule](poller.md#scheduling-and-pacing) |
+|---|---|---|
+| Snapshots | 15m | Immediately eligible; allow time for paced bootstrap. |
+| Bitget hourly histories | Period + 30m | At most one period to the next usable phase after allowing up to 15m for a fresh finalized 5m bucket; allow another 15m for pacing. |
+| Other histories except Binance funding | Period + 2h | Same phase/finalization constraint; more room for daily venue work and retries. |
+| Binance funding | Period + 12h | Sparse settlement rows can leave early polls empty; allow settlement and pacing time. |
+
+Verified in the [timer](../deploy/liqwatch-checks.timer): a single 30s interval with 1s accuracy adds nominally at most 31s after a deadline, plus check runtime. Inferred from the supplied 0.15 CPU-s/run measurement: about 0.5% of one core.

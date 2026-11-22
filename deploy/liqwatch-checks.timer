@@ -1,10 +1,10 @@
 [Unit]
-Description=Run liqwatch health checks every minute
+Description=Run liqwatch health checks every 30 seconds
 
 [Timer]
-OnBootSec=1min
-OnUnitActiveSec=1min
-Persistent=true
+OnActiveSec=30s
+OnUnitActiveSec=30s
+AccuracySec=1s
 Unit=liqwatch-checks.service
 
 [Install]
