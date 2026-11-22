@@ -83,8 +83,9 @@ func run(ctx context.Context, args []string, client poller.HTTPDoer) error {
 		return err
 	}
 	env.Bind(scheduler)
+	unknownFields := make(unknownFieldReporter)
 	scheduler.OnSweep = func() {
-		for _, line := range unknownFieldLines(channels, poller.UnknownFields) {
+		for _, line := range unknownFields.lines(channels, poller.UnknownFields) {
 			fmt.Fprintln(os.Stderr, line)
 		}
 	}
@@ -102,16 +103,15 @@ func newRecordSink(dir string, record config.Record) (*poller.FileSink, error) {
 	return poller.NewFileSinkCompressed(dir, record.FlushEvery(time.Second), record.Compress, record.Level)
 }
 
-func unknownFieldLines(channels []poller.Channel, count func(string, string) uint64) []string {
-	seen := make(map[string]bool)
+// Report new observations, not unchanged cumulative counts on every idle sweep.
+type unknownFieldReporter map[[2]string]uint64
+
+func (reported unknownFieldReporter) lines(channels []poller.Channel, count func(string, string) uint64) []string {
 	var lines []string
 	for _, c := range channels {
-		key := c.Venue + "\x00" + c.Name
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		if n := count(c.Venue, c.Name); n > 0 {
+		key := [2]string{c.Venue, c.Name}
+		if n := count(c.Venue, c.Name); n > reported[key] {
+			reported[key] = n
 			lines = append(lines, fmt.Sprintf("poller unknown fields venue=%s channel=%s count=%d", c.Venue, c.Name, n))
 		}
 	}

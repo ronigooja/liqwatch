@@ -7,19 +7,37 @@ import (
 	"github.com/ronigooja/liqwatch/internal/poller"
 )
 
-func TestUnknownFieldLines(t *testing.T) {
-	channels := []poller.Channel{{Venue: "bybit", Name: "instruments"}, {Venue: "okx", Name: "quiet"}, {Venue: "bybit", Name: "instruments"}}
-	got := unknownFieldLines(channels, func(v, c string) uint64 {
-		if v == "bybit" && c == "instruments" {
-			return 12
-		}
-		return 0
-	})
-	want := []string{"poller unknown fields venue=bybit channel=instruments count=12"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %v want %v", got, want)
+func TestUnknownFieldReporter(t *testing.T) {
+	channels := []poller.Channel{
+		{Venue: "gate", Name: "contracts"}, {Venue: "okx", Name: "instruments"},
+		{Venue: "bitget", Name: "contracts"}, {Venue: "gate", Name: "contracts"},
 	}
-	if got := unknownFieldLines(channels, func(string, string) uint64 { return 0 }); len(got) != 0 {
-		t.Fatalf("unexpected lines %v", got)
+	reporter := make(unknownFieldReporter)
+	for i, sweep := range []struct {
+		gate, bitget uint64
+		want         []string
+	}{
+		{0, 0, nil},
+		{12, 0, []string{"poller unknown fields venue=gate channel=contracts count=12"}},
+		{12, 0, nil},
+		{13, 1, []string{"poller unknown fields venue=bitget channel=contracts count=1", "poller unknown fields venue=gate channel=contracts count=13"}},
+		{13, 1, nil},
+	} {
+		selected := channels[:3]
+		if i >= 3 {
+			selected = channels // Also exercise a duplicate channel descriptor.
+		}
+		got := reporter.lines(selected, func(v, c string) uint64 {
+			if c != "contracts" {
+				return 0
+			}
+			if v == "bitget" {
+				return sweep.bitget
+			}
+			return sweep.gate
+		})
+		if !reflect.DeepEqual(got, sweep.want) {
+			t.Fatalf("sweep %d: got %v want %v", i, got, sweep.want)
+		}
 	}
 }
