@@ -159,3 +159,72 @@ func TestBitgetNoDataAndUniverse(t *testing.T) {
 		t.Fatalf("daily retry calls=%d records=%v", calls, sink.records)
 	}
 }
+
+func TestBitgetLiveUnavailableGolden(t *testing.T) {
+	for _, tc := range []struct{ name, endpoint string }{
+		{"longShort", "long-short"},
+		{"accountLongShort", "account-long-short"},
+		{"positionLongShort", "position-long-short"},
+		{"takerBuySell", "taker-buy-sell"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clock := &fakeClock{time.Date(2026, 11, 22, 13, 45, 0, 0, time.UTC)}
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.URL.RequestURI() != "/api/v2/mix/market/"+tc.endpoint+"?period=5m&symbol=AAVEUSDT" {
+					t.Errorf("unexpected request: %s", r.URL.RequestURI())
+				}
+				if calls == 1 {
+					fmt.Fprint(w, `{"code":"00000","msg":"success","data":[]}`)
+					return
+				}
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprint(w, `{"code":"40054","msg":"The data fetched by AAVEUSDT is empty","requestTime":1795355100000,"data":null}`)
+			}))
+			defer server.Close()
+			e := &Env{Venue: "bitget", BaseURL: server.URL, Doer: server.Client(), Clock: clock}
+			channels := bitgetChannels(e)
+			for _, c := range channels {
+				if c.Name != tc.name {
+					continue
+				}
+				s, err := NewScheduler([]Channel{c}, &memorySink{}, clock, "", 240)
+				if err != nil {
+					t.Fatal(err)
+				}
+				e.Bind(s)
+				ctx := context.Background()
+				if got, err := c.Fetch(ctx, "AAVEUSDT"); err != nil || len(got) != 0 || c.Skip("AAVEUSDT") {
+					t.Fatalf("ordinary empty page: records=%v err=%v skip=%v", got, err, c.Skip("AAVEUSDT"))
+				}
+				got, err := c.Fetch(ctx, "AAVEUSDT")
+				if err != nil || len(got) != 1 {
+					t.Fatalf("unavailable: records=%v err=%v, want one no_data record", got, err)
+				}
+				got[0].RecvMono = 0 // Nondeterministic process clock.
+				want := Record{Venue: "bitget", Channel: "gap", Symbol: "AAVEUSDT", RecvWall: 1795355100000000000,
+					Payload: []byte(`{"channel":"` + tc.name + `","event":"no_data","symbol":"AAVEUSDT"}`)}
+				if !reflect.DeepEqual(got[0], want) {
+					t.Fatalf("record = %+v (%s), want %+v (%s)", got[0], got[0].Payload, want, want.Payload)
+				}
+				clock.t = clock.t.Add(time.Hour)
+				if !c.Skip("AAVEUSDT") || c.Skip("BTCUSDT") {
+					t.Fatal("cooldown must be scoped to the unavailable symbol")
+				}
+				if got, err := c.Fetch(ctx, "AAVEUSDT"); err != nil || len(got) != 0 || calls != 2 {
+					t.Fatalf("hourly cooldown: records=%v err=%v calls=%d", got, err, calls)
+				}
+				clock.t = clock.t.Add(23 * time.Hour)
+				if c.Skip("AAVEUSDT") {
+					t.Fatal("cooldown did not expire after 24h")
+				}
+				if got, err := c.Fetch(ctx, "AAVEUSDT"); err != nil || len(got) != 0 || calls != 3 || !c.Skip("AAVEUSDT") {
+					t.Fatalf("daily retry: records=%v err=%v calls=%d skip=%v", got, err, calls, c.Skip("AAVEUSDT"))
+				}
+				return
+			}
+			t.Fatalf("channel %s not found", tc.name)
+		})
+	}
+}

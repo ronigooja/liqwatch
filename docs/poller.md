@@ -81,7 +81,7 @@ Verified in [test helpers](../internal/poller/policy_helpers_test.go): `withoutP
 | [Binance](../internal/poller/binance.go) | `exchangeInfo`, `brackets`, `constituents`, `openInterestHist`, four long/short or taker ratios, `fundingRate`; `/fapi/v1/`, `/futures/data/`, and website brackets |
 | [Bybit](../internal/poller/bybit.go) | `accountRatio`, `riskLimit`, `instruments`; `/v5/market/account-ratio`, `/risk-limit`, `/instruments-info` |
 | [OKX](../internal/poller/okx.go) | Four contract ratio/taker series, account ratio, `instruments`, `positionTiers`; `/api/v5/rubik/stat/`, `/api/v5/public/` |
-| [Bitget](../internal/poller/bitget.go) | `longShort`, `accountLongShort`, `positionLongShort`, `takerBuySell` hourly; `positionTiers`, `contracts` daily; `/api/v2/mix/market/` |
+| [Bitget](../internal/poller/bitget.go) | `longShort`, `accountLongShort`, `positionLongShort`, `takerBuySell` hourly; `positionTiers`, `contracts` daily; `/api/v2/mix/market/`. HTTP 400 `40054` uses the existing cursorless per-symbol/channel 24h cooldown. |
 | [Gate](../internal/poller/gate.go) | `contractStats`, `riskLimitTiers`, `contracts`; `/futures/usdt/contract_stats`, `/risk_limit_tiers`, `/contracts` |
 | [MEXC](../internal/poller/mexc.go) | `contractDetail`; `/api/v1/contract/detail` |
 | [KuCoin](../internal/poller/kucoin.go) | `riskLimit`, `contracts`; `/api/v1/contracts/risk-limit/`, `/api/v1/contracts/active` |

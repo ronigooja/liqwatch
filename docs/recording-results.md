@@ -36,6 +36,31 @@ Verified SHA-256: config `81f8ceed64a62de931f9ee30829d5125614804697c6d2d9ee8e7f4
 | Were output and recurring behavior validated? | Measured: JSONL parsing and state inspection; no hourly/daily boundary, recurring cycle or restart. | All 113,376 lines parsed and newline-terminated; zero history duplicate/revision rows observed. Null result: recurring-cycle and restart/overlap dedup were not exercised; one run. | 2026-11-15 | Trial `analysis.json`, `files.json`, `run.json`; commit above. |
 | Can this startup be extrapolated to daily storage? | Inferred: initial histories and snapshots dominate; three venue sweeps incomplete and no recurring samples. | No daily extrapolation supported; one startup run only. Per-channel row-size spread and schedules retained, not a full-day measurement. | 2026-11-15 | Trial `channels.csv`, `report.md`; commit above. |
 
+## Bitget ratio coverage
+
+| Question | Method | Numbers, sample size and spread | Date (UTC) | Reproducible source |
+|---|---|---|---|---|
+| Which contracts does the live support list contain? | Measured: public GET, one snapshot. | HTTP 200, 538 bytes; `futureList` has 20 entries, 15 of which intersect the 453 `auto` or `reviewed` Bitget mappings. | 2026-11-22 13:45 | `curl -sS https://api.bitget.com/api/v2/spot/market/support-symbols`; `config/venue-map.toml` at `515cca5`. |
+| Do mapped ratio requests return rows outside that list? | Measured: one public GET per symbol/endpoint, 1.1 s pause, from the Linux build hosts. | Listed: all 9 requests for 3 mapped symbols returned 30 rows. Unlisted: all 21 requests for 7 mapped symbols returned `40054`, `data:null`. See per-request table. | 2026-11-22 13:45–13:46 | `curl -sS 'https://api.bitget.com/api/v2/mix/market/<endpoint>?symbol=<symbol>&period=5m'`. |
+| Does the same error occur on `taker-buy-sell`? | Measured: same request with that endpoint, one GET per symbol. | BTCUSDT: HTTP 200, 2120 bytes, 30 rows. AAVEUSDT: HTTP 400 `40054`, 102 bytes, zero rows. | 2026-11-22 | Same command as ratio probes. |
+| Did the fresh recorder mark empty ratio jobs? | Measured: one read-only snapshot 13 min after the live floor. | `longShort`: 0/125 with cursor; `positionLongShort`: 2/163; neither marked no-data. No `accountLongShort` state yet. `positionTiers`: 453 successful jobs. | 2026-11-22 13:47 | On the recorder, count nonzero `row_timestamp` and `no_data_at` by `jobs` key prefix in `/var/lib/liqwatch/data/raw/poll-state-bitget.json`. |
+
+Measured values below are HTTP status / response body bytes / rows. `SOXLUSDT` is a listed control outside the mapping. See [verified scope](open-questions.md#poller-field-policy-questions).
+
+| Symbol | In `futureList` | `long-short` | `account-long-short` | `position-long-short` |
+|---|---|---|---|---|
+| BTCUSDT | yes | 200 / 2820 / 30 | 200 / 3455 / 30 | 200 / 3523 / 30 |
+| AKEUSDT | yes | 200 / 2819 / 30 | 200 / 3448 / 30 | 200 / 3544 / 30 |
+| EVAAUSDT | yes | 200 / 2819 / 30 | 200 / 3451 / 30 | 200 / 3538 / 30 |
+| SOXLUSDT | yes | 200 / 2814 / 30 | 200 / 3450 / 30 | 200 / 3543 / 30 |
+| AAVEUSDT | no | 400 / 102 / 0 | 400 / 102 / 0 | 400 / 102 / 0 |
+| DOGEUSDT | no | 400 / 102 / 0 | 400 / 102 / 0 | 400 / 102 / 0 |
+| TOSHIUSDT | no | 400 / 103 / 0 | 400 / 103 / 0 | 400 / 103 / 0 |
+| 1MCHEEMSUSDT | no | 400 / 106 / 0 | 400 / 106 / 0 | 400 / 106 / 0 |
+| ACUUSDT | no | 400 / 101 / 0 | 400 / 101 / 0 | 400 / 101 / 0 |
+| 2ZUSDT | no | 400 / 100 / 0 | 400 / 100 / 0 | 400 / 100 / 0 |
+| 0GUSDT | no | 400 / 100 / 0 | 400 / 100 / 0 | 400 / 100 / 0 |
+
 ## Seven-venue load and recording
 
 | Question | Method | Numbers, sample size and spread | Date | Reproducible source |
