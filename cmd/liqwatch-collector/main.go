@@ -196,6 +196,12 @@ func serveMetrics(addr string, w *rawlog.Writer, col *collector.Collector, ready
 	if addr == "" {
 		return
 	}
+	if err := http.ListenAndServe(addr, metricsHandler(w, col, ready)); err != nil {
+		log.Printf("metrics: %v", err)
+	}
+}
+
+func metricsHandler(w *rawlog.Writer, col *collector.Collector, ready *readiness) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", func(rw http.ResponseWriter, _ *http.Request) {
 		s := w.Stats()
@@ -209,6 +215,10 @@ func serveMetrics(addr string, w *rawlog.Writer, col *collector.Collector, ready
 		}
 		fmt.Fprintf(rw, "liqwatch_disk_stop_total %d\nliqwatch_reconnects_total %d\nliqwatch_stalls_total %d\nliqwatch_messages_total %d\n",
 			s.DiskStops, col.Reconnects.Load(), col.Stalls.Load(), col.Messages.Load())
+		for _, n := range col.ChannelCounts() {
+			fmt.Fprintf(rw, "liqwatch_frames_received_total{shard=%q,channel=%q} %d\n", n.Shard, n.Channel, n.Frames)
+			fmt.Fprintf(rw, "liqwatch_records_produced_total{shard=%q,channel=%q} %d\n", n.Shard, n.Channel, n.Records)
+		}
 		fmt.Fprintf(rw, "liqwatch_shards_open %d\nliqwatch_shards_expected %d\nliqwatch_start_unix %d\n", ready.open(), ready.expected(), startUnix)
 	})
 	mux.HandleFunc("/ready", func(rw http.ResponseWriter, _ *http.Request) {
@@ -218,9 +228,7 @@ func serveMetrics(addr string, w *rawlog.Writer, col *collector.Collector, ready
 		}
 		fmt.Fprintln(rw, "ready")
 	})
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Printf("metrics: %v", err)
-	}
+	return mux
 }
 
 var startUnix = time.Now().Unix()

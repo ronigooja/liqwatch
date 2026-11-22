@@ -122,28 +122,59 @@ func (*Adapter) Classes() func(string) (string, bool) {
 	}
 }
 
+func (*Adapter) FrameChannel(msg []byte) string {
+	return frameChannel(streamName(msg))
+}
+
+func (*Adapter) FrameChannels(sh venue.Shard) []string {
+	var channels []string
+	for _, stream := range sh.Streams {
+		channels = append(channels, frameChannel(stream))
+	}
+	return channels
+}
+
+func frameChannel(stream string) string {
+	switch stream {
+	case "!markPrice@arr@1s":
+		return "markPrice_all"
+	case "!forceOrder@arr":
+		return "forceOrder_all"
+	}
+	if _, channel, ok := strings.Cut(stream, "@"); ok && channel == "aggTrade" {
+		return "aggTrade"
+	}
+	return "unclassified"
+}
+
 func classify(data []byte) (ch, sym string) {
-	i := bytes.Index(data, []byte(`"stream":"`))
-	if i < 0 {
+	name := streamName(data)
+	if name == "" {
 		return "unknown", ""
 	}
-	rest := data[i+10:]
-	j := bytes.IndexByte(rest, '"')
-	if j < 0 {
-		return "unknown", ""
-	}
-	name := string(rest[:j])
 	k := strings.IndexByte(name, '@')
 	if k < 0 {
 		return name, ""
 	}
-	sym = strings.ToUpper(name[:k])
 	ch = name[k+1:]
 	if m := strings.IndexByte(ch, '@'); m >= 0 {
 		ch = ch[:m]
 	}
-	if sym != "" && sym[0] == '!' {
-		return strings.TrimPrefix(name[:k], "!") + "_all", ""
+	if k > 0 && name[0] == '!' {
+		return name[1:k] + "_all", ""
 	}
-	return ch, sym
+	return ch, strings.ToUpper(name[:k])
+}
+
+func streamName(data []byte) string {
+	i := bytes.Index(data, []byte(`"stream":"`))
+	if i < 0 {
+		return ""
+	}
+	rest := data[i+10:]
+	j := bytes.IndexByte(rest, '"')
+	if j < 0 {
+		return ""
+	}
+	return string(rest[:j])
 }

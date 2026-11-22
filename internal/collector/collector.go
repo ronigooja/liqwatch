@@ -27,10 +27,12 @@ const (
 type Shard = venue.Shard
 
 type Collector struct {
-	sink     rawlog.Sink
-	shards   []Shard
-	adapter  venue.Adapter
-	throttle *throttler
+	sink        rawlog.Sink
+	shards      []Shard
+	adapter     venue.Adapter
+	throttle    *throttler
+	shardCounts map[string]*shardCounters
+	classifier  venue.FrameClassifier
 	// subscribeWrite overrides subscription writes for deterministic connection tests.
 	subscribeWrite func(context.Context, *websocket.Conn, []byte) error
 	// clock overrides lifecycle timestamps in deterministic tests; not used per message.
@@ -58,6 +60,8 @@ type Collector struct {
 
 func New(sink rawlog.Sink, adapter venue.Adapter, shards []Shard) *Collector {
 	c := &Collector{sink: sink, adapter: adapter, shards: shards, OpenSpacing: openSpacing}
+	c.classifier, _ = adapter.(venue.FrameClassifier)
+	c.shardCounts = newShardCounters(shards, c.classifier)
 	c.ConfigureThrottle(true, nil)
 	return c
 }
@@ -348,6 +352,7 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 		}()
 	}
 	var cseq uint64
+	counts := c.shardCounts[sh.Name]
 	var received time.Time
 	defer func() {
 		k.msgs = cseq
@@ -376,11 +381,29 @@ func (c *Collector) read(ctx context.Context, k *conn, sh Shard, url string) err
 			c.writeGap(sh, k, rw, k.upMon+rw.Sub(k.up).Nanoseconds(), map[string]any{"event": "conn_first", "shard": sh.Name, "conn": k.id})
 		}
 		c.Messages.Add(1)
+		if counts != nil {
+			channel := "unclassified"
+			if c.classifier != nil {
+				channel = c.classifier.FrameChannel(data)
+			}
+			counts.channel(channel).frames.Add(1)
+		}
 		var records []rawlog.Record
 		if splitter, ok := c.adapter.(venue.ConnSplitter); ok {
 			records = splitter.SplitConn(sh, k.id, data)
 		} else {
 			records = c.adapter.Split(sh, data)
+		}
+		if counts != nil {
+			// Most frames yield one record or a run of records on the same channel.
+			for i := 0; i < len(records); {
+				j := i + 1
+				for j < len(records) && records[j].Channel == records[i].Channel {
+					j++
+				}
+				counts.channel(records[i].Channel).records.Add(uint64(j - i))
+				i = j
+			}
 		}
 		for _, rec := range records {
 			rec.Venue, rec.Conn, rec.CSeq, rec.RecvWal, rec.RecvMon = c.adapter.Name(), k.id, cseq, rw.UnixNano(), rawlog.Mono()

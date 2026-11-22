@@ -88,18 +88,23 @@ func (a *Adapter) splitAllMarket(message []byte, universe map[string]struct{}) [
 	}
 	var out []rawlog.Record
 	for _, element := range elements {
-		var fields struct {
-			Symbol string `json:"s"`
-			Order  struct {
-				Symbol string `json:"s"`
-			} `json:"o"`
-		}
-		if json.Unmarshal(element, &fields) != nil {
-			continue
-		}
-		symbol := fields.Symbol
+		var symbol string
 		if channel == "forceOrder_all" {
-			symbol = fields.Order.Symbol
+			// Exact lookup: encoding/json's case-insensitive struct matching lets
+			// the side field "S" overwrite the symbol field "s".
+			var fields map[string]json.RawMessage
+			var order map[string]json.RawMessage
+			if json.Unmarshal(element, &fields) != nil || json.Unmarshal(fields["o"], &order) != nil || json.Unmarshal(order["s"], &symbol) != nil {
+				continue
+			}
+		} else {
+			var fields struct {
+				Symbol string `json:"s"`
+			}
+			if json.Unmarshal(element, &fields) != nil {
+				continue
+			}
+			symbol = fields.Symbol
 		}
 		if _, ok := universe[symbol]; !ok || symbol == "" {
 			continue

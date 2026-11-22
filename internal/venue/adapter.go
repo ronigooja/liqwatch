@@ -23,6 +23,12 @@ type ConnSplitter interface {
 	SplitConn(sh Shard, connID string, msg []byte) []rawlog.Record
 }
 
+// FrameClassifier optionally supplies bounded input-channel labels for collector metrics.
+type FrameClassifier interface {
+	FrameChannel(msg []byte) string
+	FrameChannels(sh Shard) []string // expected channels, including those yet to receive frames
+}
+
 // ConnLifecycle optionally receives open and close notifications around frame decoding.
 type ConnLifecycle interface {
 	ConnOpened(sh Shard, connID string)
