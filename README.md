@@ -17,7 +17,7 @@ Read only what the task needs.
 | [docs/p0-rollout.md](docs/p0-rollout.md) | Operations | Recorder rollout and status | Checking recording operations |
 | [docs/p1-data-pipeline.md](docs/p1-data-pipeline.md) | Design | Research data pipeline | Replaying or converting data |
 | [docs/fill-simulator.md](docs/fill-simulator.md) | Design | Fill simulator design and results | Evaluating simulated fills |
-| [docs/recording-results.md](docs/recording-results.md) | Results | Adapter profiling measurements | Sizing or reviewing recorder optimization |
+| [docs/recording-results.md](docs/recording-results.md) | Results | Adapter profiling and production channel coverage | Sizing the recorder or reviewing missing inputs |
 | [docs/trial-plan.md](docs/trial-plan.md) | Results | Historical recording trial and measurements | Reviewing trial evidence |
 | [docs/overview.md](docs/overview.md) | Design | Goals, products, non-goals, success criteria | Need scope or intent |
 | [docs/architecture.md](docs/architecture.md) | Design | Layers and data flow | Designing any component |

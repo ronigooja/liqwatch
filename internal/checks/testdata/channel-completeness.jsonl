@@ -1,0 +1,3 @@
+{"Key":"data.stale_write:binance:forceOrder_all","Severity":"critical","Type":"data.stale_write","Summary":"binance forceOrder_all: raw channel is missing","Details":{"channel":"forceOrder_all","max_age_seconds":21600,"missing":true,"venue":"binance"}}
+{"Key":"data.stale_write:bybit:instruments","Severity":"critical","Type":"data.stale_write","Summary":"bybit instruments: raw channel is missing","Details":{"channel":"instruments","max_age_seconds":129600,"missing":true,"venue":"bybit"}}
+{"Key":"data.stale_write:mexc:funding","Severity":"critical","Type":"data.stale_write","Summary":"mexc funding: raw channel is stale","Details":{"age_seconds":180,"channel":"funding","max_age_seconds":120,"missing":false,"venue":"mexc"}}

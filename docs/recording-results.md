@@ -56,3 +56,38 @@ Verified SHA-256: config `81f8ceed64a62de931f9ee30829d5125614804697c6d2d9ee8e7f4
 | Did reading during subscription improve coverage? | Measured: post-fix Gate run with 700 ms spacing restored; separate four-collector run. | Gate 500/500 and zero reconnects in 10 minutes; four together for 5 minutes: Bitget 453/453, MEXC 508/508, KuCoin 486/486, Gate 500/500; zero reconnects or stalls. | 2026-11-14 | Measurement sub-agent report; [fix](../internal/collector/collector.go), commit `d559adc`; one run per configuration, spread unreported; exact commands and logs unavailable. |
 | How consistent was Bybit overlap? | Measured: live 3-minute run, 50 symbols, two replacements per shard. | 2,271 mark records, zero partial; zero price differences above 1% in 242 overlap comparisons. Consistency signal, not proof; one run, spread unreported. | 2026-11-15 | Measurement sub-agent report; [implementation](../internal/venue/bybit/bybit.go), commit `2f80c01`; exact commands and logs unavailable. |
 | How long does Bitget mutation testing take? | Measured: exhaustive and default sampled test modes. | 166 s exhaustive; about 7.7 s sampled; run counts and spread unreported. | 2026-11-15 | Measurement sub-agent report; [test](../internal/venue/bitget/split_diff_test.go), `LIQWATCH_SLOW_TESTS=1` enables exhaustive mode; exact commands and logs unavailable. |
+## Production channel completeness
+
+Measured on VT01OK, 2026-11-22. Scope and cadence: [required-channel design](storage-design.md#required-channel-freshness). Counts are nonempty members per symbol (not records); `*` means the sole `_all` slot. Ages are newest nonempty live file, in seconds; `—` means no file today.
+
+| Venue / question | Method | Channel: covered symbols on Nov 20 / Nov 21; Nov 22 age | Date / source |
+|---|---|---|---|
+| Binance WS, 522 symbols | Tar member names/sizes; raw stat | `aggTrade` 522/522; 0s. `markPrice_all` 522/522; 10s. `forceOrder_all` 0/0; —. | [Audit source](#production-channel-audit-method) |
+| Binance REST | Same | `brackets` 522/522; 47918s. `exchangeInfo` 1/1*; 47759s. `fundingRate` 522/522; 108s. `openInterestHist` 522/522; 5066s. | Same |
+| Binance REST ratios | Same | `globalLongShortAccountRatio` 522/522; 26666s. `topLongShortAccountRatio` 522/522; 18s. `topLongShortPositionRatio` 522/522; —. | Same |
+| Bybit WS, 470 mapped | Same | `trade`, `mark` each 469/469; both 0s. `liquidation` 467/466; 130s. | Same |
+| Bybit REST | Same | `accountRatio` 469/469; 62s. `riskLimit` 1/1*; 4689s. `instruments` 1/1*; 47923s. | Same |
+| OKX WS, 266 mapped | Same | `trade`, `mark`, `oi`, `funding` each 265/265; 0/10/10/40s respectively. `index` 266/266; 10s. `liquidation` 262/264; 10s. | Same |
+| OKX REST ratios | Same | `longShortAccountRatio` 264/264 currencies; 26706s. Contract, top-trader account and top-trader position ratios each 265/265; 5104s, 70s and — respectively. | Same |
+| OKX REST snapshots | Same | `positionTiers` 1/1*; 4651s. `instruments` 1/1*; 47922s. | Same |
+| Bitget WS, 453 mapped | Same | `trade`, `ticker`, `funding`, `tier` each 453/453; 0/10/40/1240s respectively. `liquidation` 396/392; 40s. | Same |
+| Bitget REST | Same | `positionTiers` 453/453; 158s. `contracts` 1/1*; 47925s. `accountLongShort`, `longShort`, `positionLongShort` each 17/16; 262/19/1462s respectively. | Same |
+| Gate WS, 500 mapped | Same | `trades`, `tickers`, `contract_stats` each 500/500; 0/10/10s respectively. `liquidations` 448/382; 10s. Optional `contract_info` 3/4; 1270s. | Same |
+| Gate REST | Same | `contractStats` 500/500; 11s. `riskLimitTiers` 500/500; 4718s. `contracts` 1/1*; 47922s. | Same |
+| MEXC WS, 508 mapped | Same | `trade`, `mark`, `index`, `ticker`, `funding` each 508/508; 0/10/10/10/40s respectively. Optional `contract` 74/46; 2680s. | Same |
+| MEXC REST | Same | `contractDetail` 508/508; 47925s. | Same |
+| KuCoin WS, 486 mapped | Same | `trade`, `mark`, `utamark`, `funding` each 486/486; 0/10/10/40s respectively. | Same |
+| KuCoin REST | Same | `contracts` 1/1*; 47925s. `riskLimit` 486/486; 24s. | Same |
+| Venue-wide liquidation totals | Sum compressed liquidation member bytes; Nov 20 / 21 | Binance 0/0; Bybit 2675838/1797327; OKX 3351172/2295836; Bitget 1286531/879279; Gate 1419953/943357. MEXC/KuCoin not applicable. | Same |
+| Liquidation envelope | One BTC member per active venue, first 600 bytes only | Bybit, OKX, Bitget and Gate each yielded one parseable v2 record; `p.data` on the first three, `p.result` on Gate. No Binance sample was available. | Same |
+| Earlier Binance coverage | All 524 packs/day including `_all` and `gap`, no decompression | `forceOrder_all` also 0 on Nov 17–19. | Same |
+| Bitget ratio breadth | Loaded poller job state; three endpoints, 453 jobs each | Each had 33 with a row cursor and zero marked no-data. Inferred: endpoint returns no usable rows for most symbols (code accepts empty responses / selected 400s); not proved from recorder journal. | Same; [source](../internal/poller/bitget.go) |
+| Bybit/OKX coverage shortfalls | Usable map minus archive member keys | Bybit `HAJIMIUSDT` lacks trade/mark/account ratio; OKX `RVN-USDT-SWAP` has index only; currency ratios absent for `CT` and `RVN`. Inferred: contract coverage differs from map; reason not established beyond the previously verified CT rejection. | Same; [CT evidence](open-questions.md#recording-open-issues) |
+| Binance cause | Inspect split code, sampled journal and separate fix | Verified at `3927f79`: case-insensitive decode let order side `S` overwrite symbol `s`, breaking routing. One journaled dial timeout on the shared shard does not explain liquidation-only absence. | Same; [recording issues](open-questions.md#recording-open-issues) |
+| Daily ratio freshness | Today-only stat and poller cursor state | Binance and OKX position ratio absent at sample time; all relevant jobs had cursors. Inferred: pending daily phases, not a whole-day outage; Nov 21 coverage was normal. | Same; [schedule](poller.md#scheduling-and-pacing) |
+
+### Production channel audit method
+
+Verified source: read-only SSH to VT01OK at 2026-11-22 13:16–13:25 UTC; code baseline `ef7dabb`. Filter the configured map to `auto`/`reviewed`, group by venue; Binance used its recorded universe. Production had no poll period overrides.
+Verified reproduction: list `/data/liqwatch-archive/packs/<venue>/*/202611{20,21}.tar` with `tar tvf`; group positive member bytes by venue, symbol and channel, excluding `gap`. For ages, `stat` `/var/lib/liqwatch/data/raw/<venue>/*/20261122/*` and subtract newest mtime from scan-end time.
+Verified reproduction: inspect `tar xOf … <liquidation member> | zstd -dc | head -c 600` for `BTCUSDT`, `BTC-USDT-SWAP` or `BTC_USDT` as applicable. Read `poll-state*.json` cursor presence and bounded recorder/poller unit journals only; no archive or raw data copied.

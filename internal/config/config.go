@@ -152,9 +152,19 @@ func (c Config) PacksPath() string    { return filepath.Join(c.PackDir(), "packs
 func (c Config) ManifestPath() string { return filepath.Join(c.PackDir(), "manifest", "manifest.db") }
 
 type Checks struct {
-	DiskWarnPct     int            `toml:"disk_warn_pct"` // 80
-	StaleSec        map[string]int `toml:"stale_sec"`
-	UnverifiedHours int            `toml:"unverified_hours"` // 3
+	DiskWarnPct     int                          `toml:"disk_warn_pct"` // 80
+	StaleSec        map[string]int               `toml:"stale_sec"`     // legacy extra channels for collect.venue
+	Venues          []string                     `toml:"venues"`        // nil checks all recorder venues
+	ChannelMaxAge   map[string]map[string]string `toml:"channel_max_age"`
+	UnverifiedHours int                          `toml:"unverified_hours"` // 3
+}
+
+func IsRecorderVenue(name string) bool {
+	switch name {
+	case "binance", "bitget", "bybit", "gate", "kucoin", "mexc", "okx":
+		return true
+	}
+	return false
 }
 
 // Env var names for WebDAV credentials (never printed or logged).
@@ -170,7 +180,7 @@ func Load(path string) (*Config, error) {
 		Collect: Collect{Venue: "binance", MapPath: "/etc/liqwatch/venue-map.toml", MetricsAddr: "127.0.0.1:9101", MaxStreamsPerWS: 100, QueueSize: 10000, OpenSpacingMS: 500, Throttle: map[string]any{"enabled": true}},
 		Archive: Archive{Mode: "webdav", DeleteSources: true, Retention: true, RetentionHighPct: 90, RetentionLowPct: 80, RetentionMaxDaysPerRun: 3, MaxPackMB: 400, FullVerifyDays: 7, VerifySamplePercent: 10},
 		Pack:    Pack{Unit: "tar_then_zstd", Level: 3, QuietMinutes: 10},
-		Checks:  Checks{DiskWarnPct: 80, StaleSec: map[string]int{"aggTrade": 120, "markPrice_all": 60, "forceOrder_all": 0}, UnverifiedHours: 3},
+		Checks:  Checks{DiskWarnPct: 80, UnverifiedHours: 3},
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -257,6 +267,27 @@ func (c Config) validate() error {
 	for channel, seconds := range c.Checks.StaleSec {
 		if channel == "" || seconds < 0 {
 			return fmt.Errorf("checks.stale_sec values are invalid")
+		}
+	}
+	if c.Checks.Venues != nil && len(c.Checks.Venues) == 0 {
+		return fmt.Errorf("checks.venues must not be empty")
+	}
+	seen := map[string]bool{}
+	for _, venue := range c.Checks.Venues {
+		if !IsRecorderVenue(venue) || seen[venue] {
+			return fmt.Errorf("invalid or duplicate checks.venues entry %q", venue)
+		}
+		seen[venue] = true
+	}
+	for venue, overrides := range c.Checks.ChannelMaxAge {
+		if !IsRecorderVenue(venue) {
+			return fmt.Errorf("unknown checks.channel_max_age venue %q", venue)
+		}
+		for channel, value := range overrides {
+			d, err := time.ParseDuration(value)
+			if channel == "" || err != nil || d <= 0 || d > 72*time.Hour {
+				return fmt.Errorf("checks.channel_max_age.%s.%s must be a positive duration up to 72h", venue, channel)
+			}
 		}
 	}
 	return nil

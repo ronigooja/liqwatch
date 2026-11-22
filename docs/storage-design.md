@@ -29,7 +29,7 @@ Verified: governed by [0026](decisions/0026-live-zstd-recording.md) and [0028](d
 | Item | Rule |
 |---|---|
 | Path | Verified: `raw/<venue>/<symbol>/<UTC date>/<channel>.<slot>.jsonl`; append `.zst` when `[record].compress=true` |
-| Split | Every channel is split by symbol: trades, mark (with index and funding), liquidations, open interest, long/short ratios, leverage tiers, index constituents. A liquidation file exists only if that symbol had a liquidation that day |
+| Split | Verified: per-symbol streams use the venue symbol; currency aggregation and bulk REST scopes are listed under [channel freshness](#required-channel-freshness). A liquidation file exists only if that symbol had a recorded event that day. |
 | All-market streams | Binance mark price (array) and liquidation streams are cut into one record per symbol, each keeping the original envelope shape. See [adapter filtering](venue-adapters.md#recorded-content) for other transformations |
 | Content | Verified: filtered payload and unchanged v2 JSON lines; optional zstd container under [0026](decisions/0026-live-zstd-recording.md). [Recorded content](venue-adapters.md#recorded-content) |
 | Rotation | UTC day boundary only. One file per symbol per channel per day; no size limit, no sequence number |
@@ -93,7 +93,7 @@ Verified in [raw reader](../internal/rawlog/read.go): `ReadLines(path, visit) (R
 
 Verified: callbacks borrow newline-free complete records; an unterminated final line is discarded. `ReadInfo` reports compression, stored size, delivered records/decoded bytes and `TruncatedTail`; unexpected final-frame EOF is recoverable, other decoder errors fail the file.
 
-Verified: [poller dedup reconstruction](../internal/poller/scheduler.go) reads both suffixes through this API; non-missing read errors emit `raw_read_failed` gap diagnostics. [Stale checks](../internal/checks/checks.go) discover both suffixes without decoding.
+Verified: [poller dedup reconstruction](../internal/poller/scheduler.go) reads both suffixes through this API; non-missing read errors emit `raw_read_failed` gap diagnostics.
 
 Verified in [config](../internal/config/config.go): `[pack].dir` selects the output root; omitted or empty uses `data_dir`. A set value must be absolute and lexically outside `data_dir/raw`; raw JSONL paths and recorder state are unchanged. Designed: use real directories, not symlink aliases into raw.
 
@@ -249,3 +249,28 @@ Inferred: these are ceilings, not reservations or proof of aggregate fit. Bounde
 | 4 | Validate a closed-day pack with `liqwatch-packer.service`, then enable `liqwatch-packer.timer`; monitor disk growth while uploads are disabled. |
 | 5 | Verified repository preparation: both archive modes' units remain disabled; no deployment/enablement is performed here. Local runs delete verified raw by default; select `delete_sources=false` for report-only. |
 | Archive gate | Verified: local mode does not inherit the upload gate; [remaining safety/retention questions](open-questions.md#archive-deployment-gates) still apply. WebDAV retains the realistic upload/readback checks in 0021. |
+
+## Required channel freshness
+
+Verified in [checks](../internal/checks/completeness.go): the timer checks all seven venues unless `[checks].venues` narrows the list. It stats nonempty raw members for relevant UTC dates; it does not decode data or read packs.
+Verified: the newest per-symbol write anywhere in the venue counts, including for rare events. Bulk REST requires `_all`; REST members require `.p`. Missing or stale data emits a critical `data.stale_write:<venue>:<channel>` event, resolved on recovery.
+Verified: in local delete mode, daily REST freshness can use a previously observed raw mtime after midnight cleanup until that mtime expires. On first start after cleanup no prior observation exists. The check does not certify every symbol, payload field or record.
+
+Verified expected channels from [adapters](venue-adapters.md), [poller](poller.md#configured-channels) and [0016](decisions/0016-drop-unneeded-payload-fields.md)/[0017](decisions/0017-poller-field-policies.md). Names below are on disk; `.p` denotes REST, `*` denotes `_all`.
+
+| Venue | WS trades and market data | WS liquidation (event-driven) | REST every 24h unless noted |
+|---|---|---|---|
+| Binance | `aggTrade`, `markPrice_all` (mark/index/funding) | `forceOrder_all` | `openInterestHist.p`, `fundingRate.p`, `brackets.p`, `exchangeInfo.p*` |
+| Binance ratios | — | — | `globalLongShortAccountRatio.p`, `topLongShortAccountRatio.p`, `topLongShortPositionRatio.p` |
+| Bybit | `trade`, `mark` (mark/index/funding/OI) | `liquidation` | `accountRatio.p`, `riskLimit.p*`, `instruments.p*` |
+| OKX | `trade`, `mark`, `index`, `funding`, `oi` | `liquidation` | `positionTiers.p*`, `instruments.p*` |
+| OKX ratios | — | — | `longShortAccountRatio.p` (base currency path), `longShortAccountRatioContract.p`, `longShortAccountRatioTopTrader.p`, `longShortPositionRatioTopTrader.p` |
+| Bitget | `trade`, `ticker` (mark/index/funding/OI), `funding`, `tier` (snapshot/change) | `liquidation` | `positionTiers.p`, `contracts.p*`; hourly: `accountLongShort.p`, `longShort.p`, `positionLongShort.p` |
+| Gate | `trades`, `tickers` (mark/index/funding), `contract_stats` (1m OI/ratios) | `liquidations` | `contractStats.p`, `riskLimitTiers.p`, `contracts.p*` |
+| MEXC | `trade`, `mark`, `index`, `ticker` (also OI), `funding` | — | `contractDetail.p` |
+| KuCoin | `trade`, `mark` (also index), `funding`, `utamark` (OI) | — | `contracts.p*` (next funding time), `riskLimit.p` |
+
+Verified: no required liquidation or long/short ratio feed for MEXC or KuCoin per [venue API inventory](venue-apis.md#recordable-data-per-venue-liquidation-model-inputs). Gate WS `contract_info` and MEXC WS `contract` are change feeds not required in addition to REST tiers/metadata.
+Verified: WS cadence is event-driven for trades/liquidations, otherwise see [wire and recorded cadence](venue-apis.md#recordable-data-per-venue-liquidation-model-inputs) and [throttling](venue-adapters.md#throttling). Bitget `tier` sends a snapshot and then changes.
+Verified: default max ages are 2m for trades/mark/index/OI/ticker, 10m for standalone funding and Gate WS stats, 6h for liquidation, 3h for hourly polls, and 36h for daily polls and Bitget WS tiers.
+Verified: intraday WS defaults allow at least twice the configured recorder flush. Use positive `[checks.channel_max_age.<venue>]` durations to override; legacy `[checks.stale_sec]` cannot disable required feeds.

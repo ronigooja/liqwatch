@@ -35,13 +35,15 @@ type Event struct {
 }
 
 type stateFile struct {
-	Alerts map[string]bool `json:"alerts"`
+	Alerts map[string]bool      `json:"alerts"`
+	Daily  map[string]time.Time `json:"daily_writes,omitempty"`
 }
 
 type AlertState struct {
 	Path   string
 	Events string
 	Active map[string]bool
+	Daily  map[string]time.Time
 	Now    func() time.Time
 }
 
@@ -61,6 +63,7 @@ func NewAlertState(dataDir string) (*AlertState, error) {
 	for k, v := range f.Alerts {
 		s.Active[k] = v
 	}
+	s.Daily = f.Daily
 	return s, nil
 }
 
@@ -88,11 +91,22 @@ func (s *AlertState) Set(dedup string, firing bool, severity, typ, summary strin
 		return err
 	}
 	s.Active[dedup] = firing
-	b, err = json.Marshal(stateFile{Alerts: s.Active})
+	return s.save()
+}
+
+func (s *AlertState) save() error {
+	if err := os.MkdirAll(filepath.Dir(s.Path), 0750); err != nil {
+		return err
+	}
+	b, err := json.Marshal(stateFile{Alerts: s.Active, Daily: s.Daily})
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.Path, append(b, '\n'), 0640)
+	tmp := s.Path + ".tmp"
+	if err := os.WriteFile(tmp, append(b, '\n'), 0640); err != nil {
+		return err
+	}
+	return os.Rename(tmp, s.Path)
 }
 
 type finding struct {
@@ -105,7 +119,11 @@ func Run(c *config.Config) error {
 	if err != nil {
 		return err
 	}
-	findings, err := evaluate(c)
+	var dailyChanged bool
+	if s.Daily == nil {
+		s.Daily = make(map[string]time.Time)
+	}
+	findings, err := evaluateAt(c, s.Now(), s.Daily, &dailyChanged)
 	if err != nil {
 		return err
 	}
@@ -125,19 +143,31 @@ func Run(c *config.Config) error {
 			}
 		}
 	}
+	if dailyChanged {
+		return s.save()
+	}
 	return nil
 }
 
 func evaluate(c *config.Config) ([]finding, error) {
+	return evaluateAt(c, time.Now(), nil, nil)
+}
+
+func evaluateAt(c *config.Config, now time.Time, daily map[string]time.Time, dailyChanged *bool) ([]finding, error) {
 	out, err := diskFindings(c, diskPct)
 	if err != nil {
 		return nil, err
 	}
+	channels, err := channelFindings(c, now, daily, dailyChanged)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, channels...)
 	for channel, threshold := range c.Checks.StaleSec {
-		if threshold == 0 {
+		if threshold == 0 || requiredChannel(c.Collect.Venue, channel) {
 			continue
 		}
-		age, ok, err := newestChannelAge(filepath.Join(c.DataDir, "raw"), c.Collect.Venue, channel, time.Now())
+		age, ok, err := newestChannelAge(filepath.Join(c.DataDir, "raw"), c.Collect.Venue, channel, now)
 		if err != nil {
 			return nil, err
 		}

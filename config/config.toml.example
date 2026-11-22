@@ -41,11 +41,11 @@ quiet_minutes = 10
 [checks]
 disk_warn_pct = 80
 unverified_hours = 3
+# venues = ["binance"] # Defaults to all seven; narrow on partial/single-venue installs.
 
-[checks.stale_sec]
-aggTrade = 120
-markPrice_all = 60
-forceOrder_all = 0
+# Optional positive Go durations; defaults follow the recorded channel's cadence.
+[checks.channel_max_age.binance]
+# forceOrder_all = "6h"
 
 [poller]
 # map_path = "/etc/liqwatch/venue-map.toml" # defaults to collect.map_path

@@ -40,7 +40,7 @@ func TestLoadDefaultsAndValidation(t *testing.T) {
 	if c.Archive.MaxPackMB != 400 || c.Archive.VerifySamplePercent != 10 || c.Pack.Unit != "tar_then_zstd" || c.Pack.Level != 3 || c.Pack.QuietMinutes != 10 || c.Checks.DiskWarnPct != 80 {
 		t.Fatalf("defaults not applied: %+v", c)
 	}
-	if c.Collect.Venue != "binance" || c.Checks.StaleSec["aggTrade"] != 120 || c.Checks.StaleSec["markPrice_all"] != 60 || c.Checks.StaleSec["forceOrder_all"] != 0 {
+	if c.Collect.Venue != "binance" || c.Checks.Venues != nil || len(c.Checks.StaleSec) != 0 || len(c.Checks.ChannelMaxAge) != 0 {
 		t.Fatalf("bad defaults: %+v", c)
 	}
 	if c.Collect.MapPath != "/etc/liqwatch/venue-map.toml" {
