@@ -195,7 +195,7 @@ func evaluateAt(c *config.Config, now time.Time, starts map[string]time.Time, ac
 			}
 		}
 	}
-	if reachable == 0 {
+	if reachable == 0 && (active["collector.metrics"] || !recordersStarting(c, now, starts)) {
 		out = append(out, finding{"collector.metrics", "critical", "collector.metrics", "collector metrics endpoint is unreachable", map[string]any{"error": fmt.Sprint(lastErr)}})
 	}
 	if n, ok, err := unverified(c.PackDir(), time.Duration(c.Checks.UnverifiedHours)*time.Hour); err != nil {

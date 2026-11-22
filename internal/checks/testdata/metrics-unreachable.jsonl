@@ -1,0 +1,1 @@
+{"Key":"collector.metrics","Severity":"critical","Type":"collector.metrics","Summary":"collector metrics endpoint is unreachable","Details":{"error":"metrics returned 503 Service Unavailable"}}

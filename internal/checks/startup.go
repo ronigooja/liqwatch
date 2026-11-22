@@ -84,6 +84,17 @@ func inStartup(now, start time.Time, grace time.Duration) bool {
 	return !start.IsZero() && !now.Before(start) && now.Before(start.Add(grace))
 }
 
+// The aggregate metrics alert waits while any checked recorder is starting.
+// Use the realtime-channel window, including the configured flush allowance.
+func recordersStarting(c *config.Config, now time.Time, starts map[string]time.Time) bool {
+	for _, venue := range checkVenues(c) {
+		if starting(c, venue, channelRule{}, now, starts[venue], time.Time{}, true, 0) {
+			return true
+		}
+	}
+	return false
+}
+
 func pollStartupWindow(c *config.Config, venue string, r channelRule) time.Duration {
 	period := 24 * time.Hour
 	if r.maxAge == hourlyAge {

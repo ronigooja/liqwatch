@@ -276,7 +276,8 @@ Verified: WS cadence is event-driven for trades/liquidations, otherwise see [wir
 Verified: default max ages are 2m for trades/mark/index/OI/ticker, 10m for standalone funding and Gate WS stats, 6h for liquidation, 3h for hourly polls, and 36h for daily polls and Bitget WS tiers.
 Verified: intraday WS defaults allow at least twice the configured recorder flush. Use positive `[checks.channel_max_age.<venue>]` durations to override; legacy `[checks.stale_sec]` cannot disable required feeds.
 
-Verified in [startup.go](../internal/checks/startup.go): WS allows 5m after the venue's recorder process starts (longer if twice the flush interval is longer). A missing liquidation stream gets at least its allowed age because it is event-driven.
+Verified in [startup.go](../internal/checks/startup.go): WS allows 5m after the venue's recorder process starts (longer if twice the flush interval is longer). The aggregate `collector.metrics` alert uses this window while any checked recorder is starting; active alerts are not suppressed.
+Verified: a missing liquidation stream gets at least its allowed age because it is event-driven.
 Verified: missing REST grace starts at the persisted poller recording floor, not at each restart. Without a readable floor, only the first 5m after recorder start are allowed. Once there is write evidence, REST uses its normal age limit.
 
 | REST job | Verified startup window | Inferred allowance from the [poll schedule](poller.md#scheduling-and-pacing) |
