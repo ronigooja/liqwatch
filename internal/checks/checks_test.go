@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -109,6 +110,52 @@ func TestAlertStateTransitionsOnce(t *testing.T) {
 	}
 	if len(events) != 2 || events[0].State != "firing" || events[1].State != "resolved" {
 		t.Fatalf("events = %+v", events)
+	}
+}
+
+func TestRunJournalTransitions(t *testing.T) {
+	t.Setenv("PATH", "") // Ignore the host's clock offset.
+	var healthy atomic.Bool
+	metrics := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if !healthy.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	defer metrics.Close()
+	cfg := &config.Config{DataDir: t.TempDir()}
+	cfg.Checks = config.Checks{DiskWarnPct: 101, Venues: []string{}}
+	cfg.Collect.MetricsAddr = strings.TrimPrefix(metrics.URL, "http://")
+
+	for _, run := range []struct {
+		name    string
+		healthy bool
+		want    string
+	}{
+		{"firing", false, "checks firing critical collector.metrics collector metrics endpoint is unreachable\n"},
+		{"unchanged", false, ""},
+		{"resolved", true, "checks resolved collector.metrics\n"},
+	} {
+		t.Run(run.name, func(t *testing.T) {
+			healthy.Store(run.healthy)
+			stderr, err := os.CreateTemp(t.TempDir(), "stderr-*")
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldStderr := os.Stderr
+			os.Stderr = stderr
+			defer func() { os.Stderr = oldStderr }()
+			defer stderr.Close()
+			if err := Run(cfg); err != nil {
+				t.Fatal(err)
+			}
+			got, err := os.ReadFile(stderr.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != run.want {
+				t.Errorf("stderr = %q, want %q", got, run.want)
+			}
+		})
 	}
 }
 

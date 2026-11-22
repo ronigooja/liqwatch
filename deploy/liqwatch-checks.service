@@ -7,4 +7,5 @@ ConditionPathIsMountPoint=/data/liqwatch-archive
 Type=oneshot
 User=liqwatch
 MemoryMax=64M
+StandardError=journal
 ExecStart=/opt/liqwatch/current/liqwatch-checks -config /etc/liqwatch/config.toml

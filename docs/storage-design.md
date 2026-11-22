@@ -255,6 +255,7 @@ Inferred: these are ceilings, not reservations or proof of aggregate fit. Bounde
 Verified in [checks](../internal/checks/completeness.go): all seven venues are checked unless `[checks].venues` narrows the list. The newest nonempty raw write anywhere in the venue counts. Bulk REST requires `_all`; REST members require `.p`. No payload is decoded.
 Verified: local delete mode also accepts original nonempty member mtimes from verified deletion evidence, even on the first check after cleanup. Pack mtimes and empty successful polls do not count. This does not certify every symbol, payload field or record.
 Verified: overdue channels emit critical `data.stale_write:<venue>:<channel>`; the same key stays active through startup grace and resolves on recovery. Unsupported Bitget symbols do not affect the venue-wide test if any symbol writes within the age limit.
+Verified in [checks](../internal/checks/checks.go): firing and resolved transitions are logged once to stderr (the [service journal](../deploy/liqwatch-checks.service)); the same transitions still append to `state/alerts.jsonl`.
 
 Verified expected channels from [adapters](venue-adapters.md), [poller](poller.md#configured-channels) and [0016](decisions/0016-drop-unneeded-payload-fields.md)/[0017](decisions/0017-poller-field-policies.md). Names below are on disk; `.p` denotes REST, `*` denotes `_all`.
 
@@ -285,4 +286,5 @@ Verified: missing REST grace starts at the persisted poller recording floor, not
 | Other histories except Binance funding | Period + 2h | Same phase/finalization constraint; more room for daily venue work and retries. |
 | Binance funding | Period + 12h | Sparse settlement rows can leave early polls empty; allow settlement and pacing time. |
 
-Verified in the [timer](../deploy/liqwatch-checks.timer): a single 30s interval with 1s accuracy adds nominally at most 31s after a deadline, plus check runtime. Inferred from the supplied 0.15 CPU-s/run measurement: about 0.5% of one core.
+Verified in the [timer](../deploy/liqwatch-checks.timer): first run is due 2m after boot, then every 5m with 1s accuracy.
+Inferred: outside startup grace, a 2m channel can take about 7m after its last write to be reported stale, plus check runtime.

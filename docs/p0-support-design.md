@@ -62,7 +62,7 @@ The manifest is the index. The raw files and the validator log remain the source
 
 ## Component 9: Monitoring and Alerting
 
-- Each process serves metrics on localhost in Prometheus text format. No Prometheus or Grafana on the recorder in the first stage (memory). A check job (systemd timer, every minute) reads the metrics, evaluates thresholds, and records history locally. Prometheus/Grafana can be added later on a separate host.
+- Each process serves metrics on localhost in Prometheus text format. No Prometheus or Grafana on the recorder in the first stage (memory). Verified: the [check job](storage-design.md#required-channel-freshness) evaluates thresholds and logs transitions. Prometheus/Grafana can be added later on a separate host.
 - Metrics: per channel message rate; `recv_time − event_time` P50/P99; reconnect count; stalls; queue depth; drops; sequence breaks; snapshot refetches; unavailable-interval seconds; book mismatch rate; archiver backlog; disk usage; CPU, memory; clock offset; REST weight used.
 - Initial thresholds (tune from the trial): stall longer than the per-channel timeout; queue above 50%; any drop of depth or snapshot data; disk above 80%; clock offset above 50 ms; mismatch rate above a value set after the trial; unverified file older than 3 h.
 - Alerts are emitted through the alert interface below, not through any specific chat or app. Alerts are deduplicated and repeated at a low rate until cleared.

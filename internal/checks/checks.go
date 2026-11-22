@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -88,7 +90,15 @@ func (s *AlertState) Set(dedup string, firing bool, severity, typ, summary strin
 		return err
 	}
 	s.Active[dedup] = firing
-	return s.save()
+	if err := s.save(); err != nil {
+		return err
+	}
+	if firing {
+		fmt.Fprintf(os.Stderr, "checks firing %s %s %s\n", severity, dedup, summary)
+	} else {
+		fmt.Fprintf(os.Stderr, "checks resolved %s\n", dedup)
+	}
+	return nil
 }
 
 func (s *AlertState) save() error {
@@ -121,14 +131,15 @@ func Run(c *config.Config) error {
 	if err != nil {
 		return err
 	}
-	wanted := make(map[string]finding, len(findings))
+	slices.SortStableFunc(findings, func(a, b finding) int { return strings.Compare(a.Key, b.Key) })
+	wanted := make(map[string]struct{}, len(findings))
 	for _, f := range findings {
-		wanted[f.Key] = f
+		wanted[f.Key] = struct{}{}
 		if err := s.Set(f.Key, true, f.Severity, f.Type, f.Summary, f.Details); err != nil {
 			return err
 		}
 	}
-	for key := range s.Active {
+	for _, key := range slices.Sorted(maps.Keys(s.Active)) {
 		if s.Active[key] {
 			if _, ok := wanted[key]; !ok {
 				if err := s.Set(key, false, "info", typeForKey(key), "condition resolved", nil); err != nil {
