@@ -10,6 +10,8 @@ Verified in [main](../cmd/liqwatch-poller/main.go): `liqwatch-poller -config /et
 
 Verified in [history.go](../internal/poller/history.go): cursor and overlap support backward, forward and window paging, coverage-based paging, deduplication and revision marking; `source_gap` and `retention_gap` describe missing data. Unfinished buckets wait until `ts + Step + Grace <= now`.
 
+Verified in [scheduler.go](../internal/poller/scheduler.go): history dedup retains timestamps at or after the persisted row cursor minus the configured overlap, including rows ahead of the cursor recovered from disk; cursorless reconstruction retains its legacy behavior. Each timestamp stores its first hash inline and additional hashes for revisions.
+
 Verified in [scheduler.go](../internal/poller/scheduler.go), implementation commit `2fbe5cb`: retry backoff and endpoint `RetryError.After` cooldown start after the failed fetch returns, not before its request/wait time.
 
 Verified in [binance.go](../internal/poller/binance.go), implementation commit `2ba66e2`: Binance HTTP requests convert HTTP-date `Retry-After` relative to the post-response clock, avoiding double-counting request time.

@@ -96,7 +96,8 @@ type Scheduler struct {
 	blocked, lastRequest map[string]time.Time
 	failures             map[string]*failure
 	stopped              map[string]bool
-	seen                 map[string]map[int64]map[[32]byte]bool
+	seen                 map[string]map[int64]hashes
+	overlaps             map[string]time.Duration
 	capacityReported     map[string]string
 	Duplicates           atomic.Uint64
 	Revisions            atomic.Uint64
@@ -111,7 +112,7 @@ func NewScheduler(channels []Channel, sink Sink, clock Clock, path string, weigh
 	if weight <= 0 {
 		weight = 240
 	}
-	s := &Scheduler{Channels: channels, Sink: sink, Clock: clock, StatePath: path, WeightPerMinute: weight, state: state{Jobs: map[string]jobState{}}, buckets: map[string]*bucket{}, blocked: map[string]time.Time{}, lastRequest: map[string]time.Time{}, failures: map[string]*failure{}, stopped: map[string]bool{}, seen: map[string]map[int64]map[[32]byte]bool{}}
+	s := &Scheduler{Channels: channels, Sink: sink, Clock: clock, StatePath: path, WeightPerMinute: weight, state: state{Jobs: map[string]jobState{}}, buckets: map[string]*bucket{}, blocked: map[string]time.Time{}, lastRequest: map[string]time.Time{}, failures: map[string]*failure{}, stopped: map[string]bool{}, seen: map[string]map[int64]hashes{}, overlaps: map[string]time.Duration{}}
 	if path != "" {
 		b, err := os.ReadFile(path)
 		if err == nil {
@@ -378,7 +379,7 @@ func (s *Scheduler) dedup(r *Record) bool {
 	key := r.Venue + "/" + r.Channel + "/" + r.Symbol
 	m, ok := s.seen[key]
 	if !ok {
-		m = map[int64]map[[32]byte]bool{}
+		m = map[int64]hashes{}
 		s.seen[key] = m
 		if sink, yes := s.Sink.(*FileSink); yes {
 			for _, day := range []time.Time{s.Clock.Now().Add(-24 * time.Hour), s.Clock.Now()} {
@@ -391,7 +392,7 @@ func (s *Scheduler) dedup(r *Record) bool {
 								TS int64 `json:"last_row_timestamp"`
 							} `json:"meta"`
 						}
-						if json.Unmarshal(line, &v) != nil || v.Meta.TS <= 0 {
+						if json.Unmarshal(line, &v) != nil || v.Meta.TS <= 0 || (s.overlaps[key] > 0 && s.state.Jobs[key].RowTimestamp > 0 && v.Meta.TS < s.state.Jobs[key].RowTimestamp-s.overlaps[key].Milliseconds()) {
 							return nil
 						}
 						addHash(m, v.Meta.TS, v.Payload)
@@ -410,16 +411,16 @@ func (s *Scheduler) dedup(r *Record) bool {
 		return false
 	}
 	h := sha256.Sum256(compact.Bytes())
-	if m[ts][h] {
+	if m[ts].contains(h) {
 		s.Duplicates.Add(1)
 		return true
 	}
-	if len(m[ts]) > 0 {
+	if _, exists := m[ts]; exists {
 		r.Meta["revised"] = true
 		s.Revisions.Add(1)
 	}
 	addHash(m, ts, r.Payload)
-	if len(m) > 10000 {
+	if s.overlaps[key] == 0 && len(m) > 10000 {
 		var oldest int64
 		for t := range m {
 			if oldest == 0 || t < oldest {
@@ -430,16 +431,42 @@ func (s *Scheduler) dedup(r *Record) bool {
 	}
 	return false
 }
-func addHash(m map[int64]map[[32]byte]bool, ts int64, raw []byte) {
+
+type hashes struct {
+	first [32]byte
+	extra [][32]byte
+}
+
+func (h hashes) contains(sum [32]byte) bool {
+	if h.first == sum {
+		return true
+	}
+	for _, x := range h.extra {
+		if x == sum {
+			return true
+		}
+	}
+	return false
+}
+
+func addSum(m map[int64]hashes, ts int64, sum [32]byte) {
+	h, ok := m[ts]
+	if !ok {
+		m[ts] = hashes{first: sum}
+		return
+	}
+	if !h.contains(sum) {
+		h.extra = append(h.extra, sum)
+		m[ts] = h
+	}
+}
+
+func addHash(m map[int64]hashes, ts int64, raw []byte) {
 	var b bytes.Buffer
 	if json.Compact(&b, raw) != nil {
 		return
 	}
-	h := sha256.Sum256(b.Bytes())
-	if m[ts] == nil {
-		m[ts] = map[[32]byte]bool{}
-	}
-	m[ts][h] = true
+	addSum(m, ts, sha256.Sum256(b.Bytes()))
 }
 func (s *Scheduler) waitRequest(ctx context.Context, venue, name string) error {
 	for _, c := range s.Channels {
@@ -571,6 +598,21 @@ func (s *Scheduler) step(ctx context.Context, cutoff time.Time) (time.Duration, 
 		}
 		if err := s.save(); err != nil {
 			return 0, fmt.Errorf("save poll state: %w", err)
+		}
+		if overlap := s.overlaps[key]; c.History && overlap > 0 && st.RowTimestamp > 0 {
+			before := len(s.seen[key])
+			for ts := range s.seen[key] {
+				if ts < st.RowTimestamp-overlap.Milliseconds() {
+					delete(s.seen[key], ts)
+				}
+			}
+			if len(s.seen[key])*2 < before {
+				compact := make(map[int64]hashes, len(s.seen[key]))
+				for ts, hashes := range s.seen[key] {
+					compact[ts] = hashes
+				}
+				s.seen[key] = compact
+			}
 		}
 		return 0, nil
 	}

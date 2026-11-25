@@ -150,6 +150,9 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 	if overlap <= 0 {
 		overlap = 2 * time.Hour
 	}
+	if h.Sched != nil {
+		h.Sched.overlaps[h.Venue+"/"+h.Channel+"/"+h.Symbol] = overlap
+	}
 	maxLookback := h.MaxLookback
 	if maxLookback <= 0 {
 		maxLookback = h.Retention
@@ -195,7 +198,7 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 	}
 	var items []historyItem
 	scopeStart := start
-	seen := map[int64]map[[32]byte]bool{}
+	seen := map[int64]hashes{}
 	first := true
 	unavailable := false
 	request := func(from, to int64) ([]Row, error) {
@@ -225,13 +228,10 @@ func (h *History) Run(ctx context.Context) ([]Record, error) {
 				return nil, fmt.Errorf("invalid row JSON")
 			}
 			sum := sha256.Sum256(r.Raw)
-			if seen[r.TS][sum] {
+			if h, ok := seen[r.TS]; ok && h.contains(sum) {
 				continue
 			}
-			if seen[r.TS] == nil {
-				seen[r.TS] = map[[32]byte]bool{}
-			}
-			seen[r.TS][sum] = true
+			addSum(seen, r.TS, sum)
 			meta := make(map[string]any, len(r.Meta)+1)
 			for k, v := range r.Meta {
 				meta[k] = v
